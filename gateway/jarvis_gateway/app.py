@@ -13,6 +13,7 @@ import logging
 import re
 import secrets
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import (
     Depends,
@@ -28,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from jarvis_core.config import Settings
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
+from jarvis_core.tools.base import ToolResult
 from jarvis_core.voice import LocalVoiceError
 from pydantic import BaseModel, Field
 
@@ -72,11 +74,49 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
 
 def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object]:
     """Evita reenviar contenidos completos o secretos innecesarios al cliente."""
-    public = dict(arguments)
-    if "content" in public:
-        content = str(public.pop("content"))
+    visible_keys = {
+        "path",
+        "mode",
+        "manager",
+        "package",
+        "arguments",
+        "query",
+        "limit",
+        "title",
+        "at",
+        "delay_seconds",
+        "repeat_seconds",
+        "task_id",
+        "emotion",
+    }
+    public = {key: value for key, value in arguments.items() if key in visible_keys}
+    if "content" in arguments:
+        content = str(arguments["content"])
         public["content_bytes"] = len(content.encode("utf-8"))
     return public
+
+
+def _python_preview(name: str, arguments: dict[str, object]) -> str | None:
+    path_value = arguments.get("path")
+    if not isinstance(path_value, str) or not path_value.lower().endswith(".py"):
+        return None
+    if name in {"create_file", "update_file"}:
+        content = arguments.get("content")
+        return str(content)[:12000] if isinstance(content, str) else None
+    if name != "run_python_file":
+        return None
+    root = Path(settings.workspace_root).resolve()
+    script = (root / path_value).resolve(strict=False)
+    try:
+        script.relative_to(root)
+    except ValueError:
+        return None
+    try:
+        if not script.is_file() or script.stat().st_size > 12000:
+            return None
+        return script.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 async def require_api_key(
@@ -382,12 +422,34 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     await websocket.send_json({"type": "reply_start"})
                 await websocket.send_json({"type": "reply_delta", "delta": delta})
 
+            async def send_tool_event(
+                phase: str,
+                name: str,
+                arguments: dict[str, object],
+                result: ToolResult | None,
+            ) -> None:
+                payload: dict[str, object] = {
+                    "type": "tool_event",
+                    "phase": phase,
+                    "tool": name,
+                    "arguments": _public_approval_arguments(arguments),
+                }
+                preview = _python_preview(name, arguments)
+                if preview is not None:
+                    payload["code"] = preview
+                    payload["language"] = "python"
+                if result is not None:
+                    payload["output"] = result.content[:12000]
+                    payload["is_error"] = result.is_error
+                await websocket.send_json(payload)
+
             # El canal continúa disponible tras un fallo del proveedor.
             try:
                 reply = await orchestrator.send(
                     message,
                     on_text_delta=send_text_delta,
                     confirm=request_confirmation,
+                    on_tool_event=send_tool_event,
                 )
             except Exception:
                 logger.exception("Error procesando la sesión WebSocket %s", session_id)

@@ -52,6 +52,7 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 { "type": "proactive", "source": "task", "text": "Recordatorio: reunión en 10 min." }
 { "type": "approval_required", "approval_id": "...", "tool": "install_package", "summary": "..." }
 { "type": "approval_resolved", "approval_id": "...", "approved": true, "reason": "user" }
+{ "type": "tool_event", "phase": "running", "tool": "run_python_file", "arguments": {"path":"informe.py"}, "code":"..." }
 ```
 
 - **`state`** — mueve el comportamiento del enjambre (energía, turbulencia, expansión).
@@ -65,6 +66,9 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 - **`proactive`** — aviso completo a mostrar/reproducir.
 - **`approval_required`** — pausa una acción sensible y solicita decisión humana.
 - **`approval_resolved`** — confirma si la acción fue autorizada o bloqueada.
+- **`tool_event`** — transmite la actividad agéntica en tiempo real. `phase` progresa por
+  `proposed`, `running` y `completed`, o termina en `denied`; puede incluir una vista
+  previa segura de código y la salida limitada de la herramienta.
 
 Durante una aprobación el cliente responde por el mismo WebSocket:
 

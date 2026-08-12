@@ -20,13 +20,14 @@ from typing import Any
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.llm.base import LLMProvider, TextDeltaFn
-from jarvis_core.tools.base import ToolRegistry
+from jarvis_core.tools.base import ToolRegistry, ToolResult
 
 logger = logging.getLogger("jarvis.orchestrator")
 
 # Callback opcional para pedir confirmación antes de ejecutar herramientas sensibles.
 # Recibe (nombre_herramienta, argumentos) y devuelve True para permitir.
 ConfirmFn = Callable[[str, dict[str, Any]], Awaitable[bool]]
+ToolEventFn = Callable[[str, str, dict[str, Any], ToolResult | None], Awaitable[None]]
 
 
 @dataclass
@@ -70,16 +71,20 @@ class Orchestrator:
         user_message: str,
         on_text_delta: TextDeltaFn | None = None,
         confirm: ConfirmFn | None = None,
+        on_tool_event: ToolEventFn | None = None,
     ) -> AgentReply:
         """Serializa los turnos de una sesión para no corromper su historial."""
         async with self._send_lock:
-            return await self._send_locked(user_message, on_text_delta, confirm)
+            return await self._send_locked(
+                user_message, on_text_delta, confirm, on_tool_event
+            )
 
     async def _send_locked(
         self,
         user_message: str,
         on_text_delta: TextDeltaFn | None = None,
         confirm: ConfirmFn | None = None,
+        on_tool_event: ToolEventFn | None = None,
     ) -> AgentReply:
         """Procesa un mensaje del usuario y devuelve la respuesta final del agente."""
         self._history.append({"role": "user", "content": user_message})
@@ -122,9 +127,13 @@ class Orchestrator:
             for call in response.tool_calls:
                 tools_used.append(call.name)
                 logger.info("Ejecutando herramienta %s con %s", call.name, call.input)
+                if on_tool_event is not None:
+                    await on_tool_event("proposed", call.name, call.input, None)
 
                 allowed = await self._maybe_confirm(call.name, call.input, confirm)
                 if not allowed:
+                    if on_tool_event is not None:
+                        await on_tool_event("denied", call.name, call.input, None)
                     results.append(
                         {
                             "id": call.id,
@@ -135,7 +144,11 @@ class Orchestrator:
                     )
                     continue
 
+                if on_tool_event is not None:
+                    await on_tool_event("running", call.name, call.input, None)
                 result = await self._registry.execute(call.name, call.input)
+                if on_tool_event is not None:
+                    await on_tool_event("completed", call.name, call.input, result)
                 results.append(
                     {
                         "id": call.id,

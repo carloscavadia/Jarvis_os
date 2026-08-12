@@ -2,12 +2,15 @@
 
 from fastapi.testclient import TestClient
 from jarvis_core.agent.orchestrator import AgentReply
+from jarvis_core.tools.base import ToolResult
 from jarvis_gateway import app as gateway_module
 from jarvis_gateway.voice import prepare_speech_text
 
 
 class FakeOrchestrator:
-    async def send(self, message: str, on_text_delta=None, confirm=None) -> AgentReply:
+    async def send(
+        self, message: str, on_text_delta=None, confirm=None, on_tool_event=None
+    ) -> AgentReply:
         if on_text_delta is not None:
             await on_text_delta("eco:")
             await on_text_delta(message)
@@ -19,11 +22,23 @@ class FakeOrchestrator:
 
 
 class ApprovalOrchestrator:
-    async def send(self, message: str, on_text_delta=None, confirm=None) -> AgentReply:
+    async def send(
+        self, message: str, on_text_delta=None, confirm=None, on_tool_event=None
+    ) -> AgentReply:
         assert confirm is not None
+        assert on_tool_event is not None
+        arguments = {"manager": "pip", "package": "requests"}
+        await on_tool_event("proposed", "install_package", arguments, None)
         approved = await confirm(
             "install_package",
-            {"manager": "pip", "package": "requests"},
+            arguments,
+        )
+        await on_tool_event("running", "install_package", arguments, None)
+        await on_tool_event(
+            "completed",
+            "install_package",
+            arguments,
+            ToolResult("Successfully installed requests"),
         )
         return AgentReply(
             text="Instalación autorizada." if approved else "Instalación denegada.",
@@ -55,6 +70,12 @@ async def _approval_get(session_id: str) -> ApprovalOrchestrator:
 def test_prepare_speech_text_removes_markdown_symbols_and_urls():
     raw = "## Estado\n- **CPU:** `normal`\n- [Documentación](https://example.com)\n```sh\necho hola\n```"
     assert prepare_speech_text(raw) == "Estado CPU: normal Documentación"
+
+
+def test_tool_arguments_hide_content_and_unknown_sensitive_fields():
+    assert gateway_module._public_approval_arguments(
+        {"path": "script.py", "content": "print('hola')", "secret": "oculto"}
+    ) == {"path": "script.py", "content_bytes": 13}
 
 
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):
@@ -167,6 +188,13 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
             websocket.send_text("instala requests")
             assert websocket.receive_json() == {"type": "state", "state": "listening"}
             assert websocket.receive_json() == {"type": "state", "state": "thinking"}
+            proposed = websocket.receive_json()
+            assert proposed == {
+                "type": "tool_event",
+                "phase": "proposed",
+                "tool": "install_package",
+                "arguments": {"manager": "pip", "package": "requests"},
+            }
             approval = websocket.receive_json()
             assert approval["type"] == "approval_required"
             assert approval["tool"] == "install_package"
@@ -187,6 +215,20 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
                 "approval_id": approval["approval_id"],
                 "approved": True,
                 "reason": "user",
+            }
+            assert websocket.receive_json() == {
+                "type": "tool_event",
+                "phase": "running",
+                "tool": "install_package",
+                "arguments": {"manager": "pip", "package": "requests"},
+            }
+            assert websocket.receive_json() == {
+                "type": "tool_event",
+                "phase": "completed",
+                "tool": "install_package",
+                "arguments": {"manager": "pip", "package": "requests"},
+                "output": "Successfully installed requests",
+                "is_error": False,
             }
             assert websocket.receive_json() == {"type": "state", "state": "speaking"}
             assert websocket.receive_json() == {"type": "reply_start"}
