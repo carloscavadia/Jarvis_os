@@ -29,3 +29,31 @@ jobs:
         run: python -m compileall -q core gateway
       - name: Test
         run: python -m pytest core/tests gateway/tests
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -f deploy/Dockerfile -t jarvis-os:ci .
+      - name: Start gateway
+        run: |
+          docker run -d --name jarvis-ci -p 127.0.0.1:18080:8080 \
+            -e JARVIS_GATEWAY_API_KEY=ci-test-key \
+            -e JARVIS_MQTT_ENABLED=false \
+            -e JARVIS_SCHEDULER_ENABLED=false \
+            jarvis-os:ci
+      - name: Smoke test
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18080/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs jarvis-ci
+          exit 1
+      - name: Container logs
+        if: failure()
+        run: docker logs jarvis-ci
