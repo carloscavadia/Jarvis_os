@@ -106,6 +106,9 @@ en `X-Jarvis-Key`; los HUB WebSocket usan
 `ws://servidor:8080/ws/<session>?token=<clave>`. La capacidad de shell permanece
 disponible únicamente en la CLI local y no se registra en sesiones remotas.
 
+Para una instalación completa y verificable en Ubuntu Server, consulta
+[docs/ubuntu-server.md](docs/ubuntu-server.md).
+
 ## Estado
 
 Proyecto en fase de **fundación**: la arquitectura, el bucle de agente, el registro de
