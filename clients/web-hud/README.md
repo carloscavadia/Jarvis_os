@@ -52,9 +52,10 @@ Cuando JARVIS quiera modificar un archivo existente o instalar un paquete, el HU
 la operación exacta y pausa el agente. Escribe **APROBAR** para permitirla o **DENEGAR**
 para bloquearla. La petición vence automáticamente y nunca puede ser aprobada por el LLM.
 
-El panel **Actividad agéntica** aparece cuando JARVIS usa una herramienta y actualiza su
-estado en tiempo real. Para scripts Python muestra el código antes de la aprobación y luego
-la salida capturada, sin alterar el texto principal de la conversación.
+El **Espacio de trabajo** aparece como una ventana independiente en la esquina superior
+derecha cuando JARVIS usa una herramienta. Solo conserva la ejecución actual, muestra el
+código Python y la salida capturada, ofrece botones físicos **APROBAR** / **DENEGAR**, puede
+cerrarse manualmente y se limpia automáticamente después de completar una acción.
 
 ## Estados
 
