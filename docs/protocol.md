@@ -43,6 +43,9 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 
 ```json
 { "type": "state",     "state": "thinking" }
+{ "type": "reply_start" }
+{ "type": "reply_delta", "delta": "Todo " }
+{ "type": "reply_delta", "delta": "en orden" }
 { "type": "emotion",   "emotion": "focused" }
 { "type": "event",     "event": "execution", "label": "system_info" }
 { "type": "reply",     "reply": "Todo en orden, jefe.", "tools_used": ["system_info"] }
@@ -50,9 +53,14 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 ```
 
 - **`state`** — mueve el comportamiento del enjambre (energía, turbulencia, expansión).
+- **`reply_start`** — abre una respuesta progresiva y vacía en el HUD.
+- **`reply_delta`** — añade texto visible conforme llega del proveedor. Los clientes deben
+  concatenar `delta` en orden y no asumir que coincide con palabras completas.
 - **`emotion`** — mueve el **color** del enjambre (ver tabla de emociones abajo).
 - **`event`** — dispara un *flare* puntual; se envía uno por cada herramienta ejecutada.
-- **`reply`** / **`proactive`** — texto a mostrar/reproducir.
+- **`reply`** — cierra el stream y contiene el texto completo autoritativo; permite corregir
+  un fragmento perdido y mantiene compatibilidad con clientes que no implementan streaming.
+- **`proactive`** — aviso completo a mostrar/reproducir.
 
 ### Emociones (color del enjambre)
 

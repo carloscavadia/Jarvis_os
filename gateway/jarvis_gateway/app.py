@@ -184,14 +184,41 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
             await websocket.send_json({"type": "state", "state": "listening"})
             await websocket.send_json({"type": "state", "state": "thinking"})
-            reply = await orchestrator.send(message)
+            stream_started = False
+
+            async def send_text_delta(delta: str) -> None:
+                nonlocal stream_started
+                if not stream_started:
+                    stream_started = True
+                    await websocket.send_json({"type": "state", "state": "speaking"})
+                    await websocket.send_json({"type": "reply_start"})
+                await websocket.send_json({"type": "reply_delta", "delta": delta})
+
+            try:
+                reply = await orchestrator.send(message, on_text_delta=send_text_delta)
+            except Exception:  # el canal continúa disponible tras un fallo del proveedor
+                logger.exception("Error procesando la sesión WebSocket %s", session_id)
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "error": "No pude completar la respuesta. Inténtalo de nuevo.",
+                    }
+                )
+                await websocket.send_json({"type": "state", "state": "idle"})
+                continue
+            if not stream_started:
+                await websocket.send_json({"type": "state", "state": "speaking"})
+                await websocket.send_json({"type": "reply_start"})
+                if reply.text:
+                    await websocket.send_json(
+                        {"type": "reply_delta", "delta": reply.text}
+                    )
             await websocket.send_json({"type": "emotion", "emotion": reply.emotion})
             for tool_name in reply.tools_used:
                 if tool_name != "set_emotion":
                     await websocket.send_json(
                         {"type": "event", "event": "execution", "label": tool_name}
                     )
-            await websocket.send_json({"type": "state", "state": "speaking"})
             await websocket.send_json(
                 {"type": "reply", "reply": reply.text, "tools_used": reply.tools_used}
             )

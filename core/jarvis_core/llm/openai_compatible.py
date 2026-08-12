@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from jarvis_core.llm.base import LLMProvider, LLMResponse, ToolCall
+from jarvis_core.llm.base import LLMProvider, LLMResponse, TextDeltaFn, ToolCall
 
 NAME = "openai"
 
@@ -90,6 +90,7 @@ class OpenAICompatibleProvider(LLMProvider):
         system: str,
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        on_text_delta: TextDeltaFn | None = None,
     ) -> LLMResponse:
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -98,6 +99,9 @@ class OpenAICompatibleProvider(LLMProvider):
         }
         if tools:
             kwargs["tools"] = self._to_tools(tools)
+
+        if on_text_delta is not None:
+            return await self._complete_streaming(kwargs, on_text_delta)
 
         response = await self._client.chat.completions.create(**kwargs)
         choice = response.choices[0]
@@ -126,5 +130,74 @@ class OpenAICompatibleProvider(LLMProvider):
             stop_reason=stop_reason,
             provider=NAME,
             assistant_content=None,  # se reconstruye desde text/tool_calls
+            usage=usage,
+        )
+
+    async def _complete_streaming(
+        self,
+        kwargs: dict[str, Any],
+        on_text_delta: TextDeltaFn,
+    ) -> LLMResponse:
+        """Reconstruye texto y tool calls desde el stream compatible con OpenAI."""
+        stream = await self._client.chat.completions.create(**kwargs, stream=True)
+        text_parts: list[str] = []
+        tool_parts: dict[int, dict[str, str]] = {}
+        finish_reason = "end_turn"
+        usage: dict[str, int] = {}
+
+        async for chunk in stream:
+            if getattr(chunk, "usage", None) is not None:
+                usage = {
+                    "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                }
+            if not getattr(chunk, "choices", None):
+                continue
+
+            choice = chunk.choices[0]
+            delta = choice.delta
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+
+            content = getattr(delta, "content", None)
+            if content:
+                text_parts.append(content)
+                await on_text_delta(content)
+
+            for tool_delta in getattr(delta, "tool_calls", None) or []:
+                index = tool_delta.index
+                current = tool_parts.setdefault(
+                    index,
+                    {"id": "", "name": "", "arguments": ""},
+                )
+                if tool_delta.id:
+                    current["id"] += tool_delta.id
+                function = tool_delta.function
+                if function is not None:
+                    if function.name:
+                        current["name"] += function.name
+                    if function.arguments:
+                        current["arguments"] += function.arguments
+
+        tool_calls: list[ToolCall] = []
+        for index, raw in sorted(tool_parts.items()):
+            try:
+                arguments = json.loads(raw["arguments"] or "{}")
+            except (json.JSONDecodeError, ValueError):
+                arguments = {}
+            tool_calls.append(
+                ToolCall(
+                    id=raw["id"] or f"tool-{index}",
+                    name=raw["name"],
+                    input=arguments,
+                )
+            )
+
+        return LLMResponse(
+            text="".join(text_parts).strip(),
+            tool_calls=tool_calls,
+            stop_reason="tool_use" if tool_calls else finish_reason,
+            provider=NAME,
+            assistant_content=None,
             usage=usage,
         )

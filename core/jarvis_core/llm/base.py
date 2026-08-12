@@ -28,8 +28,12 @@ bloques de razonamiento de Claude). Al cambiar de proveedor, se reconstruye desd
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+TextDeltaFn = Callable[[str], Awaitable[None]]
+"""Callback asíncrono que recibe texto visible incremental del modelo."""
 
 
 @dataclass
@@ -75,6 +79,7 @@ class LLMProvider(Protocol):
         system: str,
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        on_text_delta: TextDeltaFn | None = None,
     ) -> LLMResponse:
         """Ejecuta un turno del modelo a partir del historial neutral.
 
@@ -82,5 +87,6 @@ class LLMProvider(Protocol):
             system: prompt de sistema (personalidad + reglas).
             history: historial en formato neutral (ver arriba).
             tools: definiciones de herramientas (name, description, input_schema).
+            on_text_delta: receptor opcional para mostrar la respuesta mientras se genera.
         """
         ...

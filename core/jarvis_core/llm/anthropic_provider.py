@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from jarvis_core.llm.base import LLMProvider, LLMResponse, ToolCall
+from jarvis_core.llm.base import LLMProvider, LLMResponse, TextDeltaFn, ToolCall
 
 NAME = "anthropic"
 
@@ -78,6 +78,7 @@ class AnthropicProvider(LLMProvider):
         system: str,
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        on_text_delta: TextDeltaFn | None = None,
     ) -> LLMResponse:
         kwargs: dict[str, Any] = {
             "model": self.model,
@@ -110,8 +111,14 @@ class AnthropicProvider(LLMProvider):
                     ToolCall(id=block.id, name=block.name, input=dict(block.input))
                 )
 
+        text = "\n".join(text_parts).strip()
+        # Fallback compatible: Anthropic conserva por ahora su llamada no streaming,
+        # pero el canal recibe el texto mediante el mismo contrato.
+        if on_text_delta is not None and text:
+            await on_text_delta(text)
+
         return LLMResponse(
-            text="\n".join(text_parts).strip(),
+            text=text,
             tool_calls=tool_calls,
             stop_reason=response.stop_reason,
             provider=NAME,

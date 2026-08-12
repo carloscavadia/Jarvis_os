@@ -18,7 +18,7 @@ desde el coche". Cada fase deja algo usable.
 - [x] Despliegue: docker-compose + systemd + notas Proxmox.
 
 ## Fase 1 — Cerebro sólido
-- [ ] Streaming de respuestas (texto token a token) por WebSocket.
+- [x] Streaming de respuestas (texto incremental) por WebSocket y HUD tipo karaoke.
 - [ ] Prompt de personalidad configurable (nombre, tono, idioma, "reglas de la casa").
 - [ ] Caché de prompt para bajar coste/latencia.
 - [ ] Proveedor `OllamaProvider` para modelos locales (offline/privacidad).

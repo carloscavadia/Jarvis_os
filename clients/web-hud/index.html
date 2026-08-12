@@ -69,12 +69,28 @@
   .line .txt { flex: 1; color: var(--text); }
   .line.jarvis .txt { color: var(--core-bright); }
   .line.system .txt { color: var(--muted); font-style: italic; }
+  .line.streaming .txt::after {
+    content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px;
+    vertical-align: -0.16em; background: var(--core); box-shadow: 0 0 10px var(--core);
+    animation: stream-cursor .75s steps(1) infinite;
+  }
+  .stream-token {
+    display: inline; opacity: 0; color: #fff; text-shadow: 0 0 12px var(--core);
+    animation: karaoke-in .34s ease-out forwards;
+  }
+  @keyframes karaoke-in {
+    0% { opacity: 0; filter: blur(3px); }
+    45% { opacity: 1; color: #fff; text-shadow: 0 0 14px var(--core); }
+    100% { opacity: 1; color: var(--core-bright); filter: blur(0); text-shadow: none; }
+  }
+  @keyframes stream-cursor { 0%, 48% { opacity: 1; } 49%, 100% { opacity: .15; } }
 
   .inputbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--hairline); }
   .inputbar .prompt { font-family: var(--mono); color: var(--core); font-size: 14px; }
   .inputbar input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
     font-family: var(--sans); font-size: 15px; padding: 6px 0; }
   .inputbar input::placeholder { color: var(--muted); }
+  .inputbar input:disabled { opacity: .55; cursor: wait; }
 
   .controls { position: fixed; left: 24px; bottom: 30px; display: flex; flex-direction: column; gap: 7px; width: 176px; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -102,6 +118,7 @@
     <div><span class="dot" id="dot"></span>ESTADO · <span class="state" id="r-state">REPOSO</span></div>
     <div>EMOCIÓN · <span class="val" id="r-emotion">NEUTRAL</span></div>
     <div>ENLACE · <span class="val" id="r-link">DEMO</span></div>
+    <div>RESPUESTA · <span class="val" id="r-latency">—</span></div>
   </div>
 
   <div class="controls">
@@ -164,7 +181,9 @@
   const rState = document.getElementById("r-state");
   const rEmotion = document.getElementById("r-emotion");
   const rLink = document.getElementById("r-link");
+  const rLatency = document.getElementById("r-latency");
   const dot = document.getElementById("dot");
+  const messageInput = document.getElementById("input");
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -454,6 +473,54 @@
     const x = document.createElement("div"); x.className = "txt"; x.textContent = text;
     line.appendChild(w); line.appendChild(x); logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
+    return { line, text: x };
+  }
+
+  let activeReply = null;
+  let requestStartedAt = 0;
+  let firstDeltaSeen = false;
+  let busy = false;
+  function setBusy(next) {
+    busy = next;
+    messageInput.disabled = next;
+    messageInput.placeholder = next ? "JARVIS está respondiendo…" : "Habla con JARVIS…";
+    if (!next) messageInput.focus();
+  }
+  function startStreamReply() {
+    if (activeReply) finishStreamReply();
+    activeReply = addLine("JARVIS", "", "jarvis streaming");
+  }
+  function appendStreamDelta(delta) {
+    if (!delta) return;
+    if (!activeReply) startStreamReply();
+    if (!firstDeltaSeen && requestStartedAt) {
+      firstDeltaSeen = true;
+      rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · PRIMER TEXTO`;
+    }
+    // Cada fragmento se ilumina y se asienta, como un subtítulo tipo karaoke.
+    for (const token of delta.match(/\s+|[^\s]+/g) || []) {
+      const span = document.createElement("span");
+      span.className = "stream-token";
+      span.textContent = token;
+      activeReply.text.appendChild(span);
+    }
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function finishStreamReply(finalText) {
+    if (!activeReply) {
+      if (finalText) addLine("JARVIS", finalText, "jarvis");
+    } else {
+      activeReply.line.classList.remove("streaming");
+      // El mensaje final es la autoridad y corrige cualquier fragmento perdido.
+      if (finalText !== undefined && activeReply.text.textContent !== finalText) {
+        activeReply.text.textContent = finalText;
+      }
+      activeReply = null;
+    }
+    if (requestStartedAt) {
+      rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · TOTAL`;
+    }
+    setBusy(false);
   }
   addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
 
@@ -470,14 +537,17 @@
     } catch (e) { rLink.textContent = "ERROR"; return; }
     // No mostrar la URL completa: puede contener la credencial del HUB.
     ws.onopen = () => { rLink.textContent = "EN LÍNEA"; addLine("SISTEMA", "Conectado a " + target.host, "system"); };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; ws = null; };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; finishStreamReply(); setBusy(false); ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (m.type === "state") setState(m.state);
       else if (m.type === "emotion") setEmotion(m.emotion);
       else if (m.type === "event") firePulse();
-      else if (m.type === "reply") { addLine("JARVIS", m.reply, "jarvis"); if (m.tools_used && m.tools_used.length) firePulse(); }
+      else if (m.type === "reply_start") startStreamReply();
+      else if (m.type === "reply_delta") appendStreamDelta(m.delta);
+      else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
+      else if (m.type === "error") { finishStreamReply(); addLine("SISTEMA", m.error || "Error del servidor.", "system"); setEmotion("concern"); }
       else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); firePulse(); }
     };
   }
@@ -496,10 +566,12 @@
 
   document.getElementById("form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const input = document.getElementById("input"); const text = input.value.trim();
-    if (!text) return;
-    addLine("TÚ", text, "user"); input.value = "";
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else demoReply();
+    const text = messageInput.value.trim();
+    if (!text || busy) return;
+    addLine("TÚ", text, "user"); messageInput.value = "";
+    requestStartedAt = performance.now(); firstDeltaSeen = false; rLatency.textContent = "ESPERANDO…";
+    setBusy(true);
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
   });
 
   document.querySelectorAll("[data-state]").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state)));

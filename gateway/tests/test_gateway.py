@@ -7,7 +7,10 @@ from jarvis_gateway import app as gateway_module
 
 
 class FakeOrchestrator:
-    async def send(self, message: str) -> AgentReply:
+    async def send(self, message: str, on_text_delta=None) -> AgentReply:
+        if on_text_delta is not None:
+            await on_text_delta("eco:")
+            await on_text_delta(message)
         return AgentReply(
             text=f"eco:{message}",
             tools_used=["system_info"],
@@ -58,13 +61,16 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
             websocket.send_text("estado")
             assert websocket.receive_json() == {"type": "state", "state": "listening"}
             assert websocket.receive_json() == {"type": "state", "state": "thinking"}
+            assert websocket.receive_json() == {"type": "state", "state": "speaking"}
+            assert websocket.receive_json() == {"type": "reply_start"}
+            assert websocket.receive_json() == {"type": "reply_delta", "delta": "eco:"}
+            assert websocket.receive_json() == {"type": "reply_delta", "delta": "estado"}
             assert websocket.receive_json() == {"type": "emotion", "emotion": "focused"}
             assert websocket.receive_json() == {
                 "type": "event",
                 "event": "execution",
                 "label": "system_info",
             }
-            assert websocket.receive_json() == {"type": "state", "state": "speaking"}
             assert websocket.receive_json() == {
                 "type": "reply",
                 "reply": "eco:estado",

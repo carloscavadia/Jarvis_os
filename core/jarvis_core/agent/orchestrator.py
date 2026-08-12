@@ -13,12 +13,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
-from jarvis_core.llm.base import LLMProvider
+from jarvis_core.llm.base import LLMProvider, TextDeltaFn
 from jarvis_core.tools.base import ToolRegistry
 
 logger = logging.getLogger("jarvis.orchestrator")
@@ -64,12 +65,20 @@ class Orchestrator:
     def history(self) -> list[dict[str, Any]]:
         return self._history
 
-    async def send(self, user_message: str) -> AgentReply:
+    async def send(
+        self,
+        user_message: str,
+        on_text_delta: TextDeltaFn | None = None,
+    ) -> AgentReply:
         """Serializa los turnos de una sesión para no corromper su historial."""
         async with self._send_lock:
-            return await self._send_locked(user_message)
+            return await self._send_locked(user_message, on_text_delta)
 
-    async def _send_locked(self, user_message: str) -> AgentReply:
+    async def _send_locked(
+        self,
+        user_message: str,
+        on_text_delta: TextDeltaFn | None = None,
+    ) -> AgentReply:
         """Procesa un mensaje del usuario y devuelve la respuesta final del agente."""
         self._history.append({"role": "user", "content": user_message})
         tools = self._registry.definitions()
@@ -80,6 +89,7 @@ class Orchestrator:
                 system=self._system,
                 history=self._history,
                 tools=tools,
+                on_text_delta=on_text_delta,
             )
             # Añadir el turno del asistente al historial neutral. Se guarda el contenido
             # nativo (`raw`) para poder reutilizarlo si se sigue con el mismo proveedor.
