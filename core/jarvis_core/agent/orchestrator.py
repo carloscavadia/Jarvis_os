@@ -15,6 +15,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
 
+from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.llm.base import LLMProvider
 from jarvis_core.tools.base import ToolRegistry
@@ -33,6 +34,7 @@ class AgentReply:
     text: str
     tools_used: list[str] = field(default_factory=list)
     stop_reason: str = "end_turn"
+    emotion: str = "neutral"
 
 
 class Orchestrator:
@@ -42,11 +44,13 @@ class Orchestrator:
         registry: ToolRegistry,
         settings: Settings,
         confirm: ConfirmFn | None = None,
+        emotion: EmotionState | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._settings = settings
         self._confirm = confirm
+        self._emotion = emotion
         self._system = settings.system_prompt()
         self._history: list[dict[str, Any]] = []
 
@@ -90,6 +94,7 @@ class Orchestrator:
                     text=response.text,
                     tools_used=tools_used,
                     stop_reason=response.stop_reason,
+                    emotion=self._emotion.current if self._emotion else "neutral",
                 )
 
             # Ejecutar todas las herramientas pedidas y devolver los resultados juntos.
@@ -127,6 +132,7 @@ class Orchestrator:
             text="(He alcanzado el límite de pasos de herramientas sin terminar la tarea.)",
             tools_used=tools_used,
             stop_reason="max_iterations",
+            emotion=self._emotion.current if self._emotion else "neutral",
         )
 
     async def _maybe_confirm(self, name: str, arguments: dict[str, Any]) -> bool:

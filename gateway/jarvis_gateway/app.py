@@ -120,8 +120,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             await websocket.send_json({"type": "state", "state": "listening"})
             await websocket.send_json({"type": "state", "state": "thinking"})
             reply = await orchestrator.send(message)
+            # Emoción que JARVIS eligió para sí mismo (colorea el enjambre del HUD).
+            await websocket.send_json({"type": "emotion", "emotion": reply.emotion})
             # Un flare de "ejecución" por cada herramienta usada (el HUD lo anima).
             for tool_name in reply.tools_used:
+                if tool_name == "set_emotion":
+                    continue
                 await websocket.send_json({"type": "event", "event": "execution", "label": tool_name})
             await websocket.send_json({"type": "state", "state": "speaking"})
             await websocket.send_json(

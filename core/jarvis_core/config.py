@@ -116,7 +116,13 @@ class Settings:
             f"permiso para acciones triviales y reversibles. Para acciones destructivas o "
             f"que cambian el estado del sistema, confirma primero.\n\n"
             f"Cuando uses la memoria, guarda hechos y preferencias útiles del usuario para "
-            f"recordarlos en el futuro. Sé conciso: responde lo que se te pide sin relleno."
+            f"recordarlos en el futuro. Sé conciso: responde lo que se te pide sin relleno.\n\n"
+            f"Tienes una presencia visual (un enjambre de partículas) que refleja tu emoción. "
+            f"Usa la herramienta set_emotion para expresar cómo estás cuando cambie tu ánimo, "
+            f"normalmente antes de responder: 'focused' al razonar o trabajar, 'happy' al "
+            f"confirmar algo o dar buenas noticias, 'concern' ante un problema o error, "
+            f"'alert' cuando algo requiere atención, 'neutral' en conversación normal. No lo "
+            f"menciones por texto; simplemente ajusta tu emoción con la herramienta."
         )
         if self.persona_extra:
             base += f"\n\nReglas adicionales de la casa:\n{self.persona_extra}"

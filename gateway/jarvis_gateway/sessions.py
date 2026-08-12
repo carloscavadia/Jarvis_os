@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
+from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
 from jarvis_core.llm.factory import build_llm
@@ -33,8 +34,11 @@ class SessionManager:
             orch = self._sessions.get(session_id)
             if orch is None:
                 llm = build_llm(self._settings)
-                registry = build_default_registry(self._settings, self.memory, self.tasks)
-                orch = Orchestrator(llm, registry, self._settings)
+                emotion = EmotionState()
+                registry = build_default_registry(
+                    self._settings, self.memory, self.tasks, emotion
+                )
+                orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
             return orch
 

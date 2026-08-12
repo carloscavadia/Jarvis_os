@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import sys
 
+from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
 from jarvis_core.llm.factory import build_llm
@@ -39,9 +40,10 @@ def _load_dotenv() -> None:
 def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
     memory = MemoryStore(settings.memory_db_path)
     tasks = TaskStore(settings.tasks_db_path)
-    registry = build_default_registry(settings, memory, tasks)
+    emotion = EmotionState()
+    registry = build_default_registry(settings, memory, tasks, emotion)
     llm = build_llm(settings)
-    orchestrator = Orchestrator(llm, registry, settings)
+    orchestrator = Orchestrator(llm, registry, settings, emotion=emotion)
     return orchestrator, memory, tasks
 
 
@@ -79,7 +81,7 @@ async def _ask(settings: Settings, question: str) -> None:
 def _tools(settings: Settings) -> None:
     memory = MemoryStore(settings.memory_db_path)
     tasks = TaskStore(settings.tasks_db_path)
-    registry = build_default_registry(settings, memory, tasks)
+    registry = build_default_registry(settings, memory, tasks, EmotionState())
     print("Herramientas disponibles:")
     for definition in registry.definitions():
         print(f"  - {definition['name']}: {definition['description']}")
