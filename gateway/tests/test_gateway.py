@@ -27,6 +27,10 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
         assert health.status_code == 200
         assert health.json()["status"] == "ok"
 
+        readiness = client.get("/ready")
+        assert readiness.status_code == 200
+        assert readiness.json()["status"] == "ready"
+
         unauthorized = client.post("/chat", json={"message": "hola"})
         assert unauthorized.status_code == 401
 
