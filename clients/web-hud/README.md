@@ -36,6 +36,14 @@ A partir de ahí, lo que escribas va a JARVIS de verdad y el orbe reacciona a lo
 que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). También recibe los
 **avisos proactivos** que dispara el scheduler.
 
+### Voz y micrófono
+
+El botón **●** activa el reconocimiento de voz del navegador en español y envía la
+transcripción a JARVIS. El botón **◖** activa o silencia la lectura de las respuestas.
+Esta primera integración usa las voces instaladas en el dispositivo; Chrome ofrece la
+mejor compatibilidad para el reconocimiento de voz. El HUD debe servirse desde
+`localhost` o mediante HTTPS para que el navegador permita usar el micrófono.
+
 ## Estados
 
 Ver [`docs/protocol.md`](../../docs/protocol.md) para el contrato completo de estados y

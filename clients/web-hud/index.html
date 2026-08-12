@@ -55,20 +55,31 @@
 
   .console {
     position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
-    width: min(720px, 92vw);
+    width: min(680px, 90vw);
     background: var(--panel); border: 1px solid var(--hairline); border-radius: 14px;
     backdrop-filter: blur(6px); box-shadow: 0 0 40px rgba(0,0,0,0.45); overflow: hidden;
   }
-  .log { max-height: 24vh; overflow-y: auto; padding: 14px 16px 6px;
-    display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 1.45;
-    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
-  .line { display: flex; gap: 10px; }
+  .log { max-height: clamp(78px, 11vh, 112px); overflow-y: auto; padding: 10px 16px 8px;
+    display: flex; flex-direction: column; gap: 7px; font-size: 14px; line-height: 1.4;
+    scrollbar-width: none; }
+  .log.has-history {
+    mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.3) 14%, #000 38%, #000 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.3) 14%, #000 38%, #000 100%); }
+  .log::-webkit-scrollbar { display: none; }
+  .line { display: flex; gap: 10px; transform-origin: left center;
+    transition: opacity .3s ease, filter .3s ease, transform .3s ease; }
   .line .who { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
     text-transform: uppercase; color: var(--muted); min-width: 58px; padding-top: 3px; }
   .line.jarvis .who { color: var(--core); }
   .line .txt { flex: 1; color: var(--text); }
   .line.jarvis .txt { color: var(--core-bright); }
   .line.system .txt { color: var(--muted); font-style: italic; }
+  .line.history-current { opacity: 1; filter: blur(0); transform: translateX(0); }
+  .line.history-current.jarvis .txt { color: #effdff; font-size: 15.5px; font-weight: 450;
+    text-shadow: 0 0 18px rgba(53,230,255,.16); }
+  .line.history-near { opacity: .48; filter: blur(.25px); transform: translateX(-1px); }
+  .line.history-mid { opacity: .24; filter: blur(.65px); transform: translateX(-2px); }
+  .line.history-old { opacity: .10; filter: blur(1.2px); transform: translateX(-3px); }
   .line.streaming .txt::after {
     content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px;
     vertical-align: -0.16em; background: var(--core); box-shadow: 0 0 10px var(--core);
@@ -85,12 +96,22 @@
   }
   @keyframes stream-cursor { 0%, 48% { opacity: 1; } 49%, 100% { opacity: .15; } }
 
-  .inputbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--hairline); }
+  .inputbar { height: 46px; display: flex; align-items: center; gap: 10px;
+    padding: 6px 14px; border-top: 1px solid var(--hairline); }
   .inputbar .prompt { font-family: var(--mono); color: var(--core); font-size: 14px; }
   .inputbar input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
     font-family: var(--sans); font-size: 15px; padding: 6px 0; }
   .inputbar input::placeholder { color: var(--muted); }
   .inputbar input:disabled { opacity: .55; cursor: wait; }
+  .voice-btn { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
+    border: 1px solid var(--hairline); border-radius: 50%; color: var(--muted);
+    background: rgba(9,18,28,.46); cursor: pointer; font-size: 15px;
+    transition: color .18s, border-color .18s, background .18s, box-shadow .18s, transform .18s; }
+  .voice-btn:hover { color: var(--core); border-color: var(--hairline-2); }
+  .voice-btn:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
+  .voice-btn.active { color: #effdff; border-color: var(--core); background: rgba(53,230,255,.12);
+    box-shadow: 0 0 18px rgba(53,230,255,.34); transform: scale(1.06); }
+  .voice-btn:disabled { opacity: .25; cursor: not-allowed; }
 
   .controls { position: fixed; left: 24px; bottom: 30px; display: flex; flex-direction: column; gap: 7px; width: 176px; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -119,6 +140,7 @@
     <div>EMOCIÓN · <span class="val" id="r-emotion">NEUTRAL</span></div>
     <div>ENLACE · <span class="val" id="r-link">DEMO</span></div>
     <div>RESPUESTA · <span class="val" id="r-latency">—</span></div>
+    <div>VOZ · <span class="val" id="r-voice">LISTA</span></div>
   </div>
 
   <div class="controls">
@@ -150,6 +172,8 @@
     <form class="inputbar" id="form" autocomplete="off">
       <span class="prompt">&rsaquo;</span>
       <input id="input" placeholder="Habla con JARVIS…" aria-label="Mensaje" />
+      <button class="voice-btn" id="voice-toggle" type="button" aria-label="Activar o silenciar voz" title="Voz de JARVIS">◖</button>
+      <button class="voice-btn" id="mic" type="button" aria-label="Hablar con JARVIS" title="Hablar con JARVIS">●</button>
     </form>
   </div>
 
@@ -182,8 +206,11 @@
   const rEmotion = document.getElementById("r-emotion");
   const rLink = document.getElementById("r-link");
   const rLatency = document.getElementById("r-latency");
+  const rVoice = document.getElementById("r-voice");
   const dot = document.getElementById("dot");
   const messageInput = document.getElementById("input");
+  const micButton = document.getElementById("mic");
+  const voiceToggle = document.getElementById("voice-toggle");
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -472,11 +499,28 @@
     const w = document.createElement("div"); w.className = "who"; w.textContent = who;
     const x = document.createElement("div"); x.className = "txt"; x.textContent = text;
     line.appendChild(w); line.appendChild(x); logEl.appendChild(line);
+    focusRecentHistory();
     logEl.scrollTop = logEl.scrollHeight;
     return { line, text: x };
   }
 
+  function focusRecentHistory() {
+    const lines = Array.from(logEl.querySelectorAll(".line"));
+    logEl.classList.toggle("has-history", lines.length > 3);
+    const current = lines.length - 1;
+    for (let i = 0; i < lines.length; i++) {
+      const distance = current - i;
+      lines[i].classList.remove("history-current", "history-near", "history-mid", "history-old");
+      lines[i].classList.add(
+        distance === 0 ? "history-current"
+          : distance === 1 ? "history-near"
+            : distance === 2 ? "history-mid" : "history-old"
+      );
+    }
+  }
+
   let activeReply = null;
+  let activeReplyText = "";
   let requestStartedAt = 0;
   let firstDeltaSeen = false;
   let busy = false;
@@ -488,11 +532,13 @@
   }
   function startStreamReply() {
     if (activeReply) finishStreamReply();
+    activeReplyText = "";
     activeReply = addLine("JARVIS", "", "jarvis streaming");
   }
   function appendStreamDelta(delta) {
     if (!delta) return;
     if (!activeReply) startStreamReply();
+    activeReplyText += delta;
     if (!firstDeltaSeen && requestStartedAt) {
       firstDeltaSeen = true;
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · PRIMER TEXTO`;
@@ -507,6 +553,7 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
   function finishStreamReply(finalText) {
+    const spokenText = finalText !== undefined ? finalText : activeReplyText;
     if (!activeReply) {
       if (finalText) addLine("JARVIS", finalText, "jarvis");
     } else {
@@ -517,6 +564,8 @@
       }
       activeReply = null;
     }
+    if (spokenText) speak(spokenText);
+    activeReplyText = "";
     if (requestStartedAt) {
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · TOTAL`;
     }
@@ -548,7 +597,7 @@
       else if (m.type === "reply_delta") appendStreamDelta(m.delta);
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
       else if (m.type === "error") { finishStreamReply(); addLine("SISTEMA", m.error || "Error del servidor.", "system"); setEmotion("concern"); }
-      else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); firePulse(); }
+      else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); speak(m.text); firePulse(); }
     };
   }
 
@@ -560,7 +609,10 @@
     setState("listening");
     setTimeout(() => setState("thinking"), 400);
     setTimeout(() => { firePulse(); }, 900);
-    setTimeout(() => { setState("speaking"); addLine("JARVIS", CANNED[ci++ % CANNED.length], "jarvis"); }, 1700);
+    setTimeout(() => {
+      const reply = CANNED[ci++ % CANNED.length];
+      setState("speaking"); addLine("JARVIS", reply, "jarvis"); speak(reply);
+    }, 1700);
     setTimeout(() => setState("idle"), 3400);
   }
 
@@ -573,6 +625,96 @@
     setBusy(true);
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
   });
+
+  // ── Voz local del navegador ──
+  // Es un puente funcional y sin dependencias. El servicio TTS en streaming podrá
+  // reemplazarlo más adelante conservando estos mismos controles del HUD.
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+  let voiceEnabled = canSpeak;
+  let recognition = null;
+
+  function selectSpanishVoice() {
+    const voices = speechSynthesis.getVoices();
+    const spanish = voices.filter((voice) => /^es([_-]|$)/i.test(voice.lang));
+    return spanish.find((voice) => /jorge|diego|carlos|male|mascul/i.test(voice.name))
+      || spanish.find((voice) => /premium|enhanced|natural/i.test(voice.name))
+      || spanish[0] || voices[0] || null;
+  }
+
+  function speak(text) {
+    if (!voiceEnabled || !canSpeak || !text) return;
+    speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "es-MX";
+    utterance.rate = 0.96;
+    utterance.pitch = 0.82;
+    const voice = selectSpanishVoice();
+    if (voice) utterance.voice = voice;
+    utterance.onstart = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
+    utterance.onend = () => { rVoice.textContent = "LISTA"; setState("idle"); };
+    utterance.onerror = () => { rVoice.textContent = "ERROR"; };
+    speechSynthesis.speak(utterance);
+  }
+
+  if (canSpeak) {
+    speechSynthesis.getVoices();
+    speechSynthesis.addEventListener?.("voiceschanged", selectSpanishVoice);
+    voiceToggle.classList.add("active");
+    voiceToggle.setAttribute("aria-pressed", "true");
+  } else {
+    voiceToggle.disabled = true;
+    rVoice.textContent = "NO DISPONIBLE";
+  }
+
+  voiceToggle.addEventListener("click", () => {
+    if (!canSpeak) return;
+    voiceEnabled = !voiceEnabled;
+    voiceToggle.classList.toggle("active", voiceEnabled);
+    voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
+    rVoice.textContent = voiceEnabled ? "LISTA" : "SILENCIO";
+    if (!voiceEnabled) speechSynthesis.cancel();
+  });
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = "es-MX";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.onstart = () => {
+      micButton.classList.add("active");
+      micButton.setAttribute("aria-pressed", "true");
+      messageInput.placeholder = "Escuchando…";
+      setState("listening");
+    };
+    recognition.onresult = (event) => {
+      let transcript = "";
+      let isFinal = false;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+        isFinal ||= event.results[i].isFinal;
+      }
+      messageInput.value = transcript.trim();
+      if (isFinal && messageInput.value) document.getElementById("form").requestSubmit();
+    };
+    recognition.onend = () => {
+      micButton.classList.remove("active");
+      micButton.setAttribute("aria-pressed", "false");
+      if (!busy) messageInput.placeholder = "Habla con JARVIS…";
+    };
+    recognition.onerror = (event) => {
+      if (event.error !== "no-speech" && event.error !== "aborted") {
+        addLine("SISTEMA", "No pude acceder al micrófono: " + event.error, "system");
+      }
+    };
+    micButton.addEventListener("click", () => {
+      if (micButton.classList.contains("active")) recognition.stop();
+      else if (!busy) recognition.start();
+    });
+  } else {
+    micButton.disabled = true;
+    micButton.title = "Reconocimiento de voz no disponible en este navegador";
+  }
 
   document.querySelectorAll("[data-state]").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state)));
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
