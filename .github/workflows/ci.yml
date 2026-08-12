@@ -30,6 +30,10 @@ jobs:
         run: python -m compileall -q core gateway
       - name: Test
         run: python -m pytest core/tests gateway/tests
+      - name: Check HUD JavaScript
+        run: |
+          python -c "from pathlib import Path; h=Path('clients/web-hud/index.html').read_text(); Path('/tmp/jarvis-hud.js').write_text(h.split('<script>',1)[1].split('</script>',1)[0])"
+          node --check /tmp/jarvis-hud.js
 
   container:
     runs-on: ubuntu-latest
