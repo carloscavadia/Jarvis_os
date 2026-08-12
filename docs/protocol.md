@@ -53,6 +53,7 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 { "type": "approval_required", "approval_id": "...", "tool": "install_package", "summary": "..." }
 { "type": "approval_resolved", "approval_id": "...", "approved": true, "reason": "user" }
 { "type": "tool_event", "phase": "running", "tool": "run_python_file", "arguments": {"path":"informe.py"}, "code":"..." }
+{ "type": "tool_event", "phase": "completed", "tool": "show_in_workspace", "presentation": {"title":"Informe", "content":"...", "format":"markdown", "keep_open":true} }
 ```
 
 - **`state`** — mueve el comportamiento del enjambre (energía, turbulencia, expansión).
@@ -68,7 +69,9 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 - **`approval_resolved`** — confirma si la acción fue autorizada o bloqueada.
 - **`tool_event`** — transmite la actividad agéntica en tiempo real. `phase` progresa por
   `proposed`, `running` y `completed`, o termina en `denied`; puede incluir una vista
-  previa segura de código y la salida limitada de la herramienta.
+  previa segura de código, la salida limitada de la herramienta o una `presentation`
+  renderizada como texto seguro. Las presentaciones con `keep_open` permanecen hasta que
+  el usuario cierre la ventana.
 
 Durante una aprobación el cliente responde por el mismo WebSocket:
 

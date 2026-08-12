@@ -86,6 +86,9 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "url",
         "limit",
         "title",
+        "format",
+        "language",
+        "keep_open",
         "at",
         "delay_seconds",
         "repeat_seconds",
@@ -102,6 +105,29 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         content = str(arguments["content"])
         public["content_bytes"] = len(content.encode("utf-8"))
     return public
+
+
+def _workspace_presentation(
+    name: str, arguments: dict[str, object]
+) -> dict[str, object] | None:
+    """Construye una presentación segura para que el HUD la renderice como texto."""
+    if name != "show_in_workspace":
+        return None
+    title = arguments.get("title")
+    content = arguments.get("content")
+    if not isinstance(title, str) or not isinstance(content, str):
+        return None
+    presentation_format = arguments.get("format", "text")
+    if presentation_format not in {"text", "code", "json", "table", "markdown"}:
+        presentation_format = "text"
+    language = arguments.get("language", "")
+    return {
+        "title": title.strip()[:100] or "Presentación de JARVIS",
+        "content": content[:12000],
+        "format": presentation_format,
+        "language": str(language)[:32],
+        "keep_open": arguments.get("keep_open", True) is not False,
+    }
 
 
 def _python_preview(name: str, arguments: dict[str, object]) -> str | None:
@@ -446,8 +472,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 if preview is not None:
                     payload["code"] = preview
                     payload["language"] = "python"
+                presentation = _workspace_presentation(name, arguments)
+                if presentation is not None:
+                    payload["presentation"] = presentation
                 if result is not None:
-                    payload["output"] = result.content[:12000]
+                    if presentation is None:
+                        payload["output"] = result.content[:12000]
                     payload["is_error"] = result.is_error
                 await websocket.send_json(payload)
 

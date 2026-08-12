@@ -19,6 +19,7 @@ from jarvis_core.tools.builtin.filesystem import (
 )
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
+from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
 from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
@@ -88,4 +89,6 @@ def build_default_registry(
             max_bytes=settings.web_max_download_bytes,
             brave_api_key=settings.brave_search_api_key,
         )
+    if settings.hud_workspace_enabled:
+        registry.register(ShowInWorkspaceTool())
     return registry

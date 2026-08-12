@@ -19,6 +19,7 @@ from jarvis_core.tools.builtin.filesystem import (
 )
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
+from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
 from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
@@ -34,6 +35,20 @@ async def test_system_info_runs():
     assert isinstance(result, ToolResult)
     assert "Fecha y hora" in result.content
     assert not result.is_error
+
+
+async def test_show_in_workspace_validates_presentation():
+    tool = ShowInWorkspaceTool()
+    result = await tool.run(
+        title="Diagnóstico",
+        content="CPU: nominal",
+        format="table",
+        keep_open=True,
+    )
+    assert not result.is_error
+    assert "Diagnóstico" in result.content
+    assert (await tool.run(title="", content="dato")).is_error
+    assert (await tool.run(title="Dato", content="x", format="html")).is_error
 
 
 async def test_shell_allowlist_blocks_unknown_command():
@@ -312,6 +327,7 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
                 package_install_managers=["pip"],
                 python_execution_enabled=True,
                 internet_access_enabled=True,
+                hud_workspace_enabled=True,
             ),
             memory,
         )
@@ -325,6 +341,7 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
             "run_python_file",
             "search_web",
             "fetch_web_page",
+            "show_in_workspace",
         }.issubset(registry.names())
     finally:
         memory.close()

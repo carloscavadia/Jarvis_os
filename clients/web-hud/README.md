@@ -59,6 +59,11 @@ código Python y la salida capturada, ofrece botones físicos **APROBAR** / **DE
 cerrarse manualmente y se limpia automáticamente después de completar una acción. El panel
 y la consola de salida mantienen visible el evento más reciente mediante scroll automático.
 
+JARVIS también puede invocar `show_in_workspace` por iniciativa propia o cuando le pidas,
+por ejemplo: «muéstrame el resultado en el espacio de trabajo». Admite texto, código, JSON,
+tablas y Markdown como texto seguro. Estas presentaciones permanecen abiertas hasta pulsar
+el botón **×**; una presentación nueva reemplaza a la anterior.
+
 ## Estados
 
 Ver [`docs/protocol.md`](../../docs/protocol.md) para el contrato completo de estados y

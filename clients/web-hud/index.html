@@ -90,6 +90,12 @@
   .action-code, .action-output { margin: 7px 0 0; max-height: 140px; overflow: auto;
     padding: 7px 8px; border: 1px solid var(--hairline); border-radius: 6px;
     background: rgba(0,3,8,.78); color: #c9f7ff; white-space: pre; tab-size: 2; }
+  .action-presentation { margin: 9px 0 0; max-height: min(42vh, 380px); overflow: auto;
+    padding: 10px 11px; border: 1px solid rgba(53,230,255,.2); border-radius: 6px;
+    background: rgba(0,3,8,.82); color: #d8f8ff; white-space: pre-wrap; overflow-wrap: anywhere;
+    line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
+  .action-presentation.code, .action-presentation.json, .action-presentation.table {
+    font-family: var(--mono); white-space: pre; overflow-wrap: normal; tab-size: 2; }
   .approval-actions { display: flex; gap: 8px; padding: 10px 12px 12px;
     border-top: 1px solid var(--hairline); background: rgba(3,10,18,.94); }
   .approval-actions[hidden] { display: none; }
@@ -319,10 +325,11 @@
     list_directory: "LISTAR CARPETA", install_package: "INSTALAR PAQUETE",
     run_python_file: "EJECUTAR PYTHON", system_info: "CONSULTAR SISTEMA",
     search_web: "BUSCAR EN INTERNET", fetch_web_page: "LEER FUENTE WEB",
+    show_in_workspace: "PRESENTAR EN WORKSPACE",
   };
   function safeToolMeta(args = {}) {
     const visible = {};
-    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes", "query", "count", "url"]) {
+    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes", "query", "count", "url", "format", "language", "keep_open"]) {
       if (args[key] !== undefined) visible[key] = args[key];
     }
     return Object.keys(visible).length ? JSON.stringify(visible) : "sin parámetros visibles";
@@ -338,12 +345,21 @@
       currentToolKey = key;
       card = document.createElement("div"); card.className = "action-card";
       const title = document.createElement("div"); title.className = "action-title";
-      const label = document.createElement("span"); label.textContent = TOOL_LABELS[event.tool] || event.tool.toUpperCase();
+      const label = document.createElement("span");
+      label.textContent = event.presentation?.title || TOOL_LABELS[event.tool] || event.tool.toUpperCase();
       const status = document.createElement("span"); status.className = "action-status";
       title.append(label, status);
       const meta = document.createElement("div"); meta.className = "action-meta"; meta.textContent = safeToolMeta(event.arguments);
       card.append(title, meta); card._status = status;
       if (event.code) { const code = document.createElement("pre"); code.className = "action-code"; code.textContent = event.code; card.appendChild(code); }
+      if (event.presentation) {
+        const content = document.createElement("div");
+        const format = ["text", "code", "json", "table", "markdown"].includes(event.presentation.format) ? event.presentation.format : "text";
+        content.className = "action-presentation " + format;
+        content.textContent = event.presentation.content || "";
+        if (event.presentation.language) content.dataset.language = event.presentation.language;
+        card.appendChild(content);
+      }
       actionList.appendChild(card); currentToolCard = card;
     }
     const states = { proposed:"PREPARANDO", awaiting:"ESPERANDO PERMISO", running:"EJECUTANDO", completed:"COMPLETADO", denied:"DENEGADO" };
@@ -358,7 +374,7 @@
       actionList.scrollTo({ top: actionList.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
       if (output) output.scrollTop = output.scrollHeight;
     });
-    if (["completed", "denied"].includes(event.phase)) {
+    if (["completed", "denied"].includes(event.phase) && !event.presentation?.keep_open) {
       workspaceCloseTimer = setTimeout(() => closeWorkspace(), 18000);
     }
   }

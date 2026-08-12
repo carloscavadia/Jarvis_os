@@ -83,6 +83,10 @@ preliminar y solo la respuesta final se entrega al usuario y al sintetizador de 
 El idioma de una fuente web no cambia `JARVIS_LANGUAGE`: los resultados se traducen y se
 redactan en el idioma configurado, manteniendo nombres propios y URLs originales.
 
+`JARVIS_HUD_WORKSPACE_ENABLED=true` permite que el agente use `show_in_workspace` para
+presentar contenido separado del chat. El HUD mantiene esas presentaciones abiertas hasta
+que el usuario las cierre.
+
 Prueba desde otro equipo de la red:
 
 ```bash

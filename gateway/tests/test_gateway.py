@@ -81,6 +81,27 @@ def test_tool_arguments_hide_content_and_unknown_sensitive_fields():
     ) == {"url": "https://example.com/noticia"}
 
 
+def test_workspace_presentation_exposes_only_the_visual_payload():
+    assert gateway_module._workspace_presentation("read_file", {"content": "x"}) is None
+    assert gateway_module._workspace_presentation(
+        "show_in_workspace",
+        {
+            "title": " Código ",
+            "content": "print('hola')",
+            "format": "code",
+            "language": "python",
+            "keep_open": True,
+            "secret": "no reenviar",
+        },
+    ) == {
+        "title": "Código",
+        "content": "print('hola')",
+        "format": "code",
+        "language": "python",
+        "keep_open": True,
+    }
+
+
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):
     monkeypatch.setattr(gateway_module.sessions, "get", _fake_get)
     monkeypatch.setattr(gateway_module, "voice_runtime", FakeVoiceRuntime())
