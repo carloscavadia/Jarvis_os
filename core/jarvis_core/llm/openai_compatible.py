@@ -28,24 +28,34 @@ class OpenAICompatibleProvider(LLMProvider):
         model: str,
         base_url: str,
         max_tokens: int = 4096,
+        enable_thinking: bool = False,
     ) -> None:
         from openai import AsyncOpenAI
 
         if not model:
             raise ValueError("Falta el nombre del modelo (JARVIS_OPENAI_MODEL).")
         # Algunos endpoints locales (Ollama) no exigen api_key; se usa un placeholder.
-        self._client = AsyncOpenAI(api_key=api_key or "not-needed", base_url=base_url or None)
+        self._client = AsyncOpenAI(
+            api_key=api_key or "not-needed", base_url=base_url or None
+        )
         self.model = model
         self.max_tokens = max_tokens
+        self.enable_thinking = enable_thinking
+        self._is_nvidia = "nvidia.com" in (base_url or "").lower()
 
-    def _to_messages(self, system: str, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _to_messages(
+        self, system: str, history: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
         for item in history:
             role = item["role"]
             if role == "user":
                 messages.append({"role": "user", "content": item["content"]})
             elif role == "assistant":
-                msg: dict[str, Any] = {"role": "assistant", "content": item.get("text") or None}
+                msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": item.get("text") or None,
+                }
                 tool_calls = item.get("tool_calls", [])
                 if tool_calls:
                     msg["tool_calls"] = [
@@ -54,7 +64,9 @@ class OpenAICompatibleProvider(LLMProvider):
                             "type": "function",
                             "function": {
                                 "name": tc["name"],
-                                "arguments": json.dumps(tc["input"], ensure_ascii=False),
+                                "arguments": json.dumps(
+                                    tc["input"], ensure_ascii=False
+                                ),
                             },
                         }
                         for tc in tool_calls
@@ -99,6 +111,10 @@ class OpenAICompatibleProvider(LLMProvider):
         }
         if tools:
             kwargs["tools"] = self._to_tools(tools)
+        if self._is_nvidia:
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": self.enable_thinking}
+            }
 
         if on_text_delta is not None:
             return await self._complete_streaming(kwargs, on_text_delta)
@@ -113,7 +129,9 @@ class OpenAICompatibleProvider(LLMProvider):
                 arguments = json.loads(tc.function.arguments or "{}")
             except (json.JSONDecodeError, ValueError):
                 arguments = {}
-            tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, input=arguments))
+            tool_calls.append(
+                ToolCall(id=tc.id, name=tc.function.name, input=arguments)
+            )
 
         stop_reason = "tool_use" if tool_calls else "end_turn"
 
@@ -125,7 +143,7 @@ class OpenAICompatibleProvider(LLMProvider):
             }
 
         return LLMResponse(
-            text=(message.content or "").strip(),
+            text="" if tool_calls else (message.content or "").strip(),
             tool_calls=tool_calls,
             stop_reason=stop_reason,
             provider=NAME,
@@ -159,10 +177,12 @@ class OpenAICompatibleProvider(LLMProvider):
             if choice.finish_reason:
                 finish_reason = choice.finish_reason
 
+            # NVIDIA separa normalmente `reasoning_content`; se ignora de forma
+            # deliberada. El contenido normal también se retiene hasta confirmar que
+            # esta ronda no termina en una llamada de herramienta.
             content = getattr(delta, "content", None)
             if content:
                 text_parts.append(content)
-                await on_text_delta(content)
 
             for tool_delta in getattr(delta, "tool_calls", None) or []:
                 index = tool_delta.index
@@ -193,8 +213,12 @@ class OpenAICompatibleProvider(LLMProvider):
                 )
             )
 
+        final_text = "" if tool_calls else "".join(text_parts).strip()
+        if final_text:
+            await on_text_delta(final_text)
+
         return LLMResponse(
-            text="".join(text_parts).strip(),
+            text=final_text,
             tool_calls=tool_calls,
             stop_reason="tool_use" if tool_calls else finish_reason,
             provider=NAME,

@@ -61,6 +61,7 @@ class Settings:
     openai_api_key: str = ""
     openai_base_url: str = ""  # p.ej. https://integrate.api.nvidia.com/v1
     openai_model: str = ""  # p.ej. meta/llama-3.1-70b-instruct
+    openai_enable_thinking: bool = False
 
     max_tokens: int = 16000
 
@@ -137,6 +138,7 @@ class Settings:
             openai_api_key=os.environ.get("JARVIS_OPENAI_API_KEY", ""),
             openai_base_url=os.environ.get("JARVIS_OPENAI_BASE_URL", ""),
             openai_model=os.environ.get("JARVIS_OPENAI_MODEL", ""),
+            openai_enable_thinking=_get_bool("JARVIS_OPENAI_ENABLE_THINKING", False),
             max_tokens=int(os.environ.get("JARVIS_MAX_TOKENS", "16000")),
             persona_name=os.environ.get("JARVIS_PERSONA_NAME", "JARVIS"),
             language=os.environ.get("JARVIS_LANGUAGE", "es"),
@@ -245,6 +247,9 @@ class Settings:
             f"ingenio seco. Sirves a un único usuario (tu 'jefe') y gestionas su entorno "
             f"digital y físico.\n\n"
             f"{lang}\n\n"
+            f"Entrega al usuario únicamente la respuesta final. Nunca muestres razonamiento "
+            f"interno, planes de trabajo, notas del tipo 'Need to...' ni instrucciones sobre "
+            f"cómo construir tu respuesta. Todo texto visible debe respetar el idioma indicado.\n\n"
             f"Tienes herramientas para actuar sobre el mundo (información del sistema, "
             f"shell, memoria y las que se añadan). Úsalas cuando aporten valor, sin pedir "
             f"permiso para acciones triviales y reversibles. Para acciones destructivas o "

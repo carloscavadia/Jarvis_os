@@ -678,6 +678,7 @@
 
   let activeReply = null;
   let activeReplyText = "";
+  let streamTokenIndex = 0;
   let requestStartedAt = 0;
   let firstDeltaSeen = false;
   let busy = false;
@@ -705,6 +706,7 @@
   function startStreamReply() {
     if (activeReply) finishStreamReply();
     activeReplyText = "";
+    streamTokenIndex = 0;
     activeReply = addLine("JARVIS", "", "jarvis streaming");
   }
   function appendStreamDelta(delta) {
@@ -720,6 +722,7 @@
       const span = document.createElement("span");
       span.className = "stream-token";
       span.textContent = token;
+      if (token.trim()) span.style.animationDelay = `${Math.min(streamTokenIndex++ * 42, 900)}ms`;
       activeReply.text.appendChild(span);
     }
     logEl.scrollTop = logEl.scrollHeight;

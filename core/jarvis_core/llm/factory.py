@@ -31,6 +31,7 @@ def build_llm(settings: Settings) -> LLMProvider:
             model=settings.openai_model,
             base_url=settings.openai_base_url,
             max_tokens=settings.max_tokens,
+            enable_thinking=settings.openai_enable_thinking,
         )
 
     raise ValueError(

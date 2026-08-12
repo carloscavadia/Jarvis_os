@@ -77,6 +77,10 @@ locales y reservados, admite únicamente HTTPS y limita tiempo, redirecciones y 
 búsqueda funciona con Bing RSS; para resultados más fiables configura opcionalmente
 `JARVIS_BRAVE_SEARCH_API_KEY` en `.env`.
 
+En proveedores NVIDIA, `JARVIS_OPENAI_ENABLE_THINKING=false` evita que el razonamiento
+interno aparezca en el HUD. Las rondas que llaman herramientas descartan cualquier texto
+preliminar y solo la respuesta final se entrega al usuario y al sintetizador de voz.
+
 Prueba desde otro equipo de la red:
 
 ```bash
