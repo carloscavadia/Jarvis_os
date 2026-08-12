@@ -11,6 +11,13 @@ dependencies = [
     "paho-mqtt>=2.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.27",
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
