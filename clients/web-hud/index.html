@@ -454,6 +454,47 @@
     }
   }
 
+  // Campo ambiental: luz muy tenue que deriva con el núcleo y reacciona al estado.
+  function drawEnvironment(cx, cy, R, rgbCol, activity, pulse) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "rgba(4,7,14,0.48)";
+    ctx.fillRect(0, 0, W, H);
+
+    const motion = reduceMotion ? 0 : 1;
+    const driftX = Math.sin(t * 0.19) * R * 0.18 * motion;
+    const driftY = Math.cos(t * 0.14) * R * 0.10 * motion;
+    const glowPower = 0.018 + activity * 0.012 + amp * 0.016 + pulse * 0.003;
+
+    // La luz principal sigue al núcleo con un pequeño retraso orbital.
+    const ambient = ctx.createRadialGradient(
+      cx + driftX, cy + driftY, R * 0.06,
+      cx + driftX, cy + driftY, R * (2.25 + activity * 0.12)
+    );
+    ambient.addColorStop(0, `rgba(${rgbCol},${glowPower})`);
+    ambient.addColorStop(0.34, `rgba(${rgbCol},${glowPower * 0.48})`);
+    ambient.addColorStop(0.72, `rgba(${rgbCol},${glowPower * 0.12})`);
+    ambient.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = ambient; ctx.fillRect(0, 0, W, H);
+
+    // Reflejo secundario en deriva opuesta: rompe la sensación de fondo fijo.
+    const echo = ctx.createRadialGradient(
+      cx - driftX * 1.7, cy - R * 0.15 - driftY, 0,
+      cx - driftX * 1.7, cy - R * 0.15 - driftY, R * 1.55
+    );
+    echo.addColorStop(0, `rgba(${rgbCol},${glowPower * 0.24})`);
+    echo.addColorStop(0.58, `rgba(${rgbCol},${glowPower * 0.07})`);
+    echo.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = echo; ctx.fillRect(0, 0, W, H);
+
+    // Sombra periférica suave para que la iluminación central tenga profundidad.
+    const vignette = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, Math.max(W, H) * 0.72);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(0.66, "rgba(0,2,8,0.06)");
+    vignette.addColorStop(1, `rgba(0,2,8,${0.27 + activity * 0.025})`);
+    ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
+  }
+
   function frame() {
     t += reduceMotion ? 0.004 : 0.016;
     bootT = Math.min(1, bootT + 0.010);
@@ -474,18 +515,15 @@
 
     rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
 
-    // rastro corto (menos estela = más nitidez)
-    ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(4,7,14,0.55)";
-    ctx.fillRect(0, 0, W, H);
-
     const cx = W / 2, cy = H * 0.46;
     const R = Math.min(W, H) * 0.30;
     const breathe = reduceMotion ? 0 : Math.sin(t * 1.1) * 0.02;
     const baseR = R * (1 + breathe + curExpand + amp * 0.10);
     const rgbCol = `${col.r | 0},${col.g | 0},${col.b | 0}`;
     const pulse = 0.5 + 0.5 * Math.sin(t * 1.6);
+    const activity = Math.min(1, (curTurb - 0.75) / 1.2);
 
+    drawEnvironment(cx, cy, R, rgbCol, activity, pulse);
     paintSprite(col.r, col.g, col.b);
     drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
 
