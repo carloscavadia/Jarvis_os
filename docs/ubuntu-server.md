@@ -106,12 +106,14 @@ Desde el servidor:
 
 ```bash
 curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/ready
 ```
 
 Respuesta esperada:
 
 ```json
 {"status":"ok","persona":"JARVIS","provider":"anthropic","scheduler":"on"}
+{"status":"ready","provider":"anthropic"}
 ```
 
 Prueba autenticada:
@@ -126,8 +128,10 @@ curl -sS http://127.0.0.1:8080/chat \
   -d '{"message":"Responde únicamente: servidor operativo","session_id":"smoke-test"}'
 ```
 
-Si `/health` funciona pero `/chat` falla, revisa normalmente la API key, URL y nombre
-del modelo configurado para el proveedor.
+- `/health` confirma que el proceso está vivo.
+- `/ready` confirma que autenticación y proveedor tienen la configuración mínima.
+- Si ambos funcionan pero `/chat` falla, revisa la validez de la API key, la URL y el
+  nombre del modelo configurado para el proveedor.
 
 ## 6. Acceso desde la LAN
 
