@@ -1,0 +1,44 @@
+# JARVIS_OS — stack completo para un Ubuntu Server accesible en red.
+#
+#   docker compose up -d
+#
+# Levanta el broker MQTT (Mosquitto) y el gateway. El gateway escucha en 0.0.0.0,
+# así que cualquier equipo de la red local puede hablar con JARVIS por HTTP/WebSocket,
+# y los ESP32 por MQTT. Pensado para estar encendido 24/7: en reposo no consume IA.
+
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: jarvis-mqtt
+    restart: always
+    ports:
+      - "1883:1883"    # MQTT
+      - "9001:9001"    # MQTT sobre WebSocket (opcional)
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: jarvis-gateway
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      # Dentro de la red de compose, el broker se llama "mqtt".
+      JARVIS_MQTT_HOST: mqtt
+      JARVIS_GATEWAY_HOST: 0.0.0.0
+      JARVIS_GATEWAY_PORT: "8080"
+    ports:
+      - "8080:8080"    # REST + WebSocket, accesible desde la LAN
+    volumes:
+      - ./data:/app/data   # memoria interna persistente de JARVIS
+    depends_on:
+      - mqtt
+
+volumes:
+  mqtt_data:
+  mqtt_log:

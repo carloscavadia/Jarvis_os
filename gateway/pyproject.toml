@@ -1,0 +1,19 @@
+[project]
+name = "jarvis-gateway"
+version = "0.1.0"
+description = "Gateway de JARVIS_OS: REST + WebSocket + puente MQTT para dispositivos."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "jarvis-core",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "paho-mqtt>=2.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jarvis_gateway*"]

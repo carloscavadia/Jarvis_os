@@ -1,0 +1,35 @@
+[project]
+name = "jarvis-core"
+version = "0.1.0"
+description = "El núcleo agéntico de JARVIS_OS: orquestador multiagente, herramientas, memoria y voz."
+readme = "../README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+# Proveedores compatibles con OpenAI (NVIDIA NIM, Ollama, etc.)
+openai = [
+    "openai>=1.40",
+]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+jarvis = "jarvis_core.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jarvis_core*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

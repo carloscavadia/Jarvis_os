@@ -1,0 +1,33 @@
+# Servicio systemd para el gateway de JARVIS_OS (instalación sin Docker).
+#
+# Instalación en un Ubuntu Server:
+#   sudo cp deploy/systemd/jarvis-gateway.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis-gateway     # arranca ahora y en cada boot
+#   sudo systemctl status jarvis-gateway
+#
+# Ajusta User, WorkingDirectory y la ruta de python/venv a tu instalación.
+
+[Unit]
+Description=JARVIS_OS Gateway (REST + WebSocket + MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jarvis
+WorkingDirectory=/opt/jarvis_os
+# Carga las variables (API keys, config) desde el .env del proyecto.
+EnvironmentFile=/opt/jarvis_os/.env
+# Usa el intérprete del entorno virtual donde instalaste jarvis-gateway.
+ExecStart=/opt/jarvis_os/.venv/bin/python -m jarvis_gateway.app
+# Encendido 24/7: si se cae, se reinicia solo.
+Restart=always
+RestartSec=3
+
+# Endurecimiento básico.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

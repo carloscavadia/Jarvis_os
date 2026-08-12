@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Entorno / secretos
+.env
+*.local
+secrets/
+
+# Datos en runtime
+data/
+*.db
+*.sqlite
+*.sqlite3
+jarvis_memory*.db
+
+# Logs
+*.log
+logs/
+
+# PlatformIO / firmware
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.piolibdeps/
+
+# Sistema
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
