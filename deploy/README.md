@@ -1,5 +1,8 @@
 # Despliegue de JARVIS_OS
 
+La guía paso a paso recomendada está en
+[`docs/ubuntu-server.md`](../docs/ubuntu-server.md).
+
 Dos formas de dejar JARVIS corriendo **24/7 en un Ubuntu Server** accesible desde el resto
 de equipos de tu red (y desde Proxmox, dentro de un LXC/VM).
 
