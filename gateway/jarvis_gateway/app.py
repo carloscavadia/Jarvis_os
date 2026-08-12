@@ -111,13 +111,20 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     orchestrator = await sessions.get(session_id)
     notifier.add_ws(websocket)  # recibirá también avisos proactivos
     logger.info("WebSocket conectado: sesión %s", session_id)
+    # Estado inicial para que el HUD arranque en reposo.
+    await websocket.send_json({"type": "state", "state": "idle"})
     try:
         while True:
             message = await websocket.receive_text()
+            # Estados que la animación del HUD usa para reaccionar como el JARVIS de la peli.
+            await websocket.send_json({"type": "state", "state": "listening"})
+            await websocket.send_json({"type": "state", "state": "thinking"})
             reply = await orchestrator.send(message)
+            await websocket.send_json({"type": "state", "state": "speaking"})
             await websocket.send_json(
                 {"type": "reply", "reply": reply.text, "tools_used": reply.tools_used}
             )
+            await websocket.send_json({"type": "state", "state": "idle"})
     except WebSocketDisconnect:
         logger.info("WebSocket desconectado: sesión %s", session_id)
     finally:

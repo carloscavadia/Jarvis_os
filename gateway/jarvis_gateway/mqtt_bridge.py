@@ -115,8 +115,14 @@ class MqttBridge:
 
     async def _handle(self, device_id: str, text: str, client) -> None:
         session_id = f"device:{device_id}"
+        state_topic = f"jarvis/device/{device_id}/state"
+        out_topic = f"jarvis/device/{device_id}/out"
+
+        # Estados para que el punto de voz anime su HUD mientras JARVIS trabaja.
+        client.publish(state_topic, json.dumps({"state": "thinking"}))
         orchestrator = await self._sessions.get(session_id)
         reply = await orchestrator.send(text)
-        out_topic = f"jarvis/device/{device_id}/out"
+        client.publish(state_topic, json.dumps({"state": "speaking"}))
         client.publish(out_topic, json.dumps({"reply": reply.text}, ensure_ascii=False))
+        client.publish(state_topic, json.dumps({"state": "idle"}))
         logger.info("Respondido a %s", device_id)

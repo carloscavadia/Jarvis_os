@@ -48,13 +48,19 @@ incluso fuera de tu red local gracias al módem 4G.
 
 ## Componentes
 
-| Carpeta      | Qué es                                                                 |
-|--------------|-----------------------------------------------------------------------|
-| `core/`      | El cerebro: orquestador multiagente, sistema de herramientas, memoria, voz. Python. |
-| `gateway/`   | API de comunicaciones: REST + WebSocket + puente MQTT para dispositivos. |
-| `firmware/`  | Proyecto separado para ESP32 LilyGo T-A7670G (PlatformIO/Arduino).     |
-| `deploy/`    | Docker Compose, unidades systemd y notas de despliegue en Proxmox.    |
-| `docs/`      | Arquitectura, hoja de ruta y guía de hardware.                        |
+| Carpeta            | Qué es                                                                 |
+|--------------------|-----------------------------------------------------------------------|
+| `core/`            | El cerebro: orquestador multiagente, herramientas, memoria, tareas, voz. Python. |
+| `gateway/`         | API de comunicaciones: REST + WebSocket + puente MQTT para dispositivos. |
+| `clients/web-hud/` | El **HUD reactivo de JARVIS** (orbe animado) en web: cliente y referencia visual. |
+| `firmware/`        | Proyecto del dispositivo: ESP32 LilyGo T-A7670G, punto de voz con pantalla. |
+| `deploy/`          | Docker Compose, unidades systemd y notas de despliegue en Proxmox.    |
+| `docs/`            | Arquitectura, protocolo, hoja de ruta y guía de hardware.             |
+
+> **Son dos proyectos que se hablan por un contrato.** El *servidor* (`core/` + `gateway/`)
+> y el *dispositivo/HUD* (`firmware/`, `clients/web-hud/`) evolucionan por separado y se
+> comunican por el protocolo de estados de [`docs/protocol.md`](docs/protocol.md). Ese
+> protocolo es lo que hace que la animación reaccione (escucha → piensa → habla).
 
 ## Filosofía de diseño
 

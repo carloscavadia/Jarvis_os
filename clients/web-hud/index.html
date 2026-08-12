@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>JARVIS HUD</title>
+<style>
+  /* HUD de JARVIS — mundo visual único (neón sobre negro), tema oscuro deliberado. */
+  :root {
+    --ground:      #04070e;
+    --ground-2:    #060c16;
+    --panel:       rgba(10, 20, 32, 0.55);
+    --hairline:    rgba(63, 224, 255, 0.16);
+    --hairline-2:  rgba(63, 224, 255, 0.30);
+    --core:        #35e6ff;   /* cian reactor */
+    --core-bright: #bff4ff;
+    --violet:      #8a93ff;   /* pensando */
+    --amber:       #ffb454;   /* hablando */
+    --text:        #cfe6f0;
+    --muted:       #6b8a99;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(1200px 800px at 50% 42%, #0a1420 0%, var(--ground-2) 55%, var(--ground) 100%);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  #scene { position: fixed; inset: 0; display: block; }
+
+  /* Marco HUD: corchetes en las esquinas */
+  .frame { position: fixed; inset: 0; pointer-events: none; }
+  .bracket {
+    position: absolute; width: 46px; height: 46px;
+    border: 1px solid var(--hairline-2);
+  }
+  .bracket.tl { top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
+  .bracket.tr { top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
+  .bracket.bl { bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
+  .bracket.br { bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
+
+  /* Lectura de estado, arriba a la izquierda */
+  .readout {
+    position: fixed; top: 30px; left: 42px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted); line-height: 2.1;
+    pointer-events: none;
+  }
+  .readout .val { color: var(--text); }
+  .readout .dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--core); margin-right: 7px; vertical-align: middle;
+    box-shadow: 0 0 8px var(--core);
+  }
+  .readout .state { color: var(--core); }
+
+  /* Título flotante */
+  .brand {
+    position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
+    font-family: var(--mono); letter-spacing: 0.55em; font-size: 13px;
+    color: var(--core-bright); text-shadow: 0 0 14px rgba(53,230,255,0.5);
+    pointer-events: none; padding-left: 0.55em;
+  }
+
+  /* Consola inferior */
+  .console {
+    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+    width: min(720px, 92vw);
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 0 40px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.02);
+    overflow: hidden;
+  }
+  .log {
+    max-height: 26vh; overflow-y: auto; padding: 14px 16px 6px;
+    display: flex; flex-direction: column; gap: 9px;
+    font-size: 14px; line-height: 1.45;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
+  }
+  .line { display: flex; gap: 10px; }
+  .line .who {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted); min-width: 58px; padding-top: 3px;
+  }
+  .line.jarvis .who { color: var(--core); }
+  .line .txt { flex: 1; color: var(--text); }
+  .line.jarvis .txt { color: var(--core-bright); }
+  .line.system .txt { color: var(--muted); font-style: italic; }
+
+  .inputbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-top: 1px solid var(--hairline); }
+  .inputbar .prompt { font-family: var(--mono); color: var(--core); font-size: 14px; }
+  .inputbar input {
+    flex: 1; background: transparent; border: 0; outline: 0;
+    color: var(--text); font-family: var(--sans); font-size: 15px; padding: 6px 0;
+  }
+  .inputbar input::placeholder { color: var(--muted); }
+
+  /* Controles de demo / conexión, abajo a la izquierda */
+  .controls {
+    position: fixed; left: 24px; bottom: 30px;
+    display: flex; flex-direction: column; gap: 8px; width: 168px;
+  }
+  .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
+  .controls button, .controls .link {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    background: rgba(10,20,32,0.5); border: 1px solid var(--hairline);
+    border-radius: 7px; padding: 6px 8px; cursor: pointer;
+    transition: color .15s, border-color .15s, box-shadow .15s;
+  }
+  .controls button:hover { color: var(--core); border-color: var(--hairline-2);
+    box-shadow: 0 0 12px rgba(53,230,255,0.15); }
+  .controls button:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
+  .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+  .controls input {
+    font-family: var(--mono); font-size: 10px; color: var(--text);
+    background: rgba(10,20,32,0.5); border: 1px solid var(--hairline);
+    border-radius: 7px; padding: 6px 8px; width: 100%; outline: 0;
+  }
+
+  @media (max-width: 560px) {
+    .controls { display: none; }
+    .readout { font-size: 10px; top: 22px; left: 30px; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="frame">
+    <span class="bracket tl"></span><span class="bracket tr"></span>
+    <span class="bracket bl"></span><span class="bracket br"></span>
+  </div>
+
+  <div class="brand">J.A.R.V.I.S</div>
+
+  <div class="readout">
+    <div><span class="dot" id="dot"></span>ESTADO · <span class="state" id="r-state">REPOSO</span></div>
+    <div>ENLACE · <span class="val" id="r-link">DEMO</span></div>
+    <div>NÚCLEO · <span class="val" id="r-model">servidor local</span></div>
+  </div>
+
+  <div class="controls">
+    <div class="cap">Estados (demo)</div>
+    <div class="grp">
+      <button data-state="idle">Reposo</button>
+      <button data-state="listening">Escucha</button>
+      <button data-state="thinking">Pensar</button>
+      <button data-state="speaking">Hablar</button>
+    </div>
+    <div class="cap">Conexión</div>
+    <input id="ws-url" placeholder="ws://IP:8080/ws/hud" />
+    <button id="ws-connect">Conectar</button>
+  </div>
+
+  <div class="console">
+    <div class="log" id="log"></div>
+    <form class="inputbar" id="form" autocomplete="off">
+      <span class="prompt">&rsaquo;</span>
+      <input id="input" placeholder="Habla con JARVIS…" aria-label="Mensaje" />
+    </form>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Paleta como valores para el canvas ----
+  const COLORS = {
+    idle:      { r: 53,  g: 230, b: 255 },  // cian
+    listening: { r: 120, g: 240, b: 255 },  // cian claro
+    thinking:  { r: 138, g: 147, b: 255 },  // violeta
+    speaking:  { r: 255, g: 180, b: 84  },  // ámbar
+  };
+  const STATE_LABEL = {
+    idle: "REPOSO", listening: "ESCUCHANDO", thinking: "PENSANDO", speaking: "HABLANDO",
+  };
+
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const canvas = document.getElementById("scene");
+  const ctx = canvas.getContext("2d");
+  const logEl = document.getElementById("log");
+  const rState = document.getElementById("r-state");
+  const rLink = document.getElementById("r-link");
+  const rModel = document.getElementById("r-model");
+  const dot = document.getElementById("dot");
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.clientWidth = window.innerWidth;
+    H = canvas.clientHeight = window.innerHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- Estado y color interpolado ----
+  let state = "idle";
+  let col = { ...COLORS.idle };
+  let amp = 0;            // amplitud (voz simulada al hablar)
+  let speakClock = 0;
+
+  function setState(next) {
+    if (!COLORS[next]) return;
+    state = next;
+    rState.textContent = STATE_LABEL[next];
+    const c = COLORS[next];
+    const hex = `rgb(${c.r},${c.g},${c.b})`;
+    rState.style.color = hex;
+    dot.style.background = hex;
+    dot.style.boxShadow = `0 0 8px ${hex}`;
+  }
+  setState("idle");
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ---- Bucle de animación ----
+  let t = 0;
+  const particles = Array.from({ length: 54 }, (_, i) => ({
+    a: (i / 54) * Math.PI * 2,
+    rad: 0.62 + Math.random() * 0.5,
+    spd: 0.15 + Math.random() * 0.5,
+    sz: 0.6 + Math.random() * 1.6,
+  }));
+
+  function frame() {
+    t += reduceMotion ? 0.004 : 0.016;
+
+    // color hacia el objetivo del estado
+    const target = COLORS[state];
+    const k = 0.06;
+    col.r = lerp(col.r, target.r, k);
+    col.g = lerp(col.g, target.g, k);
+    col.b = lerp(col.b, target.b, k);
+    const rgb = (a) => `rgba(${col.r|0},${col.g|0},${col.b|0},${a})`;
+
+    // amplitud de voz (al hablar) o respiración
+    if (state === "speaking") {
+      speakClock += 0.4;
+      amp = lerp(amp, 0.5 + 0.5 * Math.abs(Math.sin(speakClock) * Math.sin(speakClock * 0.37 + 1)), 0.25);
+    } else {
+      amp = lerp(amp, 0, 0.08);
+    }
+
+    ctx.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H * 0.46;
+    const base = Math.min(W, H) * 0.16;
+    const breathe = reduceMotion ? 0 : Math.sin(t * 1.3) * 0.04;
+    const listenPush = state === "listening" ? 0.10 : 0;
+    const core = base * (1 + breathe + listenPush + amp * 0.28);
+
+    // ---- resplandor de fondo ----
+    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, base * 3.2);
+    glow.addColorStop(0, rgb(0.18));
+    glow.addColorStop(0.5, rgb(0.05));
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, H);
+
+    // ---- anillos concéntricos giratorios ----
+    const rings = [
+      { r: 1.55, w: 1,   seg: 3,  spd: 0.20, gap: 0.55 },
+      { r: 1.95, w: 1.4, seg: 5,  spd: -0.13, gap: 0.30 },
+      { r: 2.45, w: 1,   seg: 8,  spd: 0.08, gap: 0.18 },
+    ];
+    const spin = state === "thinking" ? 3.2 : 1;
+    rings.forEach((ring, i) => {
+      const rr = base * ring.r;
+      const rot = t * ring.spd * spin + i;
+      ctx.lineWidth = ring.w;
+      for (let s = 0; s < ring.seg; s++) {
+        const a0 = rot + (s / ring.seg) * Math.PI * 2;
+        const a1 = a0 + (Math.PI * 2 / ring.seg) * (1 - ring.gap);
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr, a0, a1);
+        ctx.strokeStyle = rgb(0.35 - i * 0.07);
+        ctx.stroke();
+      }
+    });
+
+    // ---- barrido de escaneo (al pensar) ----
+    if (state === "thinking" && !reduceMotion) {
+      const a = t * 2.4 % (Math.PI * 2);
+      const sweep = ctx.createConicGradient ? null : null;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, base * 2.6, a, a + 0.5);
+      ctx.closePath();
+      ctx.fillStyle = rgb(0.10);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ---- partículas orbitando ----
+    particles.forEach((p) => {
+      const a = p.a + t * p.spd * (state === "thinking" ? 2.2 : 1);
+      const rr = base * (p.rad + 1.0) + Math.sin(t * p.spd * 3 + p.a) * 4;
+      const px = cx + Math.cos(a) * rr;
+      const py = cy + Math.sin(a) * rr;
+      ctx.beginPath();
+      ctx.arc(px, py, p.sz, 0, Math.PI * 2);
+      ctx.fillStyle = rgb(0.6);
+      ctx.fill();
+    });
+
+    // ---- ondas al escuchar ----
+    if (state === "listening" && !reduceMotion) {
+      for (let i = 0; i < 3; i++) {
+        const prog = ((t * 0.6 + i / 3) % 1);
+        ctx.beginPath();
+        ctx.arc(cx, cy, core + prog * base * 2.2, 0, Math.PI * 2);
+        ctx.strokeStyle = rgb(0.35 * (1 - prog));
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+
+    // ---- núcleo (reactor) ----
+    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, core);
+    coreGrad.addColorStop(0, `rgba(${Math.min(255,col.r+120)|0},${Math.min(255,col.g+120)|0},${Math.min(255,col.b+120)|0},0.95)`);
+    coreGrad.addColorStop(0.45, rgb(0.55));
+    coreGrad.addColorStop(1, rgb(0.05));
+    ctx.beginPath();
+    ctx.arc(cx, cy, core, 0, Math.PI * 2);
+    ctx.fillStyle = coreGrad;
+    ctx.fill();
+
+    // aro interior nítido
+    ctx.beginPath();
+    ctx.arc(cx, cy, core * 0.72, 0, Math.PI * 2);
+    ctx.strokeStyle = rgb(0.8);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---- Registro de conversación ----
+  function addLine(who, text, cls) {
+    const line = document.createElement("div");
+    line.className = "line " + (cls || "");
+    const w = document.createElement("div"); w.className = "who"; w.textContent = who;
+    const x = document.createElement("div"); x.className = "txt"; x.textContent = text;
+    line.appendChild(w); line.appendChild(x);
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  addLine("SISTEMA", "HUD iniciado. Modo demo (sin servidor). Conéctate a tu gateway para hablar con JARVIS de verdad.", "system");
+
+  // ---- Conexión WebSocket al gateway ----
+  let ws = null;
+  function connect(url) {
+    if (!url) return;
+    try {
+      rLink.textContent = "CONECTANDO…";
+      ws = new WebSocket(url);
+    } catch (e) { rLink.textContent = "ERROR"; return; }
+
+    ws.onopen = () => {
+      rLink.textContent = "EN LÍNEA";
+      addLine("SISTEMA", "Conectado a " + url, "system");
+    };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; ws = null; };
+    ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
+    ws.onmessage = (ev) => {
+      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.type === "state") setState(msg.state);
+      else if (msg.type === "reply") addLine("JARVIS", msg.reply, "jarvis");
+      else if (msg.type === "proactive") addLine("JARVIS", "⚡ " + msg.text, "jarvis");
+    };
+  }
+
+  // ---- Demo local cuando no hay servidor ----
+  const CANNED = [
+    "A su disposición. Sistemas nominales.",
+    "Hecho. ¿Algo más, jefe?",
+    "Consultado el estado del servidor: todo en orden.",
+    "Recordatorio programado. Le avisaré a tiempo.",
+  ];
+  let canIdx = 0;
+  function demoReply(text) {
+    setState("listening");
+    setTimeout(() => setState("thinking"), 400);
+    setTimeout(() => {
+      setState("speaking");
+      addLine("JARVIS", CANNED[canIdx++ % CANNED.length], "jarvis");
+    }, 1600);
+    setTimeout(() => setState("idle"), 3200);
+  }
+
+  // ---- Entrada de texto ----
+  document.getElementById("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = document.getElementById("input");
+    const text = input.value.trim();
+    if (!text) return;
+    addLine("TÚ", text, "user");
+    input.value = "";
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text);
+    else demoReply(text);
+  });
+
+  // ---- Botones de estado (demo) ----
+  document.querySelectorAll(".controls [data-state]").forEach((b) => {
+    b.addEventListener("click", () => setState(b.dataset.state));
+  });
+
+  // ---- Conectar ----
+  const wsInput = document.getElementById("ws-url");
+  const params = new URLSearchParams(location.search);
+  if (params.get("ws")) { wsInput.value = params.get("ws"); connect(wsInput.value); }
+  document.getElementById("ws-connect").addEventListener("click", () => connect(wsInput.value.trim()));
+  wsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(wsInput.value.trim()); });
+})();
+</script>
+</body>
+</html>

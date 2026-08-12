@@ -22,17 +22,33 @@ PubSubClient mqtt(netClient);
 
 static char topicIn[64];
 static char topicOut[64];
+static char topicState[64];
 static char topicStatus[64];
 
 unsigned long lastHeartbeat = 0;
 
+// Estado actual de JARVIS que mueve la animación de la pantalla.
+enum JarvisState { STATE_IDLE, STATE_LISTENING, STATE_THINKING, STATE_SPEAKING };
+JarvisState deviceState = STATE_IDLE;
+
 void buildTopics() {
   snprintf(topicIn, sizeof(topicIn), "jarvis/device/%s/in", JARVIS_DEVICE_ID);
   snprintf(topicOut, sizeof(topicOut), "jarvis/device/%s/out", JARVIS_DEVICE_ID);
+  snprintf(topicState, sizeof(topicState), "jarvis/device/%s/state", JARVIS_DEVICE_ID);
   snprintf(topicStatus, sizeof(topicStatus), "jarvis/device/%s/status", JARVIS_DEVICE_ID);
 }
 
-// Llega una respuesta de JARVIS (o un aviso proactivo).
+void setDeviceState(const char* s) {
+  if (!strcmp(s, "listening")) deviceState = STATE_LISTENING;
+  else if (!strcmp(s, "thinking")) deviceState = STATE_THINKING;
+  else if (!strcmp(s, "speaking")) deviceState = STATE_SPEAKING;
+  else deviceState = STATE_IDLE;
+  Serial.printf("[HUD] estado -> %s\n", s);
+  // TODO (Fase 4): cambiar la animación de la pantalla según deviceState
+  //                (ver clients/web-hud como referencia visual).
+}
+
+// Llega una respuesta, un cambio de estado o un aviso proactivo de JARVIS.
 void onMessage(char* topic, byte* payload, unsigned int length) {
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, payload, length);
@@ -40,9 +56,16 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     Serial.printf("[MQTT] payload no-JSON en %s\n", topic);
     return;
   }
+  // Topic de estado: mueve la animación.
+  if (strstr(topic, "/state") != nullptr) {
+    const char* st = doc["state"] | "idle";
+    setDeviceState(st);
+    return;
+  }
+  // Respuesta o aviso: mostrar/reproducir.
   const char* text = doc["reply"] | doc["text"] | "";
   Serial.printf("[JARVIS] %s\n", text);
-  // TODO: reproducir por TTS/altavoz y/o mostrar en la pantalla.
+  // TODO: reproducir por TTS/altavoz y/o mostrar el texto en la pantalla.
 }
 
 void connectWiFi() {
@@ -70,6 +93,7 @@ void connectMQTT() {
     if (ok) {
       Serial.println(" ok");
       mqtt.subscribe(topicOut);
+      mqtt.subscribe(topicState);
       mqtt.subscribe("jarvis/broadcast");
     } else {
       Serial.printf(" fallo rc=%d, reintento en 2s\n", mqtt.state());
@@ -114,4 +138,5 @@ void loop() {
   }
 
   // TODO (Fase 4): leer micrófono I2S -> detectar palabra clave -> enviar audio/STT.
+  // TODO (Fase 4): renderAnimation(deviceState) en la pantalla (ver clients/web-hud).
 }
