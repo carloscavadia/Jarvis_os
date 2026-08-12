@@ -231,8 +231,13 @@
       spd: 0.6 + Math.random() * 0.9,
       sz: ring ? 1.6 + Math.random() * 1.8 : 1.0 + Math.random() * 1.4,
       bri: ring ? 0.5 + Math.random() * 0.5 : 0.2 + Math.random() * 0.4,
+      scatter: 1.9 + Math.random() * 1.7,      // radio de dispersión para el arranque
+      _x: 0, _y: 0, _f: 0, _s: 0,
     };
   }
+  // Nodos para las líneas de constelación (un subconjunto, por rendimiento).
+  const nodes = [];
+  for (let i = 0; i < N; i += 9) nodes.push(i);
 
   // sprite de partícula: halo AJUSTADO (caída rápida) para dar brillo sin difuminar.
   const SP = 22;
@@ -252,12 +257,54 @@
     coreHex = `rgb(${Math.min(255,r+140)|0},${Math.min(255,g+140)|0},${Math.min(255,b+140)|0})`;
   }
 
-  let t = 0, rot = 0;
+  // buffer de bloom (resplandor global) a baja resolución
+  const glow = document.createElement("canvas");
+  const gctx = glow.getContext("2d");
+  function sizeGlow() { glow.width = Math.max(1, (W / 4) | 0); glow.height = Math.max(1, (H / 4) | 0); }
+  sizeGlow();
+
+  const TAU = Math.PI * 2;
+  const TILT = 0.80;                          // inclinación del anillo (da profundidad 3D)
+  const easeOut = (x) => 1 - Math.pow(1 - x, 3);
+  let t = 0, rot = 0, bootT = 0;
+
+  // Núcleo central vistoso: resplandor pulsante + anillos HUD + punto brillante.
+  function drawCore(cx, cy, R, rgbCol, pulse) {
+    ctx.globalCompositeOperation = "lighter";
+    const glowR = R * (0.44 + amp * 0.16);
+    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
+    cg.addColorStop(0,   `rgba(${rgbCol},${0.26 + amp * 0.24 + pulse * 0.06})`);
+    cg.addColorStop(0.5, `rgba(${rgbCol},0.07)`);
+    cg.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, TAU); ctx.fill();
+
+    // anillos HUD tenues, inclinados y girando
+    ctx.lineWidth = 1; ctx.strokeStyle = `rgb(${rgbCol})`;
+    for (let k = 0; k < 3; k++) {
+      const rr = R * (0.30 + k * 0.11);
+      ctx.globalAlpha = (0.13 - k * 0.025) * easeOut(bootT);
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rr, rr * TILT, rot * (k % 2 ? -0.6 : 0.6), 0, TAU);
+      ctx.stroke();
+    }
+
+    // punto central brillante
+    const cr = R * 0.06 * (1 + amp * 0.6 + pulse * 0.2);
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr * 3);
+    core.addColorStop(0,   coreHex);
+    core.addColorStop(0.3, `rgba(${rgbCol},0.55)`);
+    core.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.globalAlpha = 0.9; ctx.fillStyle = core;
+    ctx.beginPath(); ctx.arc(cx, cy, cr * 3, 0, TAU); ctx.fill();
+  }
+
   function frame() {
     t += reduceMotion ? 0.004 : 0.016;
+    bootT = Math.min(1, bootT + 0.010);
+    const boot = easeOut(bootT);
 
     const S = STATES[stateName], E = EMOTIONS[emotionName];
-    // interpolaciones suaves
     col.r = lerp(col.r, E.r, 0.05); col.g = lerp(col.g, E.g, 0.05); col.b = lerp(col.b, E.b, 0.05);
     curTurb = lerp(curTurb, S.turb, 0.05);
     curSpin = lerp(curSpin, S.spin, 0.05);
@@ -278,60 +325,78 @@
     ctx.fillRect(0, 0, W, H);
 
     const cx = W / 2, cy = H * 0.46;
-    const R = Math.min(W, H) * 0.30;              // radio grande del anillo
+    const R = Math.min(W, H) * 0.30;
     const breathe = reduceMotion ? 0 : Math.sin(t * 1.1) * 0.02;
     const baseR = R * (1 + breathe + curExpand + amp * 0.10);
+    const rgbCol = `${col.r | 0},${col.g | 0},${col.b | 0}`;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 1.6);
 
     paintSprite(col.r, col.g, col.b);
-    ctx.globalCompositeOperation = "lighter";
+    drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
 
-    const TAU = Math.PI * 2;
-    // 1ª pasada: halos (brillo). 2ª pasada: núcleos sólidos nítidos encima.
+    // ── enjambre: posiciones (con profundidad + arranque) + halos ──
+    ctx.globalCompositeOperation = "lighter";
     for (let i = 0; i < N; i++) {
       const p = P[i];
       const a = p.a + rot * p.spd;
       const n = noise(a * (0.9 + curChaos * 0.15) + p.seed, t * (0.8 + curChaos * 0.35));
       const disp = n * curTurb * R * 0.16 + p.band * R + amp * Math.sin(a * 8 + t * 6) * R * 0.05;
-      const rr = baseR + disp;
-      const x = cx + Math.cos(a) * rr;
-      const y = cy + Math.sin(a) * rr;
+      let rr = baseR + disp;
+      if (boot < 1) rr = lerp(p.scatter * R, rr, boot);   // arranque: converge al anillo
+      const cosa = Math.cos(a), sina = Math.sin(a);
+      const x = cx + cosa * rr;
+      const y = cy + sina * rr * TILT;                     // inclinación → profundidad
+      const depth = 0.55 + 0.45 * (sina * 0.5 + 0.5);      // fondo más tenue/pequeño
       const flick = 0.65 + 0.35 * Math.sin(t * 3 * p.spd + p.seed);
-      const s = p.sz * (1 + amp * 0.35);
-      p._x = x; p._y = y; p._f = flick; p._s = s;   // guardado para la 2ª pasada
+      const s = p.sz * (1 + amp * 0.35) * (0.7 + depth * 0.5);
+      p._x = x; p._y = y; p._f = flick * depth * boot; p._s = s;
 
-      // halo pequeño y ajustado
       const glowPx = s * 3.2;
-      ctx.globalAlpha = p.bri * flick * 0.55;
+      ctx.globalAlpha = p.bri * flick * depth * boot * 0.55;
       ctx.drawImage(sprite, x - glowPx / 2, y - glowPx / 2, glowPx, glowPx);
     }
 
-    // núcleos sólidos: puntos nítidos y brillantes
+    // ── líneas tipo constelación (tenues) entre nodos cercanos ──
+    ctx.lineWidth = 1; ctx.strokeStyle = `rgb(${rgbCol})`;
+    const maxD = R * 0.30, maxD2 = maxD * maxD;
+    for (let i = 0; i < nodes.length; i++) {
+      const A = P[nodes[i]];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const B = P[nodes[j]];
+        const dx = A._x - B._x, dy = A._y - B._y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < maxD2) {
+          ctx.globalAlpha = (1 - Math.sqrt(d2) / maxD) * 0.13 * boot;
+          ctx.beginPath(); ctx.moveTo(A._x, A._y); ctx.lineTo(B._x, B._y); ctx.stroke();
+        }
+      }
+    }
+
+    // ── núcleos sólidos nítidos ──
     ctx.fillStyle = coreHex;
     for (let i = 0; i < N; i++) {
       const p = P[i];
-      ctx.globalAlpha = Math.min(1, p.bri * p._f * 1.15);
-      ctx.beginPath();
-      ctx.arc(p._x, p._y, Math.max(0.5, p._s * 0.5), 0, TAU);
-      ctx.fill();
+      ctx.globalAlpha = Math.min(1, p._f * 1.15);
+      ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.5, p._s * 0.5), 0, TAU); ctx.fill();
     }
 
-    // flares de ejecución (anillos que se expanden y desaparecen)
+    // ── flares de ejecución (elipses inclinadas) ──
     for (let i = pulses.length - 1; i >= 0; i--) {
       const pu = pulses[i];
       pu.r += 8; pu.life -= 0.02;
       if (pu.life <= 0) { pulses.splice(i, 1); continue; }
-      ctx.globalAlpha = pu.life * 0.5;
-      ctx.strokeStyle = `rgb(${col.r|0},${col.g|0},${col.b|0})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(cx, cy, baseR + pu.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = pu.life * 0.5; ctx.lineWidth = 2;
+      const rr = baseR + pu.r;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * TILT, 0, 0, TAU); ctx.stroke();
     }
 
-    // núcleo tenue central
-    ctx.globalAlpha = 1;
-    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.55);
-    cg.addColorStop(0, `rgba(${col.r|0},${col.g|0},${col.b|0},${0.10 + amp * 0.12})`);
-    cg.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, R * 0.55, 0, Math.PI * 2); ctx.fill();
+    // ── bloom: copia difusa a baja resolución, sumada encima ──
+    if (glow.width !== ((W / 4) | 0) || glow.height !== ((H / 4) | 0)) sizeGlow();
+    gctx.clearRect(0, 0, glow.width, glow.height);
+    gctx.drawImage(canvas, 0, 0, glow.width, glow.height);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.45; ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(glow, 0, 0, glow.width, glow.height, 0, 0, W, H);
 
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
