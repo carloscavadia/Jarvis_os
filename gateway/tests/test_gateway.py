@@ -1,7 +1,6 @@
 """Pruebas de integración del servicio principal sin consumir un LLM real."""
 
 from fastapi.testclient import TestClient
-
 from jarvis_core.agent.orchestrator import AgentReply
 from jarvis_gateway import app as gateway_module
 
@@ -18,12 +17,26 @@ class FakeOrchestrator:
         )
 
 
+class FakeVoiceRuntime:
+    def status(self) -> dict[str, str | bool]:
+        return {"enabled": True, "stt": "fake", "tts": "fake.onnx"}
+
+    async def transcribe(self, audio: bytes) -> str:
+        assert audio == b"fake-audio"
+        return "hola por voz"
+
+    async def synthesize(self, text: str) -> bytes:
+        assert text == "respuesta hablada"
+        return b"RIFF-fake-wave"
+
+
 async def _fake_get(session_id: str) -> FakeOrchestrator:
     return FakeOrchestrator()
 
 
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):
     monkeypatch.setattr(gateway_module.sessions, "get", _fake_get)
+    monkeypatch.setattr(gateway_module, "voice_runtime", FakeVoiceRuntime())
 
     with TestClient(gateway_module.app) as client:
         health = client.get("/health")
@@ -49,6 +62,48 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
             "session_id": "test-hub",
         }
 
+        voice_status = client.get(
+            "/voice/status", headers={"X-Jarvis-Key": "ci-test-key"}
+        )
+        assert voice_status.status_code == 200
+        assert voice_status.json()["enabled"] is True
+
+        transcription = client.post(
+            "/voice/transcribe",
+            headers={
+                "X-Jarvis-Key": "ci-test-key",
+                "Content-Type": "audio/webm",
+            },
+            content=b"fake-audio",
+        )
+        assert transcription.status_code == 200
+        assert transcription.json() == {"text": "hola por voz"}
+
+        speech = client.post(
+            "/voice/synthesize",
+            headers={"X-Jarvis-Key": "ci-test-key"},
+            json={"text": "respuesta hablada"},
+        )
+        assert speech.status_code == 200
+        assert speech.headers["content-type"] == "audio/wav"
+        assert speech.content == b"RIFF-fake-wave"
+
+        unauthorized_voice = client.get("/voice/status")
+        assert unauthorized_voice.status_code == 401
+
+        preflight = client.options(
+            "/voice/transcribe",
+            headers={
+                "Origin": "http://127.0.0.1:4173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "X-Jarvis-Key,Content-Type",
+            },
+        )
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == (
+            "http://127.0.0.1:4173"
+        )
+
         invalid_session = client.post(
             "/chat",
             headers={"X-Jarvis-Key": "ci-test-key"},
@@ -64,7 +119,10 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
             assert websocket.receive_json() == {"type": "state", "state": "speaking"}
             assert websocket.receive_json() == {"type": "reply_start"}
             assert websocket.receive_json() == {"type": "reply_delta", "delta": "eco:"}
-            assert websocket.receive_json() == {"type": "reply_delta", "delta": "estado"}
+            assert websocket.receive_json() == {
+                "type": "reply_delta",
+                "delta": "estado",
+            }
             assert websocket.receive_json() == {"type": "emotion", "emotion": "focused"}
             assert websocket.receive_json() == {
                 "type": "event",

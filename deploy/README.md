@@ -35,6 +35,17 @@ docker compose logs -f gateway
 - Broker MQTT: ligado a `127.0.0.1:1883` y desactivado en el gateway por defecto.
 - Reinicio automático activado (`restart: always`).
 
+La imagen incluye una voz Piper en español. En la primera transcripción descarga el modelo
+Whisper configurado (`small` por defecto) al volumen persistente; ese primer uso tarda más.
+Puedes desactivar toda la voz local con `JARVIS_VOICE_ENABLED=false` en `.env`.
+
+Comprueba el servicio de voz con:
+
+```bash
+curl -H 'X-Jarvis-Key: <JARVIS_GATEWAY_API_KEY>' \
+  http://<ip-del-servidor>:8080/voice/status
+```
+
 Prueba desde otro equipo de la red:
 
 ```bash
@@ -51,7 +62,7 @@ sudo useradd --system --home /opt/jarvis_os jarvis      # usuario de servicio
 sudo mkdir -p /opt/jarvis_os && sudo chown jarvis: /opt/jarvis_os
 # copia el proyecto a /opt/jarvis_os, crea el venv e instala:
 python3 -m venv /opt/jarvis_os/.venv
-/opt/jarvis_os/.venv/bin/pip install "./core[openai]" ./gateway
+/opt/jarvis_os/.venv/bin/pip install "./core[openai,voice]" ./gateway
 
 # instala el broker MQTT
 sudo apt install mosquitto

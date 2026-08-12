@@ -11,15 +11,27 @@ import logging
 import re
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
-
+from fastapi import (
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.middleware.cors import CORSMiddleware
 from jarvis_core.config import Settings
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
+from jarvis_core.voice import LocalVoiceError
+from pydantic import BaseModel, Field
+
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
 from jarvis_gateway.sessions import SessionManager
+from jarvis_gateway.voice import VoiceRuntime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jarvis.gateway")
@@ -30,6 +42,7 @@ settings = Settings.from_env()
 sessions = SessionManager(settings)
 mqtt_bridge = MqttBridge(settings, sessions)
 notifier = Notifier(mqtt_bridge)
+voice_runtime = VoiceRuntime(settings)
 
 
 def _valid_api_key(candidate: str | None) -> bool:
@@ -83,6 +96,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="JARVIS_OS Gateway", version="0.2.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.gateway_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Jarvis-Key"],
+)
 
 
 class ChatRequest(BaseModel):
@@ -104,6 +124,10 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+class SpeechRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=settings.voice_max_text_chars)
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {
@@ -111,6 +135,7 @@ async def health() -> dict[str, str]:
         "persona": settings.persona_name,
         "provider": settings.llm_provider,
         "scheduler": "on" if settings.scheduler_enabled else "off",
+        "voice": "on" if settings.voice_enabled else "off",
     }
 
 
@@ -149,6 +174,61 @@ async def chat(req: ChatRequest) -> ChatResponse:
         reply=reply.text,
         tools_used=reply.tools_used,
         session_id=req.session_id,
+    )
+
+
+@app.get("/voice/status", dependencies=[Depends(require_api_key)])
+async def voice_status() -> dict[str, str | bool]:
+    return voice_runtime.status()
+
+
+@app.post("/voice/transcribe", dependencies=[Depends(require_api_key)])
+async def transcribe_voice(request: Request) -> dict[str, str]:
+    content_type = request.headers.get("content-type", "").lower()
+    if not content_type.startswith(("audio/", "application/octet-stream")):
+        raise HTTPException(status_code=415, detail="Se requiere contenido de audio.")
+    content_length = request.headers.get("content-length")
+    if (
+        content_length
+        and content_length.isdigit()
+        and int(content_length) > settings.voice_max_audio_bytes
+    ):
+        raise HTTPException(status_code=413, detail="Audio demasiado grande.")
+    audio_buffer = bytearray()
+    async for chunk in request.stream():
+        audio_buffer.extend(chunk)
+        if len(audio_buffer) > settings.voice_max_audio_bytes:
+            raise HTTPException(status_code=413, detail="Audio demasiado grande.")
+    audio = bytes(audio_buffer)
+    if not audio:
+        raise HTTPException(status_code=400, detail="Audio vacío.")
+    if len(audio) > settings.voice_max_audio_bytes:
+        raise HTTPException(status_code=413, detail="Audio demasiado grande.")
+    try:
+        text = await voice_runtime.transcribe(audio)
+    except LocalVoiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Error en el motor STT")
+        raise HTTPException(status_code=503, detail="Motor STT no disponible.") from exc
+    if not text:
+        raise HTTPException(status_code=422, detail="No se detectó voz.")
+    return {"text": text}
+
+
+@app.post("/voice/synthesize", dependencies=[Depends(require_api_key)])
+async def synthesize_voice(req: SpeechRequest) -> Response:
+    try:
+        audio = await voice_runtime.synthesize(req.text)
+    except LocalVoiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Error en el motor TTS")
+        raise HTTPException(status_code=503, detail="Motor TTS no disponible.") from exc
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -194,9 +274,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     await websocket.send_json({"type": "reply_start"})
                 await websocket.send_json({"type": "reply_delta", "delta": delta})
 
+            # El canal continúa disponible tras un fallo del proveedor.
             try:
                 reply = await orchestrator.send(message, on_text_delta=send_text_delta)
-            except Exception:  # el canal continúa disponible tras un fallo del proveedor
+            except Exception:
                 logger.exception("Error procesando la sesión WebSocket %s", session_id)
                 await websocket.send_json(
                     {
@@ -231,6 +312,7 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
 def serve() -> None:
     import os
+
     import uvicorn
 
     host = os.environ.get("JARVIS_GATEWAY_HOST", "0.0.0.0")

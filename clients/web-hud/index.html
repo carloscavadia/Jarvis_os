@@ -585,7 +585,11 @@
       ws = new WebSocket(target.toString());
     } catch (e) { rLink.textContent = "ERROR"; return; }
     // No mostrar la URL completa: puede contener la credencial del HUB.
-    ws.onopen = () => { rLink.textContent = "EN LÍNEA"; addLine("SISTEMA", "Conectado a " + target.host, "system"); };
+    ws.onopen = () => {
+      rLink.textContent = "EN LÍNEA";
+      addLine("SISTEMA", "Conectado a " + target.host, "system");
+      refreshVoiceStatus();
+    };
     ws.onclose = () => { rLink.textContent = "DESCONECTADO"; finishStreamReply(); setBusy(false); ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
@@ -626,13 +630,46 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
   });
 
-  // ── Voz local del navegador ──
-  // Es un puente funcional y sin dependencias. El servicio TTS en streaming podrá
-  // reemplazarlo más adelante conservando estos mismos controles del HUD.
+  const wsInput = document.getElementById("ws-url");
+  const params = new URLSearchParams(location.search);
+  const tokenInput = document.getElementById("ws-token");
+
+  // ── Voz: servidor local Whisper/Piper + fallback del navegador ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
-  let voiceEnabled = canSpeak;
+  const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  let voiceEnabled = canSpeak || "Audio" in window;
+  let serverVoiceAvailable = false;
   let recognition = null;
+  let recorder = null;
+  let recorderStream = null;
+  let recorderChunks = [];
+  let recorderTimer = null;
+  let currentAudio = null;
+
+  function gatewayHttpBase() {
+    try {
+      const url = new URL(wsInput.value.trim());
+      const protocol = url.protocol === "wss:" ? "https:" : "http:";
+      return `${protocol}//${url.host}`;
+    } catch { return ""; }
+  }
+
+  async function refreshVoiceStatus() {
+    const base = gatewayHttpBase();
+    if (!base || !tokenInput.value) return;
+    try {
+      const response = await fetch(`${base}/voice/status`, {
+        headers: { "X-Jarvis-Key": tokenInput.value },
+      });
+      const status = response.ok ? await response.json() : null;
+      serverVoiceAvailable = !!status?.enabled;
+      rVoice.textContent = serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
+    } catch {
+      serverVoiceAvailable = false;
+      rVoice.textContent = canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
+    }
+  }
 
   function selectSpanishVoice() {
     const voices = speechSynthesis.getVoices();
@@ -642,8 +679,8 @@
       || spanish[0] || voices[0] || null;
   }
 
-  function speak(text) {
-    if (!voiceEnabled || !canSpeak || !text) return;
+  function speakInBrowser(text) {
+    if (!canSpeak) { rVoice.textContent = "ERROR"; return; }
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "es-MX";
@@ -657,24 +694,122 @@
     speechSynthesis.speak(utterance);
   }
 
+  async function speak(text) {
+    if (!voiceEnabled || !text) return;
+    if (!serverVoiceAvailable) { speakInBrowser(text); return; }
+    rVoice.textContent = "SINTETIZANDO";
+    try {
+      const response = await fetch(`${gatewayHttpBase()}/voice/synthesize`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Jarvis-Key": tokenInput.value,
+        },
+        body: JSON.stringify({ text }),
+      });
+      if (!response.ok) throw new Error(`TTS ${response.status}`);
+      const audioUrl = URL.createObjectURL(await response.blob());
+      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+      if (!voiceEnabled) { URL.revokeObjectURL(audioUrl); return; }
+      currentAudio = new Audio(audioUrl);
+      currentAudio.onplay = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      currentAudio.onended = () => {
+        URL.revokeObjectURL(audioUrl); currentAudio = null;
+        rVoice.textContent = "LOCAL"; setState("idle");
+      };
+      currentAudio.onerror = () => {
+        URL.revokeObjectURL(audioUrl); currentAudio = null; speakInBrowser(text);
+      };
+      await currentAudio.play();
+    } catch {
+      serverVoiceAvailable = false;
+      speakInBrowser(text);
+    }
+  }
+
   if (canSpeak) {
     speechSynthesis.getVoices();
     speechSynthesis.addEventListener?.("voiceschanged", selectSpanishVoice);
-    voiceToggle.classList.add("active");
-    voiceToggle.setAttribute("aria-pressed", "true");
-  } else {
+  } else if (!("Audio" in window)) {
     voiceToggle.disabled = true;
     rVoice.textContent = "NO DISPONIBLE";
   }
+  voiceToggle.classList.toggle("active", voiceEnabled);
+  voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
 
   voiceToggle.addEventListener("click", () => {
-    if (!canSpeak) return;
     voiceEnabled = !voiceEnabled;
     voiceToggle.classList.toggle("active", voiceEnabled);
     voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
     rVoice.textContent = voiceEnabled ? "LISTA" : "SILENCIO";
-    if (!voiceEnabled) speechSynthesis.cancel();
+    if (!voiceEnabled) {
+      if (canSpeak) speechSynthesis.cancel();
+      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    }
   });
+
+  function setMicActive(active, status) {
+    micButton.classList.toggle("active", active);
+    micButton.setAttribute("aria-pressed", String(active));
+    messageInput.placeholder = active ? "Escuchando… pulsa otra vez para enviar" : "Habla con JARVIS…";
+    if (status) rVoice.textContent = status;
+    if (active) setState("listening");
+  }
+
+  function recordingMimeType() {
+    return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm"]
+      .find((type) => MediaRecorder.isTypeSupported(type)) || "";
+  }
+
+  async function sendRecordedAudio(blob) {
+    rVoice.textContent = "TRANSCRIBIENDO";
+    setBusy(true);
+    try {
+      const response = await fetch(`${gatewayHttpBase()}/voice/transcribe`, {
+        method: "POST",
+        headers: {
+          "Content-Type": blob.type || "application/octet-stream",
+          "X-Jarvis-Key": tokenInput.value,
+        },
+        body: blob,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || `STT ${response.status}`);
+      messageInput.value = (payload.text || "").trim();
+      setBusy(false);
+      if (messageInput.value) document.getElementById("form").requestSubmit();
+      rVoice.textContent = "LOCAL";
+    } catch (error) {
+      setBusy(false);
+      rVoice.textContent = "ERROR";
+      addLine("SISTEMA", "No pude transcribir el audio: " + error.message, "system");
+    }
+  }
+
+  async function startServerRecording() {
+    try {
+      recorderStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+      recorderChunks = [];
+      const mimeType = recordingMimeType();
+      recorder = mimeType ? new MediaRecorder(recorderStream, { mimeType }) : new MediaRecorder(recorderStream);
+      recorder.ondataavailable = (event) => { if (event.data.size) recorderChunks.push(event.data); };
+      recorder.onstop = () => {
+        clearTimeout(recorderTimer); recorderTimer = null;
+        recorderStream?.getTracks().forEach((track) => track.stop()); recorderStream = null;
+        const blob = new Blob(recorderChunks, { type: recorder.mimeType || mimeType || "audio/webm" });
+        recorder = null; recorderChunks = []; setMicActive(false, "TRANSCRIBIENDO");
+        if (blob.size) sendRecordedAudio(blob);
+      };
+      recorder.start(250);
+      setMicActive(true, "GRABANDO");
+      recorderTimer = setTimeout(() => { if (recorder?.state === "recording") recorder.stop(); }, 15000);
+    } catch (error) {
+      setMicActive(false, "ERROR");
+      addLine("SISTEMA", "No pude acceder al micrófono: " + error.message, "system");
+    }
+  }
 
   if (SpeechRecognition) {
     recognition = new SpeechRecognition();
@@ -682,10 +817,7 @@
     recognition.interimResults = true;
     recognition.continuous = false;
     recognition.onstart = () => {
-      micButton.classList.add("active");
-      micButton.setAttribute("aria-pressed", "true");
-      messageInput.placeholder = "Escuchando…";
-      setState("listening");
+      setMicActive(true, "ESCUCHANDO");
     };
     recognition.onresult = (event) => {
       let transcript = "";
@@ -698,31 +830,33 @@
       if (isFinal && messageInput.value) document.getElementById("form").requestSubmit();
     };
     recognition.onend = () => {
-      micButton.classList.remove("active");
-      micButton.setAttribute("aria-pressed", "false");
-      if (!busy) messageInput.placeholder = "Habla con JARVIS…";
+      setMicActive(false, serverVoiceAvailable ? "LOCAL" : "NAVEGADOR");
     };
     recognition.onerror = (event) => {
       if (event.error !== "no-speech" && event.error !== "aborted") {
         addLine("SISTEMA", "No pude acceder al micrófono: " + event.error, "system");
       }
     };
-    micButton.addEventListener("click", () => {
-      if (micButton.classList.contains("active")) recognition.stop();
-      else if (!busy) recognition.start();
-    });
-  } else {
+  }
+
+  micButton.addEventListener("click", () => {
+    if (recorder?.state === "recording") { recorder.stop(); return; }
+    if (recognition && micButton.classList.contains("active")) { recognition.stop(); return; }
+    if (busy) return;
+    if (serverVoiceAvailable && canRecord) startServerRecording();
+    else if (recognition) recognition.start();
+    else addLine("SISTEMA", "Este navegador no permite capturar voz.", "system");
+  });
+
+  if (!canRecord && !SpeechRecognition) {
     micButton.disabled = true;
-    micButton.title = "Reconocimiento de voz no disponible en este navegador";
+    micButton.title = "Captura de voz no disponible en este navegador";
   }
 
   document.querySelectorAll("[data-state]").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state)));
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
   document.getElementById("pulse").addEventListener("click", firePulse);
 
-  const wsInput = document.getElementById("ws-url");
-  const params = new URLSearchParams(location.search);
-  const tokenInput = document.getElementById("ws-token");
   if (params.get("ws")) wsInput.value = params.get("ws");
   document.getElementById("ws-connect").addEventListener("click", () => connect(wsInput.value.trim(), tokenInput.value));
   wsInput.addEventListener("keydown", (e) => {

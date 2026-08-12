@@ -27,8 +27,18 @@ def _get_list(name: str, default: list[str]) -> list[str]:
 # Comandos considerados seguros por defecto para la herramienta de shell.
 # Es una lista blanca deliberadamente conservadora. Amplíala con conocimiento de causa.
 DEFAULT_SHELL_ALLOWLIST = [
-    "echo", "ls", "cat", "date", "uptime", "whoami", "hostname",
-    "df", "free", "uname", "pwd", "ps",
+    "echo",
+    "ls",
+    "cat",
+    "date",
+    "uptime",
+    "whoami",
+    "hostname",
+    "df",
+    "free",
+    "uname",
+    "pwd",
+    "ps",
 ]
 
 
@@ -50,7 +60,7 @@ class Settings:
     # Compatible con OpenAI (NVIDIA NIM, Ollama, etc.)
     openai_api_key: str = ""
     openai_base_url: str = ""  # p.ej. https://integrate.api.nvidia.com/v1
-    openai_model: str = ""     # p.ej. meta/llama-3.1-70b-instruct
+    openai_model: str = ""  # p.ej. meta/llama-3.1-70b-instruct
 
     max_tokens: int = 16000
 
@@ -70,7 +80,9 @@ class Settings:
 
     # --- Herramientas ---
     enable_shell: bool = True
-    shell_allowlist: list[str] = field(default_factory=lambda: list(DEFAULT_SHELL_ALLOWLIST))
+    shell_allowlist: list[str] = field(
+        default_factory=lambda: list(DEFAULT_SHELL_ALLOWLIST)
+    )
 
     # --- Límites de seguridad ---
     max_tool_iterations: int = 12
@@ -82,8 +94,27 @@ class Settings:
     gateway_max_sessions: int = 100
     mqtt_max_payload_chars: int = 16000
 
+    # --- Voz local (Whisper + Piper) ---
+    voice_enabled: bool = False
+    stt_model: str = "small"
+    stt_device: str = "cpu"
+    stt_compute_type: str = "int8"
+    stt_download_root: str = "data/models"
+    tts_model_path: str = ""
+    tts_use_cuda: bool = False
+    voice_max_audio_bytes: int = 15 * 1024 * 1024
+    voice_max_text_chars: int = 4000
+    gateway_cors_origins: list[str] = field(
+        default_factory=lambda: [
+            "http://127.0.0.1:4173",
+            "http://localhost:4173",
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+        ]
+    )
+
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             llm_provider=os.environ.get("JARVIS_LLM_PROVIDER", "anthropic"),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -101,7 +132,9 @@ class Settings:
             scheduler_enabled=_get_bool("JARVIS_SCHEDULER_ENABLED", True),
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),
             enable_shell=_get_bool("JARVIS_ENABLE_SHELL", True),
-            shell_allowlist=_get_list("JARVIS_SHELL_ALLOWLIST", DEFAULT_SHELL_ALLOWLIST),
+            shell_allowlist=_get_list(
+                "JARVIS_SHELL_ALLOWLIST", DEFAULT_SHELL_ALLOWLIST
+            ),
             max_tool_iterations=max(
                 1, int(os.environ.get("JARVIS_MAX_TOOL_ITERATIONS", "12"))
             ),
@@ -117,6 +150,29 @@ class Settings:
             ),
             mqtt_max_payload_chars=max(
                 1, int(os.environ.get("JARVIS_MQTT_MAX_PAYLOAD_CHARS", "16000"))
+            ),
+            voice_enabled=_get_bool("JARVIS_VOICE_ENABLED", False),
+            stt_model=os.environ.get("JARVIS_STT_MODEL", "small"),
+            stt_device=os.environ.get("JARVIS_STT_DEVICE", "cpu"),
+            stt_compute_type=os.environ.get("JARVIS_STT_COMPUTE_TYPE", "int8"),
+            stt_download_root=os.environ.get("JARVIS_STT_DOWNLOAD_ROOT", "data/models"),
+            tts_model_path=os.environ.get("JARVIS_TTS_MODEL_PATH", ""),
+            tts_use_cuda=_get_bool("JARVIS_TTS_USE_CUDA", False),
+            voice_max_audio_bytes=max(
+                1024,
+                int(os.environ.get("JARVIS_VOICE_MAX_AUDIO_BYTES", "15728640")),
+            ),
+            voice_max_text_chars=max(
+                1, int(os.environ.get("JARVIS_VOICE_MAX_TEXT_CHARS", "4000"))
+            ),
+            gateway_cors_origins=_get_list(
+                "JARVIS_GATEWAY_CORS_ORIGINS",
+                [
+                    "http://127.0.0.1:4173",
+                    "http://localhost:4173",
+                    "http://127.0.0.1:5173",
+                    "http://localhost:5173",
+                ],
             ),
         )
 

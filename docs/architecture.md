@@ -126,6 +126,11 @@ para que JARVIS sea manejable por voz:
 - STT: Whisper (local) o un servicio en la nube.
 - TTS: Piper (local, rápido) o un servicio en la nube.
 
+La implementación local carga ambos modelos bajo demanda: `faster-whisper` transcribe el
+audio grabado por el HUD y Piper genera WAV. El modelo STT permanece en el volumen de datos
+y la voz Piper se incluye en la imagen Docker, por lo que las peticiones siguientes no
+recargan los modelos.
+
 Los dispositivos ESP32 pueden capturar audio y enviarlo al gateway, que lo pasa por STT →
 agente → TTS → devuelve audio al dispositivo.
 
