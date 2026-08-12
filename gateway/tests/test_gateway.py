@@ -3,6 +3,7 @@
 from fastapi.testclient import TestClient
 from jarvis_core.agent.orchestrator import AgentReply
 from jarvis_gateway import app as gateway_module
+from jarvis_gateway.voice import prepare_speech_text
 
 
 class FakeOrchestrator:
@@ -49,6 +50,11 @@ async def _fake_get(session_id: str) -> FakeOrchestrator:
 
 async def _approval_get(session_id: str) -> ApprovalOrchestrator:
     return ApprovalOrchestrator()
+
+
+def test_prepare_speech_text_removes_markdown_symbols_and_urls():
+    raw = "## Estado\n- **CPU:** `normal`\n- [Documentación](https://example.com)\n```sh\necho hola\n```"
+    assert prepare_speech_text(raw) == "Estado CPU: normal Documentación"
 
 
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):

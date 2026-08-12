@@ -2,8 +2,31 @@
 
 from __future__ import annotations
 
+import html
+import re
+
 from jarvis_core.config import Settings
 from jarvis_core.voice import FasterWhisperSTT, LocalVoiceError, PiperTTS
+
+
+def prepare_speech_text(text: str) -> str:
+    """Convierte Markdown de respuesta en texto natural para el sintetizador."""
+    spoken = html.unescape(text)
+    spoken = re.sub(r"```[\s\S]*?```", " ", spoken)
+    spoken = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", spoken)
+    spoken = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", spoken)
+    spoken = re.sub(r"<https?://[^>]+>", " ", spoken)
+    spoken = re.sub(r"https?://\S+", " ", spoken)
+    spoken = re.sub(r"`([^`]*)`", r"\1", spoken)
+    spoken = re.sub(r"(?m)^\s{0,3}(?:#{1,6}|>|[-+*]|\d+[.)])\s+", "", spoken)
+    spoken = re.sub(r"(?m)^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$", " ", spoken)
+    spoken = spoken.replace("|", ". ")
+    spoken = re.sub(r"[*_~#`]", "", spoken)
+    spoken = re.sub(r"[{}\[\]\\]", " ", spoken)
+    spoken = re.sub(r"[•▪◦►▶]+", " ", spoken)
+    spoken = re.sub(r"\s+", " ", spoken)
+    spoken = re.sub(r"\s+([,.;:!?])", r"\1", spoken)
+    return spoken.strip()
 
 
 class VoiceRuntime:
@@ -49,4 +72,4 @@ class VoiceRuntime:
                 self.settings.tts_model_path,
                 use_cuda=self.settings.tts_use_cuda,
             )
-        return await self._tts.synthesize(text)
+        return await self._tts.synthesize(prepare_speech_text(text))

@@ -715,6 +715,27 @@
       || spanish[0] || voices[0] || null;
   }
 
+  function prepareSpeechText(text) {
+    return String(text)
+      .replace(/&amp;/gi, " y ")
+      .replace(/&(?:lt|gt|quot|apos);/gi, " ")
+      .replace(/```[\s\S]*?```/g, " ")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/<https?:\/\/[^>]+>/g, " ")
+      .replace(/https?:\/\/\S+/g, " ")
+      .replace(/`([^`]*)`/g, "$1")
+      .replace(/^\s{0,3}(?:#{1,6}|>|[-+*]|\d+[.)])\s+/gm, "")
+      .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, " ")
+      .replace(/\|/g, ". ")
+      .replace(/[*_~#`]/g, "")
+      .replace(/[{}\[\]\\]/g, " ")
+      .replace(/[•▪◦►▶]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .trim();
+  }
+
   function speakInBrowser(text) {
     if (!canSpeak) { rVoice.textContent = "ERROR"; return; }
     speechSynthesis.cancel();
@@ -731,8 +752,9 @@
   }
 
   async function speak(text) {
-    if (!voiceEnabled || !text) return;
-    if (!serverVoiceAvailable) { speakInBrowser(text); return; }
+    const spokenText = prepareSpeechText(text);
+    if (!voiceEnabled || !spokenText) return;
+    if (!serverVoiceAvailable) { speakInBrowser(spokenText); return; }
     rVoice.textContent = "SINTETIZANDO";
     try {
       const response = await fetch(`${gatewayHttpBase()}/voice/synthesize`, {
@@ -741,7 +763,7 @@
           "Content-Type": "application/json",
           "X-Jarvis-Key": tokenInput.value,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: spokenText }),
       });
       if (!response.ok) throw new Error(`TTS ${response.status}`);
       const audioUrl = URL.createObjectURL(await response.blob());
@@ -754,12 +776,12 @@
         rVoice.textContent = "LOCAL"; setState("idle");
       };
       currentAudio.onerror = () => {
-        URL.revokeObjectURL(audioUrl); currentAudio = null; speakInBrowser(text);
+        URL.revokeObjectURL(audioUrl); currentAudio = null; speakInBrowser(spokenText);
       };
       await currentAudio.play();
     } catch {
       serverVoiceAvailable = false;
-      speakInBrowser(text);
+      speakInBrowser(spokenText);
     }
   }
 
