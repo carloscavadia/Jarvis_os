@@ -2,7 +2,7 @@
 name = "jarvis-core"
 version = "0.1.0"
 description = "El núcleo agéntico de JARVIS_OS: orquestador multiagente, herramientas, memoria y voz."
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
