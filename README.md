@@ -87,7 +87,7 @@ incluso fuera de tu red local gracias al módem 4G.
 ```bash
 # 1. Requisitos: Python 3.11+, y una API key de Anthropic
 cp deploy/.env.example .env
-$EDITOR .env            # pon tu ANTHROPIC_API_KEY
+$EDITOR .env            # configura API del LLM y JARVIS_GATEWAY_API_KEY
 
 # 2. Instalar el núcleo
 cd core
@@ -100,6 +100,11 @@ jarvis chat
 cd ../deploy
 docker compose up -d
 ```
+
+El gateway no arranca sin `JARVIS_GATEWAY_API_KEY`. Los clientes REST envían la clave
+en `X-Jarvis-Key`; los HUB WebSocket usan
+`ws://servidor:8080/ws/<session>?token=<clave>`. La capacidad de shell permanece
+disponible únicamente en la CLI local y no se registra en sesiones remotas.
 
 ## Estado
 

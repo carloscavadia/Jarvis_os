@@ -124,6 +124,7 @@
     <div class="grp"><button id="pulse">Ejecución ⚡</button></div>
     <div class="cap">Conexión</div>
     <input id="ws-url" placeholder="ws://IP:8080/ws/hud" />
+    <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
     <button id="ws-connect">Conectar</button>
   </div>
 
@@ -416,11 +417,17 @@
 
   // ── WebSocket al gateway ──
   let ws = null;
-  function connect(url) {
+  function connect(url, token) {
     if (!url) return;
-    try { rLink.textContent = "CONECTANDO…"; ws = new WebSocket(url); }
-    catch (e) { rLink.textContent = "ERROR"; return; }
-    ws.onopen = () => { rLink.textContent = "EN LÍNEA"; addLine("SISTEMA", "Conectado a " + url, "system"); };
+    let target;
+    try {
+      target = new URL(url);
+      if (token) target.searchParams.set("token", token);
+      rLink.textContent = "CONECTANDO…";
+      ws = new WebSocket(target.toString());
+    } catch (e) { rLink.textContent = "ERROR"; return; }
+    // No mostrar la URL completa: puede contener la credencial del HUB.
+    ws.onopen = () => { rLink.textContent = "EN LÍNEA"; addLine("SISTEMA", "Conectado a " + target.host, "system"); };
     ws.onclose = () => { rLink.textContent = "DESCONECTADO"; ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
@@ -459,9 +466,15 @@
 
   const wsInput = document.getElementById("ws-url");
   const params = new URLSearchParams(location.search);
-  if (params.get("ws")) { wsInput.value = params.get("ws"); connect(wsInput.value); }
-  document.getElementById("ws-connect").addEventListener("click", () => connect(wsInput.value.trim()));
-  wsInput.addEventListener("keydown", (e) => { if (e.key === "Enter") connect(wsInput.value.trim()); });
+  const tokenInput = document.getElementById("ws-token");
+  if (params.get("ws")) wsInput.value = params.get("ws");
+  document.getElementById("ws-connect").addEventListener("click", () => connect(wsInput.value.trim(), tokenInput.value));
+  wsInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") connect(wsInput.value.trim(), tokenInput.value);
+  });
+  tokenInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") connect(wsInput.value.trim(), tokenInput.value);
+  });
 })();
 </script>
 </body>

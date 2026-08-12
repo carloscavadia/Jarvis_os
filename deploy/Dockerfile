@@ -17,8 +17,14 @@ COPY README.md ./README.md
 RUN pip install --no-cache-dir "./core[openai]" ./gateway
 
 # Carpeta de datos (memoria interna persistente; se monta como volumen).
-RUN mkdir -p /app/data
+RUN addgroup --system jarvis \
+    && adduser --system --ingroup jarvis --home /app jarvis \
+    && mkdir -p /app/data \
+    && chown -R jarvis:jarvis /app/data
 ENV JARVIS_MEMORY_DB=/app/data/jarvis_memory.db
+ENV JARVIS_TASKS_DB=/app/data/jarvis_tasks.db
+
+USER jarvis
 
 EXPOSE 8080
 

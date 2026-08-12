@@ -15,7 +15,7 @@ de equipos de tu red (y desde Proxmox, dentro de un LXC/VM).
 3. Un `.env` en la raíz del proyecto:
    ```bash
    cp deploy/.env.example .env
-   $EDITOR .env          # elige proveedor y pon tu API key
+   $EDITOR .env          # configura el LLM y JARVIS_GATEWAY_API_KEY
    ```
 
 ## Opción 1 — Docker Compose (recomendado)
@@ -29,7 +29,7 @@ docker compose logs -f gateway
 ```
 
 - Gateway (REST/WebSocket): `http://<ip-del-servidor>:8080`
-- Broker MQTT: `<ip-del-servidor>:1883`
+- Broker MQTT: ligado a `127.0.0.1:1883` y desactivado en el gateway por defecto.
 - Reinicio automático activado (`restart: always`).
 
 Prueba desde otro equipo de la red:
@@ -37,6 +37,7 @@ Prueba desde otro equipo de la red:
 ```bash
 curl -X POST http://<ip-del-servidor>:8080/chat \
      -H 'Content-Type: application/json' \
+     -H 'X-Jarvis-Key: <JARVIS_GATEWAY_API_KEY>' \
      -d '{"message": "¿qué hora es?"}'
 ```
 
@@ -63,8 +64,9 @@ sudo systemctl status jarvis-gateway
 
 - El gateway escucha en `0.0.0.0` → accesible en toda la LAN. Si expones a Internet, ponlo
   detrás de un reverse proxy con **TLS** o de una **VPN (WireGuard)**.
-- El broker MQTT de ejemplo es anónimo (solo LAN de confianza). Para dispositivos que salen
-  a Internet por 4G, usa **credenciales + TLS** (ver `mosquitto.conf`).
+- MQTT no se publica en la LAN por defecto. Antes de conectar HUB físicos, configura
+  usuarios, ACL y TLS en Mosquitto y cambia conscientemente el enlace de puertos.
+- El gateway no registra la herramienta de shell; esa capacidad queda limitada a la CLI local.
 - La **memoria interna** de JARVIS se guarda en `data/jarvis_memory.db` (volumen persistente
   en Docker, o carpeta del proyecto en systemd). Haz copia de seguridad de ese fichero.
 

@@ -22,9 +22,21 @@ que el JARVIS de Iron Man reacciona cuando escucha, procesa y responde:
 
 ## Transporte
 
+### Autenticación
+
+El servicio principal es la autoridad. Los HUB no contienen credenciales del LLM ni
+herramientas: se autentican contra el gateway con `JARVIS_GATEWAY_API_KEY`.
+
+- REST: cabecera `X-Jarvis-Key: <clave>`.
+- WebSocket/HUB web: parámetro `?token=<clave>`.
+- MQTT: permanece desactivado hasta configurar credenciales y TLS para dispositivos.
+
 ### WebSocket (apps / web / HUD)
 
-Conexión: `ws://<servidor>:8080/ws/<session_id>`
+Conexión: `ws://<servidor>:8080/ws/<session_id>?token=<JARVIS_GATEWAY_API_KEY>`
+
+El gateway rechaza conexiones sin una clave válida. En producción remota usa `wss://`
+detrás de un proxy TLS; evita registrar la URL completa porque contiene el token.
 
 El cliente envía **texto plano** (el mensaje del usuario). El servidor responde con
 **mensajes JSON**, uno por evento:

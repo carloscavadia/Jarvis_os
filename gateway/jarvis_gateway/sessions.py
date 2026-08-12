@@ -33,10 +33,18 @@ class SessionManager:
         async with self._lock:
             orch = self._sessions.get(session_id)
             if orch is None:
+                if len(self._sessions) >= self._settings.gateway_max_sessions:
+                    raise RuntimeError("Se alcanzó el límite de sesiones activas.")
                 llm = build_llm(self._settings)
                 emotion = EmotionState()
+                # El gateway es un canal remoto: no expone shell. La CLI local puede
+                # seguir habilitándolo mediante JARVIS_ENABLE_SHELL.
                 registry = build_default_registry(
-                    self._settings, self.memory, self.tasks, emotion
+                    self._settings,
+                    self.memory,
+                    self.tasks,
+                    emotion,
+                    allow_shell=False,
                 )
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch

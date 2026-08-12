@@ -1,10 +1,8 @@
-# JARVIS_OS — stack completo para un Ubuntu Server accesible en red.
+# JARVIS_OS — stack base seguro.
 #
-#   docker compose up -d
-#
-# Levanta el broker MQTT (Mosquitto) y el gateway. El gateway escucha en 0.0.0.0,
-# así que cualquier equipo de la red local puede hablar con JARVIS por HTTP/WebSocket,
-# y los ESP32 por MQTT. Pensado para estar encendido 24/7: en reposo no consume IA.
+# El gateway es accesible desde la LAN, pero exige JARVIS_GATEWAY_API_KEY.
+# MQTT queda enlazado a localhost por defecto. Para HUB físicos en la LAN, configura
+# credenciales/TLS y cambia explícitamente la dirección de enlace.
 
 services:
   mqtt:
@@ -12,12 +10,14 @@ services:
     container_name: jarvis-mqtt
     restart: always
     ports:
-      - "1883:1883"    # MQTT
-      - "9001:9001"    # MQTT sobre WebSocket (opcional)
+      - "127.0.0.1:1883:1883"
+      - "127.0.0.1:9001:9001"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mqtt_data:/mosquitto/data
       - mqtt_log:/mosquitto/log
+    security_opt:
+      - no-new-privileges:true
 
   gateway:
     build:
@@ -28,17 +28,29 @@ services:
     env_file:
       - ../.env
     environment:
-      # Dentro de la red de compose, el broker se llama "mqtt".
       JARVIS_MQTT_HOST: mqtt
       JARVIS_GATEWAY_HOST: 0.0.0.0
       JARVIS_GATEWAY_PORT: "8080"
     ports:
-      - "8080:8080"    # REST + WebSocket, accesible desde la LAN
+      - "8080:8080"
     volumes:
-      - ./data:/app/data   # memoria interna persistente de JARVIS
+      - jarvis_data:/app/data
     depends_on:
       - mqtt
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
 volumes:
+  jarvis_data:
   mqtt_data:
   mqtt_log:

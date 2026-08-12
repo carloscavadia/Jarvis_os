@@ -11,6 +11,7 @@ Mantiene el historial de la conversación (memoria de corto plazo) en el propio 
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable
@@ -53,6 +54,7 @@ class Orchestrator:
         self._emotion = emotion
         self._system = settings.system_prompt()
         self._history: list[dict[str, Any]] = []
+        self._send_lock = asyncio.Lock()
 
     def reset(self) -> None:
         """Olvida la conversación actual (no la memoria a largo plazo)."""
@@ -63,6 +65,11 @@ class Orchestrator:
         return self._history
 
     async def send(self, user_message: str) -> AgentReply:
+        """Serializa los turnos de una sesión para no corromper su historial."""
+        async with self._send_lock:
+            return await self._send_locked(user_message)
+
+    async def _send_locked(self, user_message: str) -> AgentReply:
         """Procesa un mensaje del usuario y devuelve la respuesta final del agente."""
         self._history.append({"role": "user", "content": user_message})
         tools = self._registry.definitions()
@@ -90,6 +97,7 @@ class Orchestrator:
             )
 
             if response.stop_reason != "tool_use" or not response.tool_calls:
+                self._trim_history()
                 return AgentReply(
                     text=response.text,
                     tools_used=tools_used,
@@ -128,6 +136,7 @@ class Orchestrator:
             self._history.append({"role": "tool", "results": results})
 
         # Si llegamos aquí, se agotó el número de iteraciones.
+        self._trim_history()
         return AgentReply(
             text="(He alcanzado el límite de pasos de herramientas sin terminar la tarea.)",
             tools_used=tools_used,
@@ -135,12 +144,26 @@ class Orchestrator:
             emotion=self._emotion.current if self._emotion else "neutral",
         )
 
+    def _trim_history(self) -> None:
+        """Limita el contexto conservando turnos completos desde un mensaje de usuario."""
+        limit = self._settings.max_history_items
+        if len(self._history) <= limit:
+            return
+        trimmed = self._history[-limit:]
+        while trimmed and trimmed[0].get("role") != "user":
+            trimmed.pop(0)
+        self._history = trimmed
+
     async def _maybe_confirm(self, name: str, arguments: dict[str, Any]) -> bool:
         tool = self._registry.get(name)
         if tool is None or not tool.requires_confirmation:
             return True
         if self._confirm is None:
-            # Sin callback de confirmación, se permite (config del entorno decide qué
-            # herramientas se registran). Cambia esto si quieres denegar por defecto.
-            return True
+            # Seguridad fail-closed: una herramienta sensible nunca se ejecuta si el
+            # canal no proporcionó una política explícita de confirmación.
+            logger.warning(
+                "Herramienta sensible %s denegada: no hay política de confirmación",
+                name,
+            )
+            return False
         return await self._confirm(name, arguments)

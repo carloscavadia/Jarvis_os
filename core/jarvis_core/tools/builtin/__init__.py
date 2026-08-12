@@ -40,12 +40,15 @@ def build_default_registry(
     memory: MemoryStore,
     tasks: TaskStore | None = None,
     emotion: EmotionState | None = None,
+    *,
+    allow_shell: bool | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
     registry.register(RememberTool(memory))
     registry.register(RecallTool(memory))
-    if settings.enable_shell:
+    shell_enabled = settings.enable_shell if allow_shell is None else allow_shell
+    if shell_enabled:
         registry.register(ShellTool(allowlist=settings.shell_allowlist))
     if tasks is not None:
         registry.register(ScheduleTaskTool(tasks))

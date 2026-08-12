@@ -72,8 +72,15 @@ class Settings:
     enable_shell: bool = True
     shell_allowlist: list[str] = field(default_factory=lambda: list(DEFAULT_SHELL_ALLOWLIST))
 
-    # --- Límite de seguridad del bucle de agente ---
+    # --- Límites de seguridad ---
     max_tool_iterations: int = 12
+    max_history_items: int = 80
+
+    # --- Gateway remoto ---
+    gateway_api_key: str = ""
+    gateway_max_message_chars: int = 16000
+    gateway_max_sessions: int = 100
+    mqtt_max_payload_chars: int = 16000
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -95,7 +102,22 @@ class Settings:
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),
             enable_shell=_get_bool("JARVIS_ENABLE_SHELL", True),
             shell_allowlist=_get_list("JARVIS_SHELL_ALLOWLIST", DEFAULT_SHELL_ALLOWLIST),
-            max_tool_iterations=int(os.environ.get("JARVIS_MAX_TOOL_ITERATIONS", "12")),
+            max_tool_iterations=max(
+                1, int(os.environ.get("JARVIS_MAX_TOOL_ITERATIONS", "12"))
+            ),
+            max_history_items=max(
+                10, int(os.environ.get("JARVIS_MAX_HISTORY_ITEMS", "80"))
+            ),
+            gateway_api_key=os.environ.get("JARVIS_GATEWAY_API_KEY", ""),
+            gateway_max_message_chars=max(
+                1, int(os.environ.get("JARVIS_GATEWAY_MAX_MESSAGE_CHARS", "16000"))
+            ),
+            gateway_max_sessions=max(
+                1, int(os.environ.get("JARVIS_GATEWAY_MAX_SESSIONS", "100"))
+            ),
+            mqtt_max_payload_chars=max(
+                1, int(os.environ.get("JARVIS_MQTT_MAX_PAYLOAD_CHARS", "16000"))
+            ),
         )
 
     def system_prompt(self) -> str:

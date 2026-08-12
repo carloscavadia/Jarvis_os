@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import os
-import threading
+import re
 
 from jarvis_core.config import Settings
 from jarvis_gateway.sessions import SessionManager
@@ -25,6 +25,7 @@ from jarvis_gateway.sessions import SessionManager
 logger = logging.getLogger("jarvis.mqtt")
 
 TOPIC_IN = "jarvis/device/+/in"
+_DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 class MqttBridge:
@@ -33,13 +34,17 @@ class MqttBridge:
         self._sessions = sessions
         self._client = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._enabled = os.environ.get("JARVIS_MQTT_ENABLED", "true").lower() in {
+        self._enabled = os.environ.get("JARVIS_MQTT_ENABLED", "false").lower() in {
             "1", "true", "yes", "on",
         }
         self._host = os.environ.get("JARVIS_MQTT_HOST", "localhost")
         self._port = int(os.environ.get("JARVIS_MQTT_PORT", "1883"))
         self._username = os.environ.get("JARVIS_MQTT_USERNAME", "")
         self._password = os.environ.get("JARVIS_MQTT_PASSWORD", "")
+        self._tls = os.environ.get("JARVIS_MQTT_TLS", "false").lower() in {
+            "1", "true", "yes", "on",
+        }
+        self._max_payload_chars = settings.mqtt_max_payload_chars
 
     def start(self) -> None:
         if not self._enabled:
@@ -57,18 +62,13 @@ class MqttBridge:
             client.username_pw_set(self._username, self._password)
         client.on_connect = self._on_connect
         client.on_message = self._on_message
-        try:
-            client.connect(self._host, self._port, keepalive=60)
-        except OSError as exc:
-            logger.warning(
-                "No se pudo conectar al broker MQTT en %s:%s (%s). "
-                "El gateway sigue funcionando por REST/WebSocket.",
-                self._host, self._port, exc,
-            )
-            return
-        client.loop_start()  # hilo propio de red MQTT
+        if self._tls:
+            client.tls_set()
+        # connect_async + loop_start mantiene reintentos si el broker aún no está listo.
+        client.connect_async(self._host, self._port, keepalive=60)
+        client.loop_start()
         self._client = client
-        logger.info("Puente MQTT conectado a %s:%s", self._host, self._port)
+        logger.info("Puente MQTT iniciando conexión a %s:%s", self._host, self._port)
 
     def stop(self) -> None:
         if self._client is not None:
@@ -84,6 +84,9 @@ class MqttBridge:
     # --- callbacks de paho (se ejecutan en el hilo de MQTT) ---
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
+        if reason_code != 0:
+            logger.warning("Conexión MQTT rechazada: %s", reason_code)
+            return
         client.subscribe(TOPIC_IN)
         logger.info("Suscrito a %s", TOPIC_IN)
 
@@ -93,8 +96,14 @@ class MqttBridge:
         if len(parts) < 4:
             return
         device_id = parts[2]
+        if not _DEVICE_ID_RE.fullmatch(device_id):
+            logger.warning("Identificador MQTT inválido rechazado")
+            return
         payload = msg.payload.decode(errors="replace").strip()
         if not payload:
+            return
+        if len(payload) > self._max_payload_chars:
+            logger.warning("Payload MQTT demasiado grande rechazado para %s", device_id)
             return
 
         # El texto puede venir en crudo o como JSON {"text": "..."}.

@@ -7,11 +7,15 @@ del servidor" creando tareas que el scheduler ejecutará por su cuenta.
 from __future__ import annotations
 
 import datetime
+import math
 import time
 from typing import Any
 
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import Tool, ToolResult
+
+MIN_REPEAT_SECONDS = 60.0
+MAX_TEXT_CHARS = 4000
 
 
 def _resolve_next_run(delay_seconds: float | None, at: str | None) -> float:
@@ -42,11 +46,23 @@ class ScheduleTaskTool(Tool):
     input_schema: dict[str, Any] = {
         "type": "object",
         "properties": {
-            "title": {"type": "string", "description": "Nombre corto de la tarea."},
-            "prompt": {"type": "string", "description": "Instrucción a ejecutar cuando toque."},
+            "title": {
+                "type": "string", "minLength": 1, "maxLength": 200,
+                "description": "Nombre corto de la tarea.",
+            },
+            "prompt": {
+                "type": "string", "minLength": 1, "maxLength": MAX_TEXT_CHARS,
+                "description": "Instrucción a ejecutar cuando toque.",
+            },
             "at": {"type": "string", "description": "Fecha/hora ISO 8601 de la primera ejecución."},
-            "delay_seconds": {"type": "number", "description": "Segundos desde ahora hasta la ejecución."},
-            "repeat_seconds": {"type": "number", "description": "Si se repite, cada cuántos segundos."},
+            "delay_seconds": {
+                "type": "number", "minimum": 0,
+                "description": "Segundos desde ahora hasta la ejecución.",
+            },
+            "repeat_seconds": {
+                "type": "number", "minimum": MIN_REPEAT_SECONDS,
+                "description": "Si se repite, cada cuántos segundos (mínimo 60).",
+            },
         },
         "required": ["title", "prompt"],
         "additionalProperties": False,
@@ -64,12 +80,29 @@ class ScheduleTaskTool(Tool):
         repeat_seconds: float | None = None,
         **kwargs: Any,
     ) -> ToolResult:
+        title = title.strip()
+        prompt = prompt.strip()
         if not title or not prompt:
             return ToolResult(content="Faltan 'title' o 'prompt'.", is_error=True)
+        if len(title) > 200 or len(prompt) > MAX_TEXT_CHARS:
+            return ToolResult(content="La tarea supera el tamaño permitido.", is_error=True)
+        if delay_seconds is not None and (
+            not math.isfinite(delay_seconds) or delay_seconds < 0
+        ):
+            return ToolResult(content="'delay_seconds' debe ser finito y no negativo.", is_error=True)
+        if repeat_seconds is not None and (
+            not math.isfinite(repeat_seconds) or repeat_seconds < MIN_REPEAT_SECONDS
+        ):
+            return ToolResult(
+                content=f"'repeat_seconds' debe ser finito y al menos {MIN_REPEAT_SECONDS:g}.",
+                is_error=True,
+            )
         try:
             next_run = _resolve_next_run(delay_seconds, at)
-        except ValueError as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             return ToolResult(content=f"Fecha/hora inválida: {exc}", is_error=True)
+        if not math.isfinite(next_run) or next_run < time.time() - 1:
+            return ToolResult(content="La primera ejecución no puede estar en el pasado.", is_error=True)
 
         task_id = self._store.add(
             title=title, prompt=prompt, next_run=next_run,

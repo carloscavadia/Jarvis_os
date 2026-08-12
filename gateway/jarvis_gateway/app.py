@@ -1,25 +1,18 @@
-"""App FastAPI del gateway de JARVIS_OS.
+"""Gateway de red seguro para JARVIS_OS.
 
-Expone el núcleo a la red local (y a dispositivos) por tres vías:
-
-  - REST      POST /chat            → petición/respuesta simple.
-  - WebSocket /ws/{session_id}      → conversación bidireccional (apps/web).
-  - MQTT      (puente en mqtt_bridge) → puntos de voz ESP32 tipo Alexa.
-
-Además corre un SCHEDULER en segundo plano: JARVIS es reactivo (responde) y proactivo
-(ejecuta tareas programadas por su cuenta y avisa a todos los dispositivos).
-
-Pensado para correr como servicio 24/7 en un Ubuntu Server, accesible desde otros equipos
-de la red. Escucha en 0.0.0.0. En reposo no consume IA: solo actúa ante peticiones o tareas.
+REST y WebSocket son canales remotos autenticados. El HUB conserva la presentación y
+captura de entrada; el núcleo sigue siendo la única fuente de inteligencia y estado.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
+import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 
 from jarvis_core.config import Settings
 from jarvis_core.tasks.scheduler import Scheduler
@@ -31,14 +24,31 @@ from jarvis_gateway.sessions import SessionManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("jarvis.gateway")
 
+_SESSION_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
 settings = Settings.from_env()
 sessions = SessionManager(settings)
 mqtt_bridge = MqttBridge(settings, sessions)
 notifier = Notifier(mqtt_bridge)
 
 
+def _valid_api_key(candidate: str | None) -> bool:
+    return bool(
+        settings.gateway_api_key
+        and candidate
+        and hmac.compare_digest(candidate, settings.gateway_api_key)
+    )
+
+
+async def require_api_key(
+    x_jarvis_key: str | None = Header(default=None, alias="X-Jarvis-Key"),
+) -> None:
+    """Autentica clientes REST sin registrar ni devolver el secreto."""
+    if not _valid_api_key(x_jarvis_key):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+
+
 async def _on_task_fire(task: Task) -> None:
-    """Se ejecuta cuando vence una tarea programada: lanza al agente y difunde el aviso."""
     orchestrator = await sessions.get("proactive")
     prompt = (
         f"[TAREA PROGRAMADA: {task.title}]\n{task.prompt}\n\n"
@@ -57,6 +67,10 @@ scheduler = Scheduler(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if not settings.gateway_api_key:
+        raise RuntimeError(
+            "Falta JARVIS_GATEWAY_API_KEY; el gateway se niega a arrancar sin autenticación."
+        )
     mqtt_bridge.start()
     if settings.scheduler_enabled:
         scheduler.start()
@@ -68,17 +82,25 @@ async def lifespan(app: FastAPI):
         sessions.close()
 
 
-app = FastAPI(title="JARVIS_OS Gateway", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="JARVIS_OS Gateway", version="0.2.0", lifespan=lifespan)
 
 
 class ChatRequest(BaseModel):
-    message: str
-    session_id: str = "default"
+    message: str = Field(
+        min_length=1,
+        max_length=settings.gateway_max_message_chars,
+    )
+    session_id: str = Field(
+        default="default",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
+    )
 
 
 class ChatResponse(BaseModel):
     reply: str
-    tools_used: list[str] = []
+    tools_used: list[str] = Field(default_factory=list)
     session_id: str
 
 
@@ -92,10 +114,12 @@ async def health() -> dict[str, str]:
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
 async def chat(req: ChatRequest) -> ChatResponse:
-    """Endpoint REST simple: envías un mensaje, recibes la respuesta del agente."""
-    orchestrator = await sessions.get(req.session_id)
+    try:
+        orchestrator = await sessions.get(req.session_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     reply = await orchestrator.send(req.message)
     return ChatResponse(
         reply=reply.text,
@@ -106,27 +130,43 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
-    """WebSocket para conversación continua Y recepción de avisos proactivos."""
+    # Los navegadores no permiten cabeceras WebSocket arbitrarias; el HUB usa ?token=.
+    if not _valid_api_key(websocket.query_params.get("token")):
+        await websocket.close(code=1008, reason="Credenciales inválidas")
+        return
+    if not _SESSION_RE.fullmatch(session_id):
+        await websocket.close(code=1008, reason="Identificador de sesión inválido")
+        return
+
+    try:
+        orchestrator = await sessions.get(session_id)
+    except RuntimeError:
+        await websocket.close(code=1013, reason="Límite de sesiones alcanzado")
+        return
+
     await websocket.accept()
-    orchestrator = await sessions.get(session_id)
-    notifier.add_ws(websocket)  # recibirá también avisos proactivos
+    notifier.add_ws(websocket)
     logger.info("WebSocket conectado: sesión %s", session_id)
-    # Estado inicial para que el HUD arranque en reposo.
     await websocket.send_json({"type": "state", "state": "idle"})
     try:
         while True:
-            message = await websocket.receive_text()
-            # Estados que la animación del HUD usa para reaccionar como el JARVIS de la peli.
+            message = (await websocket.receive_text()).strip()
+            if not message:
+                await websocket.send_json({"type": "error", "error": "Mensaje vacío"})
+                continue
+            if len(message) > settings.gateway_max_message_chars:
+                await websocket.close(code=1009, reason="Mensaje demasiado grande")
+                return
+
             await websocket.send_json({"type": "state", "state": "listening"})
             await websocket.send_json({"type": "state", "state": "thinking"})
             reply = await orchestrator.send(message)
-            # Emoción que JARVIS eligió para sí mismo (colorea el enjambre del HUD).
             await websocket.send_json({"type": "emotion", "emotion": reply.emotion})
-            # Un flare de "ejecución" por cada herramienta usada (el HUD lo anima).
             for tool_name in reply.tools_used:
-                if tool_name == "set_emotion":
-                    continue
-                await websocket.send_json({"type": "event", "event": "execution", "label": tool_name})
+                if tool_name != "set_emotion":
+                    await websocket.send_json(
+                        {"type": "event", "event": "execution", "label": tool_name}
+                    )
             await websocket.send_json({"type": "state", "state": "speaking"})
             await websocket.send_json(
                 {"type": "reply", "reply": reply.text, "tools_used": reply.tools_used}
@@ -139,7 +179,6 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
 
 def serve() -> None:
-    """Arranca el servidor escuchando en toda la red (0.0.0.0)."""
     import os
     import uvicorn
 
