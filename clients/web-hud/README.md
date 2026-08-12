@@ -24,13 +24,14 @@ para ver cada estado, y escribe en la consola para una respuesta simulada.
 
 ### Conectado a tu servidor
 
-Pon la URL del WebSocket de tu gateway y pulsa **Conectar**:
+El HUD usa una dirección fija para el gateway:
 
-```
-ws://<ip-del-servidor>:8080/ws/hud
+```text
+ws://192.168.68.100:8080/ws/hub-test
 ```
 
-O pásala por query param: `index.html?ws=ws://192.168.1.100:8080/ws/hud`
+Introduce la clave del HUB y pulsa **Conectar**; ya no es necesario escribir ni pasar la
+URL mediante parámetros.
 
 A partir de ahí, lo que escribas va a JARVIS de verdad y el orbe reacciona a los estados
 que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). También recibe los
@@ -55,7 +56,8 @@ para bloquearla. La petición vence automáticamente y nunca puede ser aprobada 
 El **Espacio de trabajo** aparece como una ventana independiente en la esquina superior
 derecha cuando JARVIS usa una herramienta. Solo conserva la ejecución actual, muestra el
 código Python y la salida capturada, ofrece botones físicos **APROBAR** / **DENEGAR**, puede
-cerrarse manualmente y se limpia automáticamente después de completar una acción.
+cerrarse manualmente y se limpia automáticamente después de completar una acción. El panel
+y la consola de salida mantienen visible el evento más reciente mediante scroll automático.
 
 ## Estados
 

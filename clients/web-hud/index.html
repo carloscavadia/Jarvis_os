@@ -76,7 +76,7 @@
     transition: color .16s, border-color .16s, transform .16s, box-shadow .16s; }
   .action-close:hover { color: var(--core-bright); border-color: var(--core); transform: rotate(90deg);
     box-shadow: 0 0 14px rgba(53,230,255,.18); }
-  #action-list { min-height: 72px; overflow: auto; padding: 11px 12px;
+  #action-list { flex: 1 1 auto; min-height: 72px; max-height: min(52vh, 480px); overflow: auto; padding: 11px 12px;
     scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
   .action-card { border-left: 2px solid var(--hairline-2); padding: 8px 10px;
     background: rgba(13,28,39,.48); font-family: var(--mono); font-size: 10px; color: var(--text);
@@ -208,7 +208,7 @@
     <div class="cap">Evento</div>
     <div class="grp"><button id="pulse">Ejecución ⚡</button></div>
     <div class="cap">Conexión</div>
-    <input id="ws-url" placeholder="ws://IP:8080/ws/hud" />
+    <div class="cap">192.168.68.100 · HUB TEST</div>
     <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
     <button id="ws-connect">Conectar</button>
   </div>
@@ -349,10 +349,14 @@
     const visualState = event.is_error ? "error" : event.phase;
     card.className = "action-card " + visualState;
     card._status.textContent = event.is_error ? "ERROR" : (states[event.phase] || event.phase.toUpperCase());
-    if (event.output !== undefined && !card.querySelector(".action-output")) {
-      const output = document.createElement("pre"); output.className = "action-output"; output.textContent = event.output; card.appendChild(output);
+    let output = card.querySelector(".action-output");
+    if (event.output !== undefined && !output) {
+      output = document.createElement("pre"); output.className = "action-output"; output.textContent = event.output; card.appendChild(output);
     }
-    actionList.scrollTop = actionList.scrollHeight;
+    requestAnimationFrame(() => {
+      actionList.scrollTo({ top: actionList.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+      if (output) output.scrollTop = output.scrollHeight;
+    });
     if (["completed", "denied"].includes(event.phase)) {
       workspaceCloseTimer = setTimeout(() => closeWorkspace(), 18000);
     }
@@ -836,8 +840,7 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
   });
 
-  const wsInput = document.getElementById("ws-url");
-  const params = new URLSearchParams(location.search);
+  const FIXED_WS_URL = "ws://192.168.68.100:8080/ws/hub-test";
   const tokenInput = document.getElementById("ws-token");
 
   // ── Voz: servidor local Whisper/Piper + fallback del navegador ──
@@ -855,7 +858,7 @@
 
   function gatewayHttpBase() {
     try {
-      const url = new URL(wsInput.value.trim());
+      const url = new URL(FIXED_WS_URL);
       const protocol = url.protocol === "wss:" ? "https:" : "http:";
       return `${protocol}//${url.host}`;
     } catch { return ""; }
@@ -1085,13 +1088,9 @@
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
   document.getElementById("pulse").addEventListener("click", firePulse);
 
-  if (params.get("ws")) wsInput.value = params.get("ws");
-  document.getElementById("ws-connect").addEventListener("click", () => connect(wsInput.value.trim(), tokenInput.value));
-  wsInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(wsInput.value.trim(), tokenInput.value);
-  });
+  document.getElementById("ws-connect").addEventListener("click", () => connect(FIXED_WS_URL, tokenInput.value));
   tokenInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(wsInput.value.trim(), tokenInput.value);
+    if (e.key === "Enter") connect(FIXED_WS_URL, tokenInput.value);
   });
 })();
 </script>
