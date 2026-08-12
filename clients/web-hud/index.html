@@ -234,18 +234,22 @@
     };
   }
 
-  // sprite de partícula (punto con brillo suave), recoloreado por frame
-  const SP = 34;
+  // sprite de partícula: halo AJUSTADO (caída rápida) para dar brillo sin difuminar.
+  const SP = 22;
   const sprite = document.createElement("canvas");
   sprite.width = sprite.height = SP;
   const sctx = sprite.getContext("2d");
+  let coreHex = "#eaffff";
   function paintSprite(r, g, b) {
     sctx.clearRect(0, 0, SP, SP);
     const grd = sctx.createRadialGradient(SP/2, SP/2, 0, SP/2, SP/2, SP/2);
-    grd.addColorStop(0,    `rgba(${Math.min(255,r+90)|0},${Math.min(255,g+90)|0},${Math.min(255,b+90)|0},0.95)`);
-    grd.addColorStop(0.35, `rgba(${r|0},${g|0},${b|0},0.55)`);
+    grd.addColorStop(0,    `rgba(${Math.min(255,r+120)|0},${Math.min(255,g+120)|0},${Math.min(255,b+120)|0},1)`);
+    grd.addColorStop(0.28, `rgba(${r|0},${g|0},${b|0},0.65)`);
+    grd.addColorStop(0.6,  `rgba(${r|0},${g|0},${b|0},0.12)`);
     grd.addColorStop(1,    "rgba(0,0,0,0)");
     sctx.fillStyle = grd; sctx.fillRect(0, 0, SP, SP);
+    // color del núcleo sólido (casi blanco teñido) para el punto nítido
+    coreHex = `rgb(${Math.min(255,r+140)|0},${Math.min(255,g+140)|0},${Math.min(255,b+140)|0})`;
   }
 
   let t = 0, rot = 0;
@@ -268,9 +272,9 @@
 
     rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
 
-    // rastro suave (persistencia estilo humo)
+    // rastro corto (menos estela = más nitidez)
     ctx.globalCompositeOperation = "source-over";
-    ctx.fillStyle = "rgba(4,7,14,0.30)";
+    ctx.fillStyle = "rgba(4,7,14,0.55)";
     ctx.fillRect(0, 0, W, H);
 
     const cx = W / 2, cy = H * 0.46;
@@ -281,20 +285,34 @@
     paintSprite(col.r, col.g, col.b);
     ctx.globalCompositeOperation = "lighter";
 
-    const half = SP / 2;
+    const TAU = Math.PI * 2;
+    // 1ª pasada: halos (brillo). 2ª pasada: núcleos sólidos nítidos encima.
     for (let i = 0; i < N; i++) {
       const p = P[i];
       const a = p.a + rot * p.spd;
-      // desplazamiento radial turbulento
       const n = noise(a * (0.9 + curChaos * 0.15) + p.seed, t * (0.8 + curChaos * 0.35));
       const disp = n * curTurb * R * 0.16 + p.band * R + amp * Math.sin(a * 8 + t * 6) * R * 0.05;
       const rr = baseR + disp;
       const x = cx + Math.cos(a) * rr;
       const y = cy + Math.sin(a) * rr;
-      const flick = 0.7 + 0.3 * Math.sin(t * 3 * p.spd + p.seed);
-      ctx.globalAlpha = p.bri * flick;
-      const s = p.sz * (1 + amp * 0.4);
-      ctx.drawImage(sprite, x - half * (s/2.2), y - half * (s/2.2), SP * (s/2.2), SP * (s/2.2));
+      const flick = 0.65 + 0.35 * Math.sin(t * 3 * p.spd + p.seed);
+      const s = p.sz * (1 + amp * 0.35);
+      p._x = x; p._y = y; p._f = flick; p._s = s;   // guardado para la 2ª pasada
+
+      // halo pequeño y ajustado
+      const glowPx = s * 3.2;
+      ctx.globalAlpha = p.bri * flick * 0.55;
+      ctx.drawImage(sprite, x - glowPx / 2, y - glowPx / 2, glowPx, glowPx);
+    }
+
+    // núcleos sólidos: puntos nítidos y brillantes
+    ctx.fillStyle = coreHex;
+    for (let i = 0; i < N; i++) {
+      const p = P[i];
+      ctx.globalAlpha = Math.min(1, p.bri * p._f * 1.15);
+      ctx.beginPath();
+      ctx.arc(p._x, p._y, Math.max(0.5, p._s * 0.5), 0, TAU);
+      ctx.fill();
     }
 
     // flares de ejecución (anillos que se expanden y desaparecen)
