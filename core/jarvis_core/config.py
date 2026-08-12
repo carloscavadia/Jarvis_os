@@ -119,6 +119,8 @@ class Settings:
     workspace_max_file_bytes: int = 256 * 1024
     package_install_enabled: bool = False
     package_install_managers: list[str] = field(default_factory=lambda: ["pip"])
+    python_execution_enabled: bool = False
+    python_execution_timeout_seconds: float = 60.0
     approval_timeout_seconds: float = 120.0
 
     @classmethod
@@ -192,6 +194,18 @@ class Settings:
             package_install_managers=_get_list(
                 "JARVIS_PACKAGE_INSTALL_MANAGERS", ["pip"]
             ),
+            python_execution_enabled=_get_bool(
+                "JARVIS_PYTHON_EXECUTION_ENABLED", False
+            ),
+            python_execution_timeout_seconds=max(
+                5.0,
+                min(
+                    300.0,
+                    float(
+                        os.environ.get("JARVIS_PYTHON_EXECUTION_TIMEOUT_SECONDS", "60")
+                    ),
+                ),
+            ),
             approval_timeout_seconds=max(
                 15.0,
                 float(os.environ.get("JARVIS_APPROVAL_TIMEOUT_SECONDS", "120")),
@@ -219,8 +233,10 @@ class Settings:
             f"recordarlos en el futuro. Sé conciso: responde lo que se te pide sin relleno.\n\n"
             f"Para trabajar con archivos usa exclusivamente las herramientas del workspace; "
             f"nunca inventes que accediste a una ruta externa. Puedes crear archivos y carpetas "
-            f"nuevos directamente. Modificar archivos existentes e instalar paquetes requiere "
-            f"la aprobación explícita que el sistema solicitará al usuario.\n\n"
+            f"nuevos directamente. Modificar archivos existentes, instalar paquetes o ejecutar "
+            f"scripts requiere la aprobación explícita que el sistema solicitará al usuario. "
+            f"Si necesitas procesar datos con Python, crea primero un archivo .py y usa la "
+            f"herramienta de ejecución; no afirmes que careces de intérprete si está disponible.\n\n"
             f"Tienes una presencia visual (un enjambre de partículas) que refleja tu emoción. "
             f"Usa la herramienta set_emotion para expresar cómo estás cuando cambie tu ánimo, "
             f"normalmente antes de responder: 'focused' al razonar o trabajar, 'happy' al "

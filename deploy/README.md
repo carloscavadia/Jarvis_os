@@ -68,6 +68,10 @@ manualmente una política `sudoers` limitada para el usuario `jarvis`.
 Los modelos y cachés de Whisper/Hugging Face se guardan en `/app/data`, que es escribible
 por el usuario no privilegiado del gateway y persiste en el volumen `jarvis_data`.
 
+JARVIS también puede ejecutar archivos `.py` ya creados dentro del workspace. Cada
+ejecución solicita aprobación en el HUD, no acepta código inline ni shell y termina al
+agotarse `JARVIS_PYTHON_EXECUTION_TIMEOUT_SECONDS`.
+
 Prueba desde otro equipo de la red:
 
 ```bash

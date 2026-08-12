@@ -65,6 +65,8 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
             f"Modificar {arguments.get('path')} en modo {arguments.get('mode', 'replace')} "
             f"({len(content.encode('utf-8'))} bytes)."
         )
+    if name == "run_python_file":
+        return f"Ejecutar el script Python {arguments.get('path')}."
     return f"Ejecutar la herramienta sensible {name}."
 
 

@@ -13,9 +13,13 @@ from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin.emotion_tool import SetEmotionTool
-from jarvis_core.tools.builtin.filesystem import register_filesystem_tools
+from jarvis_core.tools.builtin.filesystem import (
+    WorkspaceGuard,
+    register_filesystem_tools,
+)
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
+from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import (
@@ -66,4 +70,14 @@ def build_default_registry(
         )
         if settings.package_install_enabled:
             registry.register(InstallPackageTool(settings.package_install_managers))
+        if settings.python_execution_enabled:
+            registry.register(
+                RunPythonFileTool(
+                    WorkspaceGuard(
+                        settings.workspace_root,
+                        settings.workspace_max_file_bytes,
+                    ),
+                    timeout=settings.python_execution_timeout_seconds,
+                )
+            )
     return registry

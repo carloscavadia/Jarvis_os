@@ -71,6 +71,7 @@ Herramientas de arranque (`core/jarvis_core/tools/builtin/`):
 - `create_directory` / `create_file` — crean recursos nuevos sin sobrescribir.
 - `update_file` — modifica un archivo existente después de aprobación humana.
 - `install_package` — instala un paquete permitido después de aprobación humana.
+- `run_python_file` — ejecuta un `.py` del workspace con aprobación, timeout y salida limitada.
 
 El acceso a archivos está confinado a `JARVIS_WORKSPACE_ROOT`. Las rutas absolutas, `..`
 que escapa de la raíz y enlaces simbólicos hacia el exterior se rechazan. El contenedor no

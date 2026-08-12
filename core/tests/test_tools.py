@@ -19,6 +19,7 @@ from jarvis_core.tools.builtin.filesystem import (
 )
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
+from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import ScheduleTaskTool
@@ -222,6 +223,39 @@ async def test_package_installer_rejects_flags_before_execution():
     assert "inválido" in result.content
 
 
+async def test_python_runner_executes_only_workspace_python_files(tmp_path):
+    guard = WorkspaceGuard(str(tmp_path / "workspace"), max_file_bytes=1024)
+    script = guard.root / "saludo.py"
+    script.write_text("import sys\nprint('hola', sys.argv[1])\n")
+    tool = RunPythonFileTool(guard, timeout=5)
+
+    result = await tool.run(path="saludo.py", arguments=["jefe"])
+    assert not result.is_error
+    assert "Código de salida: 0" in result.content
+    assert "hola jefe" in result.content
+
+    registry = ToolRegistry()
+    registry.register(tool)
+    blocked = await registry.execute("run_python_file", {"path": "saludo.txt"})
+    assert blocked.is_error
+    assert "extensión .py" in blocked.content
+
+
+async def test_python_runner_blocks_symlink_outside_workspace(tmp_path):
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('no debe ejecutarse')")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "escape.py").symlink_to(outside)
+    registry = ToolRegistry()
+    registry.register(
+        RunPythonFileTool(WorkspaceGuard(str(workspace), max_file_bytes=1024))
+    )
+    result = await registry.execute("run_python_file", {"path": "escape.py"})
+    assert result.is_error
+    assert "sale del workspace" in result.content
+
+
 async def test_registry_enables_agent_tools_from_settings(tmp_path):
     from jarvis_core.tools.builtin import build_default_registry
 
@@ -233,6 +267,7 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
                 workspace_root=str(tmp_path / "workspace"),
                 package_install_enabled=True,
                 package_install_managers=["pip"],
+                python_execution_enabled=True,
             ),
             memory,
         )
@@ -243,6 +278,7 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
             "create_file",
             "update_file",
             "install_package",
+            "run_python_file",
         }.issubset(registry.names())
     finally:
         memory.close()
