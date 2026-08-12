@@ -114,6 +114,30 @@ async def health() -> dict[str, str]:
     }
 
 
+@app.get("/ready")
+async def ready() -> dict[str, str]:
+    """Comprueba configuración mínima sin consumir una llamada al proveedor."""
+    errors: list[str] = []
+    provider = settings.llm_provider.lower()
+    if not settings.gateway_api_key:
+        errors.append("gateway_api_key")
+    if provider == "anthropic":
+        if not settings.anthropic_api_key:
+            errors.append("anthropic_api_key")
+    elif provider in {"openai", "nvidia", "ollama", "compatible"}:
+        if not settings.openai_model:
+            errors.append("openai_model")
+    else:
+        errors.append("llm_provider")
+
+    if errors:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not_ready", "missing_or_invalid": errors},
+        )
+    return {"status": "ready", "provider": settings.llm_provider}
+
+
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
 async def chat(req: ChatRequest) -> ChatResponse:
     try:
