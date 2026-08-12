@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 10
     env:
       JARVIS_GATEWAY_API_KEY: ci-test-key
+      ANTHROPIC_API_KEY: ci-test-provider-key
       JARVIS_MQTT_ENABLED: "false"
       JARVIS_SCHEDULER_ENABLED: "false"
       JARVIS_MEMORY_DB: /tmp/jarvis-ci-memory.db
@@ -41,13 +42,15 @@ jobs:
         run: |
           docker run -d --name jarvis-ci -p 127.0.0.1:18080:8080 \
             -e JARVIS_GATEWAY_API_KEY=ci-test-key \
+            -e ANTHROPIC_API_KEY=ci-test-provider-key \
             -e JARVIS_MQTT_ENABLED=false \
             -e JARVIS_SCHEDULER_ENABLED=false \
             jarvis-os:ci
       - name: Smoke test
         run: |
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:18080/health; then
+            if curl --fail --silent http://127.0.0.1:18080/health \
+              && curl --fail --silent http://127.0.0.1:18080/ready; then
               exit 0
             fi
             sleep 1
