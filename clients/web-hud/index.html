@@ -220,25 +220,44 @@
   }
 
   // ── Partículas: un anillo denso + polvo disperso ──
-  const RING = 780, DUST = 240, N = RING + DUST;
+  // Anillo orgánico: muchas partículas pequeñas agrupadas en corrientes, sin malla.
+  const RING = 1750, DUST = 320, N = RING + DUST;
   const P = new Array(N);
   for (let i = 0; i < N; i++) {
     const ring = i < RING;
+    const lane = ring ? (i % 7) - 3 : 0;
     P[i] = {
-      a: Math.random() * Math.PI * 2,          // ángulo
-      band: ring ? (Math.random() - 0.5) * 0.10       // grosor del anillo
-                 : (Math.random() - 0.5) * 0.55,       // polvo más disperso
+      a: Math.random() * Math.PI * 2,
+      band: ring
+        ? lane * 0.010 + (Math.random() - 0.5) * 0.035
+        : (Math.random() - 0.5) * 0.34,
+      lane,
       seed: Math.random() * 6.28,
-      spd: 0.6 + Math.random() * 0.9,
-      sz: ring ? 1.6 + Math.random() * 1.8 : 1.0 + Math.random() * 1.4,
-      bri: ring ? 0.5 + Math.random() * 0.5 : 0.2 + Math.random() * 0.4,
-      scatter: 1.9 + Math.random() * 1.7,      // radio de dispersión para el arranque
+      spd: 0.72 + Math.random() * 0.46,
+      sz: ring ? 0.65 + Math.random() * 1.15 : 0.45 + Math.random() * 0.85,
+      bri: ring ? 0.28 + Math.random() * 0.58 : 0.10 + Math.random() * 0.26,
+      scatter: 1.9 + Math.random() * 1.7,
       _x: 0, _y: 0, _f: 0, _s: 0,
     };
   }
-  // Nodos para las líneas de constelación (un subconjunto, por rendimiento).
-  const nodes = [];
-  for (let i = 0; i < N; i += 9) nodes.push(i);
+
+  // Esfera central de partículas: densa, volumétrica y sin un punto sólido artificial.
+  const CORE_N = 920;
+  const CORE = new Array(CORE_N);
+  for (let i = 0; i < CORE_N; i++) {
+    const z = Math.random() * 2 - 1;
+    const phi = Math.random() * Math.PI * 2;
+    const radius = Math.cbrt(Math.random());
+    const planar = Math.sqrt(1 - z * z);
+    CORE[i] = {
+      x: Math.cos(phi) * planar * radius,
+      y: Math.sin(phi) * planar * radius,
+      z: z * radius,
+      seed: Math.random() * Math.PI * 2,
+      size: 0.45 + Math.random() * 1.05,
+      bri: 0.28 + Math.random() * 0.62,
+    };
+  }
 
   // sprite de partícula: halo AJUSTADO (caída rápida) para dar brillo sin difuminar.
   const SP = 22;
@@ -265,39 +284,60 @@
   sizeGlow();
 
   const TAU = Math.PI * 2;
-  const TILT = 0.80;                          // inclinación del anillo (da profundidad 3D)
+  const TILT = 0.88;                          // inclinación del anillo (da profundidad 3D)
   const easeOut = (x) => 1 - Math.pow(1 - x, 3);
   let t = 0, rot = 0, bootT = 0;
 
-  // Núcleo central vistoso: resplandor pulsante + anillos HUD + punto brillante.
+  // Núcleo profesional: esfera granular + campo de energía tenue.
   function drawCore(cx, cy, R, rgbCol, pulse) {
     ctx.globalCompositeOperation = "lighter";
-    const glowR = R * (0.44 + amp * 0.16);
-    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, glowR);
-    cg.addColorStop(0,   `rgba(${rgbCol},${0.26 + amp * 0.24 + pulse * 0.06})`);
-    cg.addColorStop(0.5, `rgba(${rgbCol},0.07)`);
-    cg.addColorStop(1,   "rgba(0,0,0,0)");
-    ctx.globalAlpha = 1; ctx.fillStyle = cg;
-    ctx.beginPath(); ctx.arc(cx, cy, glowR, 0, TAU); ctx.fill();
+    const sphereR = R * (0.125 + amp * 0.018);
+    const haloR = sphereR * 2.7;
 
-    // anillos HUD tenues, inclinados y girando
-    ctx.lineWidth = 1; ctx.strokeStyle = `rgb(${rgbCol})`;
+    const field = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
+    field.addColorStop(0,   `rgba(${rgbCol},${0.11 + amp * 0.08})`);
+    field.addColorStop(0.34,`rgba(${rgbCol},0.045)`);
+    field.addColorStop(1,   "rgba(0,0,0,0)");
+    ctx.globalAlpha = easeOut(bootT);
+    ctx.fillStyle = field;
+    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, TAU); ctx.fill();
+
+    // Ondas concéntricas muy discretas: interfaz, no "átomo".
+    ctx.strokeStyle = `rgb(${rgbCol})`;
+    ctx.lineWidth = 0.7;
     for (let k = 0; k < 3; k++) {
-      const rr = R * (0.30 + k * 0.11);
-      ctx.globalAlpha = (0.13 - k * 0.025) * easeOut(bootT);
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, rr, rr * TILT, rot * (k % 2 ? -0.6 : 0.6), 0, TAU);
-      ctx.stroke();
+      const wave = sphereR * (1.45 + k * 0.50 + pulse * 0.06);
+      ctx.globalAlpha = (0.075 - k * 0.016) * easeOut(bootT);
+      ctx.beginPath(); ctx.arc(cx, cy, wave, 0, TAU); ctx.stroke();
     }
 
-    // punto central brillante
-    const cr = R * 0.06 * (1 + amp * 0.6 + pulse * 0.2);
-    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr * 3);
-    core.addColorStop(0,   coreHex);
-    core.addColorStop(0.3, `rgba(${rgbCol},0.55)`);
-    core.addColorStop(1,   "rgba(0,0,0,0)");
-    ctx.globalAlpha = 0.9; ctx.fillStyle = core;
-    ctx.beginPath(); ctx.arc(cx, cy, cr * 3, 0, TAU); ctx.fill();
+    // Rotación 3D de la nube central.
+    const ry = t * 0.34;
+    const rx = t * 0.17;
+    const cry = Math.cos(ry), sry = Math.sin(ry);
+    const crx = Math.cos(rx), srx = Math.sin(rx);
+
+    for (let i = 0; i < CORE_N; i++) {
+      const p = CORE[i];
+      const x1 = p.x * cry - p.z * sry;
+      const z1 = p.x * sry + p.z * cry;
+      const y1 = p.y * crx - z1 * srx;
+      const z2 = p.y * srx + z1 * crx;
+      const depth = 0.60 + (z2 + 1) * 0.20;
+      const shimmer = 0.72 + 0.28 * Math.sin(t * 2.1 + p.seed);
+      const px = cx + x1 * sphereR;
+      const py = cy + y1 * sphereR;
+      const pr = p.size * (0.72 + depth * 0.42) * (1 + amp * 0.22);
+
+      ctx.globalAlpha = p.bri * depth * shimmer * easeOut(bootT);
+      ctx.fillStyle = coreHex;
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.fill();
+
+      if (p.bri > 0.72) {
+        ctx.globalAlpha *= 0.16;
+        ctx.beginPath(); ctx.arc(px, py, pr * 3.2, 0, TAU); ctx.fill();
+      }
+    }
   }
 
   function frame() {
@@ -352,33 +392,35 @@
       const s = p.sz * (1 + amp * 0.35) * (0.7 + depth * 0.5);
       p._x = x; p._y = y; p._f = flick * depth * boot; p._s = s;
 
-      const glowPx = s * 3.2;
-      ctx.globalAlpha = p.bri * flick * depth * boot * 0.55;
+      const glowPx = s * 2.55;
+      ctx.globalAlpha = p.bri * flick * depth * boot * 0.42;
       ctx.drawImage(sprite, x - glowPx / 2, y - glowPx / 2, glowPx, glowPx);
     }
 
-    // ── líneas tipo constelación (tenues) entre nodos cercanos ──
-    ctx.lineWidth = 1; ctx.strokeStyle = `rgb(${rgbCol})`;
-    const maxD = R * 0.30, maxD2 = maxD * maxD;
-    for (let i = 0; i < nodes.length; i++) {
-      const A = P[nodes[i]];
-      for (let j = i + 1; j < nodes.length; j++) {
-        const B = P[nodes[j]];
-        const dx = A._x - B._x, dy = A._y - B._y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < maxD2) {
-          ctx.globalAlpha = (1 - Math.sqrt(d2) / maxD) * 0.13 * boot;
-          ctx.beginPath(); ctx.moveTo(A._x, A._y); ctx.lineTo(B._x, B._y); ctx.stroke();
-        }
+    // ── filamentos continuos: ondas orgánicas, nunca conexiones tipo constelación ──
+    ctx.strokeStyle = `rgb(${rgbCol})`;
+    ctx.lineWidth = 0.65;
+    for (let lane = 0; lane < 4; lane++) {
+      ctx.globalAlpha = (0.075 - lane * 0.011) * boot;
+      ctx.beginPath();
+      for (let j = 0; j <= 220; j++) {
+        const a = (j / 220) * TAU;
+        const wave = noise(a * (1.4 + lane * 0.17) + lane, t * 0.72);
+        const rr = baseR + wave * R * (0.075 + lane * 0.009)
+          + Math.sin(a * (4 + lane) - t * (0.8 + lane * 0.1)) * R * 0.018;
+        const x = cx + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr * TILT;
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
+      ctx.closePath(); ctx.stroke();
     }
 
     // ── núcleos sólidos nítidos ──
     ctx.fillStyle = coreHex;
     for (let i = 0; i < N; i++) {
       const p = P[i];
-      ctx.globalAlpha = Math.min(1, p._f * 1.15);
-      ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.5, p._s * 0.5), 0, TAU); ctx.fill();
+      ctx.globalAlpha = Math.min(0.86, p.bri * p._f * 0.92);
+      ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.42, p._s * 0.42), 0, TAU); ctx.fill();
     }
 
     // ── flares de ejecución (elipses inclinadas) ──
@@ -396,7 +438,7 @@
     gctx.clearRect(0, 0, glow.width, glow.height);
     gctx.drawImage(canvas, 0, 0, glow.width, glow.height);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.45; ctx.imageSmoothingEnabled = true;
+    ctx.globalAlpha = 0.28; ctx.imageSmoothingEnabled = true;
     ctx.drawImage(glow, 0, 0, glow.width, glow.height, 0, 0, W, H);
 
     ctx.globalCompositeOperation = "source-over";
