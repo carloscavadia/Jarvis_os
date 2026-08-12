@@ -26,7 +26,7 @@ RUN mkdir -p /app/voices \
 # Carpeta de datos (memoria interna persistente; se monta como volumen).
 RUN addgroup --system jarvis \
     && adduser --system --ingroup jarvis --home /app jarvis \
-    && mkdir -p /app/data \
+    && mkdir -p /app/data/cache /app/data/huggingface \
     && mkdir -p /app/workspace /app/.local \
     && chown -R jarvis:jarvis /app/data /app/workspace /app/.local
 ENV JARVIS_MEMORY_DB=/app/data/jarvis_memory.db
@@ -34,6 +34,8 @@ ENV JARVIS_TASKS_DB=/app/data/jarvis_tasks.db
 ENV JARVIS_STT_DOWNLOAD_ROOT=/app/data/models
 ENV JARVIS_TTS_MODEL_PATH=/app/voices/es_MX-ald-medium.onnx
 ENV JARVIS_WORKSPACE_ROOT=/app/workspace
+ENV XDG_CACHE_HOME=/app/data/cache
+ENV HF_HOME=/app/data/huggingface
 ENV PATH=/app/.local/bin:${PATH}
 
 USER jarvis

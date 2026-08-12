@@ -65,6 +65,9 @@ APT del host permanecen desactivados en Docker. Si se usa el despliegue systemd,
 habilitar `apt` con `JARVIS_PACKAGE_INSTALL_MANAGERS=apt,pip`, pero solo después de crear
 manualmente una política `sudoers` limitada para el usuario `jarvis`.
 
+Los modelos y cachés de Whisper/Hugging Face se guardan en `/app/data`, que es escribible
+por el usuario no privilegiado del gateway y persiste en el volumen `jarvis_data`.
+
 Prueba desde otro equipo de la red:
 
 ```bash
