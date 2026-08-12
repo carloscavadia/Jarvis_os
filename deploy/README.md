@@ -80,6 +80,8 @@ búsqueda funciona con Bing RSS; para resultados más fiables configura opcional
 En proveedores NVIDIA, `JARVIS_OPENAI_ENABLE_THINKING=false` evita que el razonamiento
 interno aparezca en el HUD. Las rondas que llaman herramientas descartan cualquier texto
 preliminar y solo la respuesta final se entrega al usuario y al sintetizador de voz.
+El idioma de una fuente web no cambia `JARVIS_LANGUAGE`: los resultados se traducen y se
+redactan en el idioma configurado, manteniendo nombres propios y URLs originales.
 
 Prueba desde otro equipo de la red:
 

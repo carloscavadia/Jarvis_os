@@ -292,6 +292,13 @@ def test_web_text_extractor_omits_scripts_and_keeps_visible_text():
     assert "secreto" not in parser.text()
 
 
+def test_spanish_web_prompt_requires_translation():
+    prompt = Settings(language="es", internet_access_enabled=True).system_prompt()
+    assert "Responde siempre en español" in prompt
+    assert "fuentes pueden estar en cualquier idioma" in prompt
+    assert "traducir y redactar" in prompt
+
+
 async def test_registry_enables_agent_tools_from_settings(tmp_path):
     from jarvis_core.tools.builtin import build_default_registry
 
