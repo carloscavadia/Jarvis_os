@@ -30,10 +30,27 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 **mensajes JSON**, uno por evento:
 
 ```json
-{ "type": "state", "state": "thinking" }
-{ "type": "reply", "reply": "Todo en orden, jefe.", "tools_used": ["system_info"] }
+{ "type": "state",     "state": "thinking" }
+{ "type": "emotion",   "emotion": "focused" }
+{ "type": "event",     "event": "execution", "label": "system_info" }
+{ "type": "reply",     "reply": "Todo en orden, jefe.", "tools_used": ["system_info"] }
 { "type": "proactive", "source": "task", "text": "Recordatorio: reunión en 10 min." }
 ```
+
+- **`state`** — mueve el comportamiento del enjambre (energía, turbulencia, expansión).
+- **`emotion`** — mueve el **color** del enjambre (ver tabla de emociones abajo).
+- **`event`** — dispara un *flare* puntual; se envía uno por cada herramienta ejecutada.
+- **`reply`** / **`proactive`** — texto a mostrar/reproducir.
+
+### Emociones (color del enjambre)
+
+| Emoción    | Color        | Uso                                   |
+|------------|--------------|---------------------------------------|
+| `neutral`  | cian-verdoso | por defecto                           |
+| `happy`    | verde-cian   | confirmaciones, buenas noticias       |
+| `alert`    | cian brillante | atención, algo requiere acción      |
+| `focused`  | violeta      | razonando / trabajando duro           |
+| `concern`  | ámbar        | duda, advertencia, error              |
 
 ### MQTT (dispositivos ESP32)
 

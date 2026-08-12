@@ -120,6 +120,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
             await websocket.send_json({"type": "state", "state": "listening"})
             await websocket.send_json({"type": "state", "state": "thinking"})
             reply = await orchestrator.send(message)
+            # Un flare de "ejecución" por cada herramienta usada (el HUD lo anima).
+            for tool_name in reply.tools_used:
+                await websocket.send_json({"type": "event", "event": "execution", "label": tool_name})
             await websocket.send_json({"type": "state", "state": "speaking"})
             await websocket.send_json(
                 {"type": "reply", "reply": reply.text, "tools_used": reply.tools_used}

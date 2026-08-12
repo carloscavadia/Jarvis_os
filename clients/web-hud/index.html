@@ -5,160 +5,123 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>JARVIS HUD</title>
 <style>
-  /* HUD de JARVIS — mundo visual único (neón sobre negro), tema oscuro deliberado. */
+  /* HUD de JARVIS — enjambre de partículas reactivo. Tema oscuro deliberado (neón sobre negro). */
   :root {
-    --ground:      #04070e;
-    --ground-2:    #060c16;
-    --panel:       rgba(10, 20, 32, 0.55);
-    --hairline:    rgba(63, 224, 255, 0.16);
-    --hairline-2:  rgba(63, 224, 255, 0.30);
-    --core:        #35e6ff;   /* cian reactor */
-    --core-bright: #bff4ff;
-    --violet:      #8a93ff;   /* pensando */
-    --amber:       #ffb454;   /* hablando */
-    --text:        #cfe6f0;
-    --muted:       #6b8a99;
+    --ground:     #04070e;
+    --panel:      rgba(9, 18, 28, 0.55);
+    --hairline:   rgba(63, 224, 255, 0.16);
+    --hairline-2: rgba(63, 224, 255, 0.30);
+    --core:       #35e6ff;
+    --core-bright:#c6f6ff;
+    --text:       #cfe6f0;
+    --muted:      #6b8a99;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
-
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
-    background:
-      radial-gradient(1200px 800px at 50% 42%, #0a1420 0%, var(--ground-2) 55%, var(--ground) 100%);
+    background: var(--ground);
     color: var(--text);
     font-family: var(--sans);
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
   }
-
   #scene { position: fixed; inset: 0; display: block; }
 
-  /* Marco HUD: corchetes en las esquinas */
   .frame { position: fixed; inset: 0; pointer-events: none; }
-  .bracket {
-    position: absolute; width: 46px; height: 46px;
-    border: 1px solid var(--hairline-2);
-  }
+  .bracket { position: absolute; width: 46px; height: 46px; border: 1px solid var(--hairline-2); }
   .bracket.tl { top: 18px; left: 18px; border-right: 0; border-bottom: 0; }
   .bracket.tr { top: 18px; right: 18px; border-left: 0; border-bottom: 0; }
   .bracket.bl { bottom: 18px; left: 18px; border-right: 0; border-top: 0; }
   .bracket.br { bottom: 18px; right: 18px; border-left: 0; border-top: 0; }
 
-  /* Lectura de estado, arriba a la izquierda */
   .readout {
     position: fixed; top: 30px; left: 42px;
     font-family: var(--mono); font-size: 11px; letter-spacing: 0.18em;
-    text-transform: uppercase; color: var(--muted); line-height: 2.1;
-    pointer-events: none;
+    text-transform: uppercase; color: var(--muted); line-height: 2.1; pointer-events: none;
   }
   .readout .val { color: var(--text); }
-  .readout .dot {
-    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    background: var(--core); margin-right: 7px; vertical-align: middle;
-    box-shadow: 0 0 8px var(--core);
-  }
+  .readout .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--core); margin-right: 7px; vertical-align: middle; box-shadow: 0 0 8px var(--core); }
   .readout .state { color: var(--core); }
 
-  /* Título flotante */
   .brand {
     position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
     font-family: var(--mono); letter-spacing: 0.55em; font-size: 13px;
-    color: var(--core-bright); text-shadow: 0 0 14px rgba(53,230,255,0.5);
+    color: var(--core-bright); text-shadow: 0 0 16px rgba(53,230,255,0.55);
     pointer-events: none; padding-left: 0.55em;
   }
 
-  /* Consola inferior */
   .console {
     position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
     width: min(720px, 92vw);
-    background: var(--panel);
-    border: 1px solid var(--hairline);
-    border-radius: 14px;
-    backdrop-filter: blur(6px);
-    box-shadow: 0 0 40px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.02);
-    overflow: hidden;
+    background: var(--panel); border: 1px solid var(--hairline); border-radius: 14px;
+    backdrop-filter: blur(6px); box-shadow: 0 0 40px rgba(0,0,0,0.45); overflow: hidden;
   }
-  .log {
-    max-height: 26vh; overflow-y: auto; padding: 14px 16px 6px;
-    display: flex; flex-direction: column; gap: 9px;
-    font-size: 14px; line-height: 1.45;
-    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
-  }
+  .log { max-height: 24vh; overflow-y: auto; padding: 14px 16px 6px;
+    display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 1.45;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
   .line { display: flex; gap: 10px; }
-  .line .who {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
-    text-transform: uppercase; color: var(--muted); min-width: 58px; padding-top: 3px;
-  }
+  .line .who { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--muted); min-width: 58px; padding-top: 3px; }
   .line.jarvis .who { color: var(--core); }
   .line .txt { flex: 1; color: var(--text); }
   .line.jarvis .txt { color: var(--core-bright); }
   .line.system .txt { color: var(--muted); font-style: italic; }
 
-  .inputbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
-    border-top: 1px solid var(--hairline); }
+  .inputbar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--hairline); }
   .inputbar .prompt { font-family: var(--mono); color: var(--core); font-size: 14px; }
-  .inputbar input {
-    flex: 1; background: transparent; border: 0; outline: 0;
-    color: var(--text); font-family: var(--sans); font-size: 15px; padding: 6px 0;
-  }
+  .inputbar input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
+    font-family: var(--sans); font-size: 15px; padding: 6px 0; }
   .inputbar input::placeholder { color: var(--muted); }
 
-  /* Controles de demo / conexión, abajo a la izquierda */
-  .controls {
-    position: fixed; left: 24px; bottom: 30px;
-    display: flex; flex-direction: column; gap: 8px; width: 168px;
-  }
+  .controls { position: fixed; left: 24px; bottom: 30px; display: flex; flex-direction: column; gap: 7px; width: 176px; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
-  .controls button, .controls .link {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--muted);
-    background: rgba(10,20,32,0.5); border: 1px solid var(--hairline);
-    border-radius: 7px; padding: 6px 8px; cursor: pointer;
-    transition: color .15s, border-color .15s, box-shadow .15s;
-  }
-  .controls button:hover { color: var(--core); border-color: var(--hairline-2);
-    box-shadow: 0 0 12px rgba(53,230,255,0.15); }
-  .controls button:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
-  .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em;
-    text-transform: uppercase; color: var(--muted); margin-top: 2px; }
-  .controls input {
-    font-family: var(--mono); font-size: 10px; color: var(--text);
-    background: rgba(10,20,32,0.5); border: 1px solid var(--hairline);
-    border-radius: 7px; padding: 6px 8px; width: 100%; outline: 0;
-  }
+  .controls button, .controls input {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
+    color: var(--muted); background: rgba(9,18,28,0.5); border: 1px solid var(--hairline);
+    border-radius: 7px; padding: 6px 8px; cursor: pointer; transition: color .15s, border-color .15s, box-shadow .15s; }
+  .controls input { text-transform: none; width: 100%; color: var(--text); cursor: text; }
+  .controls button:hover { color: var(--core); border-color: var(--hairline-2); box-shadow: 0 0 12px rgba(53,230,255,0.15); }
+  .controls button:focus-visible, .controls input:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
+  .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
 
-  @media (max-width: 560px) {
-    .controls { display: none; }
-    .readout { font-size: 10px; top: 22px; left: 30px; }
-  }
+  @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; } }
 </style>
 </head>
 <body>
   <canvas id="scene"></canvas>
-
   <div class="frame">
     <span class="bracket tl"></span><span class="bracket tr"></span>
     <span class="bracket bl"></span><span class="bracket br"></span>
   </div>
-
   <div class="brand">J.A.R.V.I.S</div>
 
   <div class="readout">
     <div><span class="dot" id="dot"></span>ESTADO · <span class="state" id="r-state">REPOSO</span></div>
+    <div>EMOCIÓN · <span class="val" id="r-emotion">NEUTRAL</span></div>
     <div>ENLACE · <span class="val" id="r-link">DEMO</span></div>
-    <div>NÚCLEO · <span class="val" id="r-model">servidor local</span></div>
   </div>
 
   <div class="controls">
-    <div class="cap">Estados (demo)</div>
+    <div class="cap">Estados</div>
     <div class="grp">
       <button data-state="idle">Reposo</button>
       <button data-state="listening">Escucha</button>
       <button data-state="thinking">Pensar</button>
       <button data-state="speaking">Hablar</button>
     </div>
+    <div class="cap">Emociones</div>
+    <div class="grp">
+      <button data-emotion="neutral">Neutral</button>
+      <button data-emotion="happy">Feliz</button>
+      <button data-emotion="alert">Alerta</button>
+      <button data-emotion="focused">Foco</button>
+      <button data-emotion="concern">Duda</button>
+    </div>
+    <div class="cap">Evento</div>
+    <div class="grp"><button id="pulse">Ejecución ⚡</button></div>
     <div class="cap">Conexión</div>
     <input id="ws-url" placeholder="ws://IP:8080/ws/hud" />
     <button id="ws-connect">Conectar</button>
@@ -176,25 +139,30 @@
 (() => {
   "use strict";
 
-  // ---- Paleta como valores para el canvas ----
-  const COLORS = {
-    idle:      { r: 53,  g: 230, b: 255 },  // cian
-    listening: { r: 120, g: 240, b: 255 },  // cian claro
-    thinking:  { r: 138, g: 147, b: 255 },  // violeta
-    speaking:  { r: 255, g: 180, b: 84  },  // ámbar
+  // ── Emociones = color base del enjambre ──
+  const EMOTIONS = {
+    neutral: { r: 54,  g: 226, b: 214 },
+    happy:   { r: 96,  g: 236, b: 168 },
+    alert:   { r: 120, g: 240, b: 255 },
+    focused: { r: 132, g: 150, b: 255 },
+    concern: { r: 255, g: 180, b: 96  },
   };
-  const STATE_LABEL = {
-    idle: "REPOSO", listening: "ESCUCHANDO", thinking: "PENSANDO", speaking: "HABLANDO",
+  const EMO_LABEL = { neutral:"NEUTRAL", happy:"FELIZ", alert:"ALERTA", focused:"FOCO", concern:"DUDA" };
+  // ── Estados = energía / comportamiento del enjambre ──
+  const STATES = {
+    idle:      { turb: 0.85, spin: 0.06, expand: 0.00, chaos: 1.0, label: "REPOSO" },
+    listening: { turb: 1.05, spin: 0.10, expand: 0.07, chaos: 1.1, label: "ESCUCHANDO" },
+    thinking:  { turb: 1.9,  spin: 0.28, expand: 0.02, chaos: 2.2, label: "PENSANDO" },
+    speaking:  { turb: 1.25, spin: 0.12, expand: 0.03, chaos: 1.3, label: "HABLANDO" },
   };
 
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
   const canvas = document.getElementById("scene");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false });
   const logEl = document.getElementById("log");
   const rState = document.getElementById("r-state");
+  const rEmotion = document.getElementById("r-emotion");
   const rLink = document.getElementById("r-link");
-  const rModel = document.getElementById("r-model");
   const dot = document.getElementById("dot");
 
   let W = 0, H = 0, DPR = 1;
@@ -208,221 +176,198 @@
   window.addEventListener("resize", resize);
   resize();
 
-  // ---- Estado y color interpolado ----
-  let state = "idle";
-  let col = { ...COLORS.idle };
-  let amp = 0;            // amplitud (voz simulada al hablar)
-  let speakClock = 0;
+  // ── Estado dinámico ──
+  let stateName = "idle";
+  let emotionName = "neutral";
+  let col = { ...EMOTIONS.neutral };            // color interpolado
+  let curTurb = STATES.idle.turb, curSpin = STATES.idle.spin,
+      curExpand = 0, curChaos = STATES.idle.chaos;
+  let amp = 0, speakClock = 0;                   // amplitud de "voz" al hablar
+  const pulses = [];                            // flares de ejecución
 
   function setState(next) {
-    if (!COLORS[next]) return;
-    state = next;
-    rState.textContent = STATE_LABEL[next];
-    const c = COLORS[next];
-    const hex = `rgb(${c.r},${c.g},${c.b})`;
-    rState.style.color = hex;
-    dot.style.background = hex;
-    dot.style.boxShadow = `0 0 8px ${hex}`;
+    if (!STATES[next]) return;
+    stateName = next;
+    rState.textContent = STATES[next].label;
   }
-  setState("idle");
+  function setEmotion(next) {
+    if (!EMOTIONS[next]) return;
+    emotionName = next;
+    rEmotion.textContent = EMO_LABEL[next];
+  }
+  function firePulse() { pulses.push({ r: 0, life: 1 }); }
 
-  function lerp(a, b, t) { return a + (b - a) * t; }
+  function refreshDot() {
+    const hex = `rgb(${col.r|0},${col.g|0},${col.b|0})`;
+    rState.style.color = hex; dot.style.background = hex; dot.style.boxShadow = `0 0 8px ${hex}`;
+  }
+  setState("idle"); setEmotion("neutral");
 
-  // ---- Bucle de animación ----
-  let t = 0;
-  const particles = Array.from({ length: 54 }, (_, i) => ({
-    a: (i / 54) * Math.PI * 2,
-    rad: 0.62 + Math.random() * 0.5,
-    spd: 0.15 + Math.random() * 0.5,
-    sz: 0.6 + Math.random() * 1.6,
-  }));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // pseudo-ruido por capas de senos (barato y orgánico)
+  function noise(a, t) {
+    return Math.sin(a * 3.0 + t * 0.7)  * 0.55
+         + Math.sin(a * 6.3 - t * 1.15) * 0.30
+         + Math.sin(a * 11.7 + t * 1.8) * 0.15
+         + Math.sin(a * 19.1 - t * 2.6) * 0.08;
+  }
 
+  // ── Partículas: un anillo denso + polvo disperso ──
+  const RING = 780, DUST = 240, N = RING + DUST;
+  const P = new Array(N);
+  for (let i = 0; i < N; i++) {
+    const ring = i < RING;
+    P[i] = {
+      a: Math.random() * Math.PI * 2,          // ángulo
+      band: ring ? (Math.random() - 0.5) * 0.10       // grosor del anillo
+                 : (Math.random() - 0.5) * 0.55,       // polvo más disperso
+      seed: Math.random() * 6.28,
+      spd: 0.6 + Math.random() * 0.9,
+      sz: ring ? 1.6 + Math.random() * 1.8 : 1.0 + Math.random() * 1.4,
+      bri: ring ? 0.5 + Math.random() * 0.5 : 0.2 + Math.random() * 0.4,
+    };
+  }
+
+  // sprite de partícula (punto con brillo suave), recoloreado por frame
+  const SP = 34;
+  const sprite = document.createElement("canvas");
+  sprite.width = sprite.height = SP;
+  const sctx = sprite.getContext("2d");
+  function paintSprite(r, g, b) {
+    sctx.clearRect(0, 0, SP, SP);
+    const grd = sctx.createRadialGradient(SP/2, SP/2, 0, SP/2, SP/2, SP/2);
+    grd.addColorStop(0,    `rgba(${Math.min(255,r+90)|0},${Math.min(255,g+90)|0},${Math.min(255,b+90)|0},0.95)`);
+    grd.addColorStop(0.35, `rgba(${r|0},${g|0},${b|0},0.55)`);
+    grd.addColorStop(1,    "rgba(0,0,0,0)");
+    sctx.fillStyle = grd; sctx.fillRect(0, 0, SP, SP);
+  }
+
+  let t = 0, rot = 0;
   function frame() {
     t += reduceMotion ? 0.004 : 0.016;
 
-    // color hacia el objetivo del estado
-    const target = COLORS[state];
-    const k = 0.06;
-    col.r = lerp(col.r, target.r, k);
-    col.g = lerp(col.g, target.g, k);
-    col.b = lerp(col.b, target.b, k);
-    const rgb = (a) => `rgba(${col.r|0},${col.g|0},${col.b|0},${a})`;
+    const S = STATES[stateName], E = EMOTIONS[emotionName];
+    // interpolaciones suaves
+    col.r = lerp(col.r, E.r, 0.05); col.g = lerp(col.g, E.g, 0.05); col.b = lerp(col.b, E.b, 0.05);
+    curTurb = lerp(curTurb, S.turb, 0.05);
+    curSpin = lerp(curSpin, S.spin, 0.05);
+    curExpand = lerp(curExpand, S.expand, 0.05);
+    curChaos = lerp(curChaos, S.chaos, 0.05);
+    refreshDot();
 
-    // amplitud de voz (al hablar) o respiración
-    if (state === "speaking") {
-      speakClock += 0.4;
-      amp = lerp(amp, 0.5 + 0.5 * Math.abs(Math.sin(speakClock) * Math.sin(speakClock * 0.37 + 1)), 0.25);
-    } else {
-      amp = lerp(amp, 0, 0.08);
-    }
+    if (stateName === "speaking") {
+      speakClock += 0.42;
+      amp = lerp(amp, 0.5 + 0.5 * Math.abs(Math.sin(speakClock) * Math.sin(speakClock * 0.37 + 1)), 0.3);
+    } else amp = lerp(amp, 0, 0.08);
 
-    ctx.clearRect(0, 0, W, H);
-    const cx = W / 2, cy = H * 0.46;
-    const base = Math.min(W, H) * 0.16;
-    const breathe = reduceMotion ? 0 : Math.sin(t * 1.3) * 0.04;
-    const listenPush = state === "listening" ? 0.10 : 0;
-    const core = base * (1 + breathe + listenPush + amp * 0.28);
+    rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
 
-    // ---- resplandor de fondo ----
-    const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, base * 3.2);
-    glow.addColorStop(0, rgb(0.18));
-    glow.addColorStop(0.5, rgb(0.05));
-    glow.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = glow;
+    // rastro suave (persistencia estilo humo)
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(4,7,14,0.30)";
     ctx.fillRect(0, 0, W, H);
 
-    // ---- anillos concéntricos giratorios ----
-    const rings = [
-      { r: 1.55, w: 1,   seg: 3,  spd: 0.20, gap: 0.55 },
-      { r: 1.95, w: 1.4, seg: 5,  spd: -0.13, gap: 0.30 },
-      { r: 2.45, w: 1,   seg: 8,  spd: 0.08, gap: 0.18 },
-    ];
-    const spin = state === "thinking" ? 3.2 : 1;
-    rings.forEach((ring, i) => {
-      const rr = base * ring.r;
-      const rot = t * ring.spd * spin + i;
-      ctx.lineWidth = ring.w;
-      for (let s = 0; s < ring.seg; s++) {
-        const a0 = rot + (s / ring.seg) * Math.PI * 2;
-        const a1 = a0 + (Math.PI * 2 / ring.seg) * (1 - ring.gap);
-        ctx.beginPath();
-        ctx.arc(cx, cy, rr, a0, a1);
-        ctx.strokeStyle = rgb(0.35 - i * 0.07);
-        ctx.stroke();
-      }
-    });
+    const cx = W / 2, cy = H * 0.46;
+    const R = Math.min(W, H) * 0.30;              // radio grande del anillo
+    const breathe = reduceMotion ? 0 : Math.sin(t * 1.1) * 0.02;
+    const baseR = R * (1 + breathe + curExpand + amp * 0.10);
 
-    // ---- barrido de escaneo (al pensar) ----
-    if (state === "thinking" && !reduceMotion) {
-      const a = t * 2.4 % (Math.PI * 2);
-      const sweep = ctx.createConicGradient ? null : null;
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.arc(cx, cy, base * 2.6, a, a + 0.5);
-      ctx.closePath();
-      ctx.fillStyle = rgb(0.10);
-      ctx.fill();
-      ctx.restore();
+    paintSprite(col.r, col.g, col.b);
+    ctx.globalCompositeOperation = "lighter";
+
+    const half = SP / 2;
+    for (let i = 0; i < N; i++) {
+      const p = P[i];
+      const a = p.a + rot * p.spd;
+      // desplazamiento radial turbulento
+      const n = noise(a * (0.9 + curChaos * 0.15) + p.seed, t * (0.8 + curChaos * 0.35));
+      const disp = n * curTurb * R * 0.16 + p.band * R + amp * Math.sin(a * 8 + t * 6) * R * 0.05;
+      const rr = baseR + disp;
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a) * rr;
+      const flick = 0.7 + 0.3 * Math.sin(t * 3 * p.spd + p.seed);
+      ctx.globalAlpha = p.bri * flick;
+      const s = p.sz * (1 + amp * 0.4);
+      ctx.drawImage(sprite, x - half * (s/2.2), y - half * (s/2.2), SP * (s/2.2), SP * (s/2.2));
     }
 
-    // ---- partículas orbitando ----
-    particles.forEach((p) => {
-      const a = p.a + t * p.spd * (state === "thinking" ? 2.2 : 1);
-      const rr = base * (p.rad + 1.0) + Math.sin(t * p.spd * 3 + p.a) * 4;
-      const px = cx + Math.cos(a) * rr;
-      const py = cy + Math.sin(a) * rr;
-      ctx.beginPath();
-      ctx.arc(px, py, p.sz, 0, Math.PI * 2);
-      ctx.fillStyle = rgb(0.6);
-      ctx.fill();
-    });
-
-    // ---- ondas al escuchar ----
-    if (state === "listening" && !reduceMotion) {
-      for (let i = 0; i < 3; i++) {
-        const prog = ((t * 0.6 + i / 3) % 1);
-        ctx.beginPath();
-        ctx.arc(cx, cy, core + prog * base * 2.2, 0, Math.PI * 2);
-        ctx.strokeStyle = rgb(0.35 * (1 - prog));
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
+    // flares de ejecución (anillos que se expanden y desaparecen)
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const pu = pulses[i];
+      pu.r += 8; pu.life -= 0.02;
+      if (pu.life <= 0) { pulses.splice(i, 1); continue; }
+      ctx.globalAlpha = pu.life * 0.5;
+      ctx.strokeStyle = `rgb(${col.r|0},${col.g|0},${col.b|0})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, baseR + pu.r, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // ---- núcleo (reactor) ----
-    const coreGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, core);
-    coreGrad.addColorStop(0, `rgba(${Math.min(255,col.r+120)|0},${Math.min(255,col.g+120)|0},${Math.min(255,col.b+120)|0},0.95)`);
-    coreGrad.addColorStop(0.45, rgb(0.55));
-    coreGrad.addColorStop(1, rgb(0.05));
-    ctx.beginPath();
-    ctx.arc(cx, cy, core, 0, Math.PI * 2);
-    ctx.fillStyle = coreGrad;
-    ctx.fill();
+    // núcleo tenue central
+    ctx.globalAlpha = 1;
+    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.55);
+    cg.addColorStop(0, `rgba(${col.r|0},${col.g|0},${col.b|0},${0.10 + amp * 0.12})`);
+    cg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, R * 0.55, 0, Math.PI * 2); ctx.fill();
 
-    // aro interior nítido
-    ctx.beginPath();
-    ctx.arc(cx, cy, core * 0.72, 0, Math.PI * 2);
-    ctx.strokeStyle = rgb(0.8);
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
-  // ---- Registro de conversación ----
+  // ── Consola ──
   function addLine(who, text, cls) {
-    const line = document.createElement("div");
-    line.className = "line " + (cls || "");
+    const line = document.createElement("div"); line.className = "line " + (cls || "");
     const w = document.createElement("div"); w.className = "who"; w.textContent = who;
     const x = document.createElement("div"); x.className = "txt"; x.textContent = text;
-    line.appendChild(w); line.appendChild(x);
-    logEl.appendChild(line);
+    line.appendChild(w); line.appendChild(x); logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
   }
+  addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
 
-  addLine("SISTEMA", "HUD iniciado. Modo demo (sin servidor). Conéctate a tu gateway para hablar con JARVIS de verdad.", "system");
-
-  // ---- Conexión WebSocket al gateway ----
+  // ── WebSocket al gateway ──
   let ws = null;
   function connect(url) {
     if (!url) return;
-    try {
-      rLink.textContent = "CONECTANDO…";
-      ws = new WebSocket(url);
-    } catch (e) { rLink.textContent = "ERROR"; return; }
-
-    ws.onopen = () => {
-      rLink.textContent = "EN LÍNEA";
-      addLine("SISTEMA", "Conectado a " + url, "system");
-    };
+    try { rLink.textContent = "CONECTANDO…"; ws = new WebSocket(url); }
+    catch (e) { rLink.textContent = "ERROR"; return; }
+    ws.onopen = () => { rLink.textContent = "EN LÍNEA"; addLine("SISTEMA", "Conectado a " + url, "system"); };
     ws.onclose = () => { rLink.textContent = "DESCONECTADO"; ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
-      let msg; try { msg = JSON.parse(ev.data); } catch { return; }
-      if (msg.type === "state") setState(msg.state);
-      else if (msg.type === "reply") addLine("JARVIS", msg.reply, "jarvis");
-      else if (msg.type === "proactive") addLine("JARVIS", "⚡ " + msg.text, "jarvis");
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      if (m.type === "state") setState(m.state);
+      else if (m.type === "emotion") setEmotion(m.emotion);
+      else if (m.type === "event") firePulse();
+      else if (m.type === "reply") { addLine("JARVIS", m.reply, "jarvis"); if (m.tools_used && m.tools_used.length) firePulse(); }
+      else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); firePulse(); }
     };
   }
 
-  // ---- Demo local cuando no hay servidor ----
-  const CANNED = [
-    "A su disposición. Sistemas nominales.",
-    "Hecho. ¿Algo más, jefe?",
-    "Consultado el estado del servidor: todo en orden.",
-    "Recordatorio programado. Le avisaré a tiempo.",
-  ];
-  let canIdx = 0;
-  function demoReply(text) {
+  // ── Demo local ──
+  const CANNED = ["A su disposición. Sistemas nominales.", "Hecho, jefe.",
+                  "Estado del servidor: todo en orden.", "Recordatorio programado."];
+  let ci = 0;
+  function demoReply() {
     setState("listening");
     setTimeout(() => setState("thinking"), 400);
-    setTimeout(() => {
-      setState("speaking");
-      addLine("JARVIS", CANNED[canIdx++ % CANNED.length], "jarvis");
-    }, 1600);
-    setTimeout(() => setState("idle"), 3200);
+    setTimeout(() => { firePulse(); }, 900);
+    setTimeout(() => { setState("speaking"); addLine("JARVIS", CANNED[ci++ % CANNED.length], "jarvis"); }, 1700);
+    setTimeout(() => setState("idle"), 3400);
   }
 
-  // ---- Entrada de texto ----
   document.getElementById("form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const input = document.getElementById("input");
-    const text = input.value.trim();
+    const input = document.getElementById("input"); const text = input.value.trim();
     if (!text) return;
-    addLine("TÚ", text, "user");
-    input.value = "";
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text);
-    else demoReply(text);
+    addLine("TÚ", text, "user"); input.value = "";
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else demoReply();
   });
 
-  // ---- Botones de estado (demo) ----
-  document.querySelectorAll(".controls [data-state]").forEach((b) => {
-    b.addEventListener("click", () => setState(b.dataset.state));
-  });
+  document.querySelectorAll("[data-state]").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state)));
+  document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
+  document.getElementById("pulse").addEventListener("click", firePulse);
 
-  // ---- Conectar ----
   const wsInput = document.getElementById("ws-url");
   const params = new URLSearchParams(location.search);
   if (params.get("ws")) { wsInput.value = params.get("ws"); connect(wsInput.value); }
