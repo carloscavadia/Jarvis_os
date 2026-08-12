@@ -69,15 +69,17 @@ class Orchestrator:
         self,
         user_message: str,
         on_text_delta: TextDeltaFn | None = None,
+        confirm: ConfirmFn | None = None,
     ) -> AgentReply:
         """Serializa los turnos de una sesión para no corromper su historial."""
         async with self._send_lock:
-            return await self._send_locked(user_message, on_text_delta)
+            return await self._send_locked(user_message, on_text_delta, confirm)
 
     async def _send_locked(
         self,
         user_message: str,
         on_text_delta: TextDeltaFn | None = None,
+        confirm: ConfirmFn | None = None,
     ) -> AgentReply:
         """Procesa un mensaje del usuario y devuelve la respuesta final del agente."""
         self._history.append({"role": "user", "content": user_message})
@@ -121,7 +123,7 @@ class Orchestrator:
                 tools_used.append(call.name)
                 logger.info("Ejecutando herramienta %s con %s", call.name, call.input)
 
-                allowed = await self._maybe_confirm(call.name, call.input)
+                allowed = await self._maybe_confirm(call.name, call.input, confirm)
                 if not allowed:
                     results.append(
                         {
@@ -164,11 +166,17 @@ class Orchestrator:
             trimmed.pop(0)
         self._history = trimmed
 
-    async def _maybe_confirm(self, name: str, arguments: dict[str, Any]) -> bool:
+    async def _maybe_confirm(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        confirm: ConfirmFn | None = None,
+    ) -> bool:
         tool = self._registry.get(name)
         if tool is None or not tool.requires_confirmation:
             return True
-        if self._confirm is None:
+        confirmation_policy = confirm or self._confirm
+        if confirmation_policy is None:
             # Seguridad fail-closed: una herramienta sensible nunca se ejecuta si el
             # canal no proporcionó una política explícita de confirmación.
             logger.warning(
@@ -176,4 +184,4 @@ class Orchestrator:
                 name,
             )
             return False
-        return await self._confirm(name, arguments)
+        return await confirmation_policy(name, arguments)

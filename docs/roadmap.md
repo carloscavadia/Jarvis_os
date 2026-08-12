@@ -30,6 +30,8 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Detección de palabra de activación ("Jarvis").
 
 ## Fase 3 — Capacidades (herramientas)
+- [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.
+- [x] Instalación limitada de paquetes con aprobación humana interactiva.
 - [ ] Domótica: Home Assistant (encender luces, leer sensores).
 - [ ] Búsqueda web y resumen.
 - [ ] Calendario y recordatorios.

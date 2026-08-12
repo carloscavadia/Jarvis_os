@@ -38,10 +38,17 @@ services:
       JARVIS_STT_DOWNLOAD_ROOT: /app/data/models
       JARVIS_TTS_MODEL_PATH: /app/voices/es_MX-ald-medium.onnx
       JARVIS_GATEWAY_CORS_ORIGINS: "${JARVIS_GATEWAY_CORS_ORIGINS:-http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:5173,http://localhost:5173}"
+      JARVIS_AGENT_CONTROL_ENABLED: "${JARVIS_AGENT_CONTROL_ENABLED:-true}"
+      JARVIS_WORKSPACE_ROOT: /app/workspace
+      JARVIS_PACKAGE_INSTALL_ENABLED: "${JARVIS_PACKAGE_INSTALL_ENABLED:-true}"
+      JARVIS_PACKAGE_INSTALL_MANAGERS: "${JARVIS_PACKAGE_INSTALL_MANAGERS:-pip}"
+      JARVIS_APPROVAL_TIMEOUT_SECONDS: "${JARVIS_APPROVAL_TIMEOUT_SECONDS:-120}"
     ports:
       - "8080:8080"
     volumes:
       - jarvis_data:/app/data
+      - jarvis_workspace:/app/workspace
+      - jarvis_packages:/app/.local
     depends_on:
       - mqtt
     security_opt:
@@ -59,5 +66,7 @@ services:
 
 volumes:
   jarvis_data:
+  jarvis_workspace:
+  jarvis_packages:
   mqtt_data:
   mqtt_log:

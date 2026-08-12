@@ -12,26 +12,28 @@ from jarvis_core.config import Settings
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
-from jarvis_core.tools.builtin.system_info import SystemInfoTool
-from jarvis_core.tools.builtin.shell import ShellTool
-from jarvis_core.tools.builtin.memory_tools import RememberTool, RecallTool
-from jarvis_core.tools.builtin.task_tools import (
-    ScheduleTaskTool,
-    ListTasksTool,
-    CancelTaskTool,
-)
 from jarvis_core.tools.builtin.emotion_tool import SetEmotionTool
+from jarvis_core.tools.builtin.filesystem import register_filesystem_tools
+from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
+from jarvis_core.tools.builtin.packages import InstallPackageTool
+from jarvis_core.tools.builtin.shell import ShellTool
+from jarvis_core.tools.builtin.system_info import SystemInfoTool
+from jarvis_core.tools.builtin.task_tools import (
+    CancelTaskTool,
+    ListTasksTool,
+    ScheduleTaskTool,
+)
 
 __all__ = [
-    "build_default_registry",
-    "SystemInfoTool",
-    "ShellTool",
-    "RememberTool",
-    "RecallTool",
-    "ScheduleTaskTool",
-    "ListTasksTool",
     "CancelTaskTool",
+    "ListTasksTool",
+    "RecallTool",
+    "RememberTool",
+    "ScheduleTaskTool",
     "SetEmotionTool",
+    "ShellTool",
+    "SystemInfoTool",
+    "build_default_registry",
 ]
 
 
@@ -56,4 +58,12 @@ def build_default_registry(
         registry.register(CancelTaskTool(tasks))
     if emotion is not None:
         registry.register(SetEmotionTool(emotion))
+    if settings.agent_control_enabled:
+        register_filesystem_tools(
+            registry,
+            root=settings.workspace_root,
+            max_file_bytes=settings.workspace_max_file_bytes,
+        )
+        if settings.package_install_enabled:
+            registry.register(InstallPackageTool(settings.package_install_managers))
     return registry

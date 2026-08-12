@@ -27,11 +27,14 @@ RUN mkdir -p /app/voices \
 RUN addgroup --system jarvis \
     && adduser --system --ingroup jarvis --home /app jarvis \
     && mkdir -p /app/data \
-    && chown -R jarvis:jarvis /app/data
+    && mkdir -p /app/workspace /app/.local \
+    && chown -R jarvis:jarvis /app/data /app/workspace /app/.local
 ENV JARVIS_MEMORY_DB=/app/data/jarvis_memory.db
 ENV JARVIS_TASKS_DB=/app/data/jarvis_tasks.db
 ENV JARVIS_STT_DOWNLOAD_ROOT=/app/data/models
 ENV JARVIS_TTS_MODEL_PATH=/app/voices/es_MX-ald-medium.onnx
+ENV JARVIS_WORKSPACE_ROOT=/app/workspace
+ENV PATH=/app/.local/bin:${PATH}
 
 USER jarvis
 

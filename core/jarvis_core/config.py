@@ -113,6 +113,14 @@ class Settings:
         ]
     )
 
+    # --- Control agéntico del servidor ---
+    agent_control_enabled: bool = False
+    workspace_root: str = "data/workspace"
+    workspace_max_file_bytes: int = 256 * 1024
+    package_install_enabled: bool = False
+    package_install_managers: list[str] = field(default_factory=lambda: ["pip"])
+    approval_timeout_seconds: float = 120.0
+
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
@@ -174,6 +182,20 @@ class Settings:
                     "http://localhost:5173",
                 ],
             ),
+            agent_control_enabled=_get_bool("JARVIS_AGENT_CONTROL_ENABLED", False),
+            workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
+            workspace_max_file_bytes=max(
+                1024,
+                int(os.environ.get("JARVIS_WORKSPACE_MAX_FILE_BYTES", "262144")),
+            ),
+            package_install_enabled=_get_bool("JARVIS_PACKAGE_INSTALL_ENABLED", False),
+            package_install_managers=_get_list(
+                "JARVIS_PACKAGE_INSTALL_MANAGERS", ["pip"]
+            ),
+            approval_timeout_seconds=max(
+                15.0,
+                float(os.environ.get("JARVIS_APPROVAL_TIMEOUT_SECONDS", "120")),
+            ),
         )
 
     def system_prompt(self) -> str:
@@ -195,6 +217,10 @@ class Settings:
             f"que cambian el estado del sistema, confirma primero.\n\n"
             f"Cuando uses la memoria, guarda hechos y preferencias útiles del usuario para "
             f"recordarlos en el futuro. Sé conciso: responde lo que se te pide sin relleno.\n\n"
+            f"Para trabajar con archivos usa exclusivamente las herramientas del workspace; "
+            f"nunca inventes que accediste a una ruta externa. Puedes crear archivos y carpetas "
+            f"nuevos directamente. Modificar archivos existentes e instalar paquetes requiere "
+            f"la aprobación explícita que el sistema solicitará al usuario.\n\n"
             f"Tienes una presencia visual (un enjambre de partículas) que refleja tu emoción. "
             f"Usa la herramienta set_emotion para expresar cómo estás cuando cambie tu ánimo, "
             f"normalmente antes de responder: 'focused' al razonar o trabajar, 'happy' al "

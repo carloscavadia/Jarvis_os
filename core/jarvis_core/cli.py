@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
+from typing import Any
 
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.agent.orchestrator import Orchestrator
@@ -19,6 +21,16 @@ from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.builtin import build_default_registry
+
+
+async def _confirm_terminal(name: str, arguments: dict[str, Any]) -> bool:
+    """Solicita autorización humana; el modelo nunca puede concedérsela solo."""
+    detail = json.dumps(arguments, ensure_ascii=False)
+    answer = await asyncio.to_thread(
+        input,
+        f"\nPermiso requerido para {name} con {detail}. ¿Autorizar? [s/N] ",
+    )
+    return answer.strip().lower() in {"s", "si", "sí", "y", "yes"}
 
 
 def _load_dotenv() -> None:
@@ -43,7 +55,13 @@ def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
     emotion = EmotionState()
     registry = build_default_registry(settings, memory, tasks, emotion)
     llm = build_llm(settings)
-    orchestrator = Orchestrator(llm, registry, settings, emotion=emotion)
+    orchestrator = Orchestrator(
+        llm,
+        registry,
+        settings,
+        confirm=_confirm_terminal,
+        emotion=emotion,
+    )
     return orchestrator, memory, tasks
 
 
@@ -91,7 +109,9 @@ def _tools(settings: Settings) -> None:
 
 def main() -> None:
     _load_dotenv()
-    parser = argparse.ArgumentParser(prog="jarvis", description="JARVIS_OS — núcleo agéntico")
+    parser = argparse.ArgumentParser(
+        prog="jarvis", description="JARVIS_OS — núcleo agéntico"
+    )
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("chat", help="Conversación interactiva por terminal")

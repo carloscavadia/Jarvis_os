@@ -524,6 +524,7 @@
   let requestStartedAt = 0;
   let firstDeltaSeen = false;
   let busy = false;
+  let pendingApproval = null;
   function setBusy(next) {
     busy = next;
     messageInput.disabled = next;
@@ -602,6 +603,23 @@
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
       else if (m.type === "error") { finishStreamReply(); addLine("SISTEMA", m.error || "Error del servidor.", "system"); setEmotion("concern"); }
       else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); speak(m.text); firePulse(); }
+      else if (m.type === "approval_required") {
+        pendingApproval = m;
+        setBusy(false);
+        setState("idle"); setEmotion("alert");
+        messageInput.placeholder = "Escribe APROBAR o DENEGAR…";
+        addLine("SISTEMA", "PERMISO REQUERIDO · " + m.summary + " Escribe APROBAR o DENEGAR.", "system");
+      }
+      else if (m.type === "approval_invalid") {
+        setBusy(false);
+        messageInput.placeholder = "Escribe APROBAR o DENEGAR…";
+        addLine("SISTEMA", m.message || "Confirmación inválida.", "system");
+      }
+      else if (m.type === "approval_resolved") {
+        if (pendingApproval?.approval_id === m.approval_id) pendingApproval = null;
+        addLine("SISTEMA", m.approved ? "Permiso concedido." : "Permiso denegado.", "system");
+        setBusy(true);
+      }
     };
   }
 
@@ -623,7 +641,25 @@
   document.getElementById("form").addEventListener("submit", (e) => {
     e.preventDefault();
     const text = messageInput.value.trim();
-    if (!text || busy) return;
+    if (!text || (busy && !pendingApproval)) return;
+    if (pendingApproval) {
+      const normalized = text.toLocaleLowerCase("es");
+      const approved = ["aprobar", "apruebo", "sí", "si"].includes(normalized);
+      const denied = ["denegar", "deniego", "no"].includes(normalized);
+      if (!approved && !denied) {
+        addLine("SISTEMA", "Responde únicamente APROBAR o DENEGAR.", "system");
+        return;
+      }
+      addLine("TÚ", approved ? "APROBAR" : "DENEGAR", "user");
+      ws.send(JSON.stringify({
+        type: "approval",
+        approval_id: pendingApproval.approval_id,
+        approved,
+      }));
+      messageInput.value = "";
+      setBusy(true);
+      return;
+    }
     addLine("TÚ", text, "user"); messageInput.value = "";
     requestStartedAt = performance.now(); firstDeltaSeen = false; rLatency.textContent = "ESPERANDO…";
     setBusy(true);

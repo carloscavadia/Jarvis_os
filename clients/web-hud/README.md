@@ -46,6 +46,12 @@ Si el servicio local no está disponible, el HUD usa el reconocimiento y la sín
 navegador. Chrome ofrece la mejor compatibilidad para ese fallback. El HUD debe servirse
 desde `localhost` o mediante HTTPS para que el navegador permita usar el micrófono.
 
+### Aprobaciones de acciones sensibles
+
+Cuando JARVIS quiera modificar un archivo existente o instalar un paquete, el HUD muestra
+la operación exacta y pausa el agente. Escribe **APROBAR** para permitirla o **DENEGAR**
+para bloquearla. La petición vence automáticamente y nunca puede ser aprobada por el LLM.
+
 ## Estados
 
 Ver [`docs/protocol.md`](../../docs/protocol.md) para el contrato completo de estados y

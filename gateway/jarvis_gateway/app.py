@@ -6,9 +6,12 @@ captura de entrada; el núcleo sigue siendo la única fuente de inteligencia y e
 
 from __future__ import annotations
 
+import asyncio
 import hmac
+import json
 import logging
 import re
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import (
@@ -51,6 +54,27 @@ def _valid_api_key(candidate: str | None) -> bool:
         and candidate
         and hmac.compare_digest(candidate, settings.gateway_api_key)
     )
+
+
+def _approval_summary(name: str, arguments: dict[str, object]) -> str:
+    if name == "install_package":
+        return f"Instalar el paquete {arguments.get('package')} con {arguments.get('manager')}."
+    if name == "update_file":
+        content = str(arguments.get("content", ""))
+        return (
+            f"Modificar {arguments.get('path')} en modo {arguments.get('mode', 'replace')} "
+            f"({len(content.encode('utf-8'))} bytes)."
+        )
+    return f"Ejecutar la herramienta sensible {name}."
+
+
+def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object]:
+    """Evita reenviar contenidos completos o secretos innecesarios al cliente."""
+    public = dict(arguments)
+    if "content" in public:
+        content = str(public.pop("content"))
+        public["content_bytes"] = len(content.encode("utf-8"))
+    return public
 
 
 async def require_api_key(
@@ -252,6 +276,88 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     notifier.add_ws(websocket)
     logger.info("WebSocket conectado: sesión %s", session_id)
     await websocket.send_json({"type": "state", "state": "idle"})
+
+    async def request_confirmation(name: str, arguments: dict[str, object]) -> bool:
+        approval_id = secrets.token_urlsafe(8)
+        deadline = asyncio.get_running_loop().time() + settings.approval_timeout_seconds
+        await websocket.send_json(
+            {
+                "type": "approval_required",
+                "approval_id": approval_id,
+                "tool": name,
+                "summary": _approval_summary(name, arguments),
+                "arguments": _public_approval_arguments(arguments),
+                "timeout_seconds": settings.approval_timeout_seconds,
+            }
+        )
+        for _ in range(3):
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                break
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=remaining,
+                )
+            except asyncio.TimeoutError:
+                await websocket.send_json(
+                    {
+                        "type": "approval_resolved",
+                        "approval_id": approval_id,
+                        "approved": False,
+                        "reason": "timeout",
+                    }
+                )
+                return False
+
+            approved: bool | None = None
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = None
+            if (
+                isinstance(payload, dict)
+                and payload.get("type") == "approval"
+                and payload.get("approval_id") == approval_id
+                and isinstance(payload.get("approved"), bool)
+            ):
+                approved = payload["approved"]
+            else:
+                normalized = raw.strip().lower()
+                if normalized == f"aprobar {approval_id}".lower():
+                    approved = True
+                elif normalized == f"denegar {approval_id}".lower():
+                    approved = False
+
+            if approved is None:
+                await websocket.send_json(
+                    {
+                        "type": "approval_invalid",
+                        "approval_id": approval_id,
+                        "message": "Responde APROBAR o DENEGAR desde el HUD.",
+                    }
+                )
+                continue
+
+            await websocket.send_json(
+                {
+                    "type": "approval_resolved",
+                    "approval_id": approval_id,
+                    "approved": approved,
+                    "reason": "user",
+                }
+            )
+            return approved
+        await websocket.send_json(
+            {
+                "type": "approval_resolved",
+                "approval_id": approval_id,
+                "approved": False,
+                "reason": "invalid_or_timeout",
+            }
+        )
+        return False
+
     try:
         while True:
             message = (await websocket.receive_text()).strip()
@@ -276,7 +382,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
 
             # El canal continúa disponible tras un fallo del proveedor.
             try:
-                reply = await orchestrator.send(message, on_text_delta=send_text_delta)
+                reply = await orchestrator.send(
+                    message,
+                    on_text_delta=send_text_delta,
+                    confirm=request_confirmation,
+                )
             except Exception:
                 logger.exception("Error procesando la sesión WebSocket %s", session_id)
                 await websocket.send_json(

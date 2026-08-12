@@ -50,6 +50,8 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 { "type": "event",     "event": "execution", "label": "system_info" }
 { "type": "reply",     "reply": "Todo en orden, jefe.", "tools_used": ["system_info"] }
 { "type": "proactive", "source": "task", "text": "Recordatorio: reunión en 10 min." }
+{ "type": "approval_required", "approval_id": "...", "tool": "install_package", "summary": "..." }
+{ "type": "approval_resolved", "approval_id": "...", "approved": true, "reason": "user" }
 ```
 
 - **`state`** — mueve el comportamiento del enjambre (energía, turbulencia, expansión).
@@ -61,6 +63,18 @@ El cliente envía **texto plano** (el mensaje del usuario). El servidor responde
 - **`reply`** — cierra el stream y contiene el texto completo autoritativo; permite corregir
   un fragmento perdido y mantiene compatibilidad con clientes que no implementan streaming.
 - **`proactive`** — aviso completo a mostrar/reproducir.
+- **`approval_required`** — pausa una acción sensible y solicita decisión humana.
+- **`approval_resolved`** — confirma si la acción fue autorizada o bloqueada.
+
+Durante una aprobación el cliente responde por el mismo WebSocket:
+
+```json
+{"type":"approval","approval_id":"<id recibido>","approved":true}
+```
+
+El identificador es efímero y solo sirve para la acción pendiente. Sin respuesta, con un
+identificador incorrecto o al vencer el plazo, el gateway deniega la operación. El modelo
+no puede fabricar su propia aprobación.
 
 ### API de voz local
 

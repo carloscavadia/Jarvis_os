@@ -67,6 +67,14 @@ Herramientas de arranque (`core/jarvis_core/tools/builtin/`):
 - `system_info` — hora, uso de CPU/RAM/disco del servidor.
 - `run_shell` — ejecuta comandos (con lista blanca; herramienta sensible, ver seguridad).
 - `remember` / `recall` — escribe y lee memoria a largo plazo.
+- `list_directory` / `read_file` — inspeccionan el workspace persistente.
+- `create_directory` / `create_file` — crean recursos nuevos sin sobrescribir.
+- `update_file` — modifica un archivo existente después de aprobación humana.
+- `install_package` — instala un paquete permitido después de aprobación humana.
+
+El acceso a archivos está confinado a `JARVIS_WORKSPACE_ROOT`. Las rutas absolutas, `..`
+que escapa de la raíz y enlaces simbólicos hacia el exterior se rechazan. El contenedor no
+recibe acceso al sistema de archivos completo del host ni al socket de Docker.
 
 ### 2.3 Multiagente (delegación)
 

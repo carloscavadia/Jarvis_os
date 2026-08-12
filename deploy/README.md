@@ -46,6 +46,25 @@ curl -H 'X-Jarvis-Key: <JARVIS_GATEWAY_API_KEY>' \
   http://<ip-del-servidor>:8080/voice/status
 ```
 
+### Workspace y control agéntico
+
+JARVIS puede crear carpetas y archivos, leerlos y solicitar permiso para modificar los ya
+existentes. En Docker todo queda dentro de los volúmenes persistentes `jarvis_workspace` y
+`jarvis_packages`; no tiene acceso al sistema de archivos completo ni puede modificar el
+host o Docker.
+
+Prueba desde el HUD con: `crea la carpeta informes y dentro un archivo estado.txt`.
+Para ver el contenido persistente desde Ubuntu:
+
+```bash
+sudo docker exec jarvis-gateway find /app/workspace -maxdepth 3 -type f -print
+```
+
+La instalación `pip` ocurre en `/app/.local` y siempre requiere aprobación. Los paquetes
+APT del host permanecen desactivados en Docker. Si se usa el despliegue systemd, se puede
+habilitar `apt` con `JARVIS_PACKAGE_INSTALL_MANAGERS=apt,pip`, pero solo después de crear
+manualmente una política `sudoers` limitada para el usuario `jarvis`.
+
 Prueba desde otro equipo de la red:
 
 ```bash

@@ -6,13 +6,26 @@ from jarvis_gateway import app as gateway_module
 
 
 class FakeOrchestrator:
-    async def send(self, message: str, on_text_delta=None) -> AgentReply:
+    async def send(self, message: str, on_text_delta=None, confirm=None) -> AgentReply:
         if on_text_delta is not None:
             await on_text_delta("eco:")
             await on_text_delta(message)
         return AgentReply(
             text=f"eco:{message}",
             tools_used=["system_info"],
+            emotion="focused",
+        )
+
+
+class ApprovalOrchestrator:
+    async def send(self, message: str, on_text_delta=None, confirm=None) -> AgentReply:
+        assert confirm is not None
+        approved = await confirm(
+            "install_package",
+            {"manager": "pip", "package": "requests"},
+        )
+        return AgentReply(
+            text="Instalación autorizada." if approved else "Instalación denegada.",
             emotion="focused",
         )
 
@@ -32,6 +45,10 @@ class FakeVoiceRuntime:
 
 async def _fake_get(session_id: str) -> FakeOrchestrator:
     return FakeOrchestrator()
+
+
+async def _approval_get(session_id: str) -> ApprovalOrchestrator:
+    return ApprovalOrchestrator()
 
 
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):
@@ -133,5 +150,48 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
                 "type": "reply",
                 "reply": "eco:estado",
                 "tools_used": ["system_info"],
+            }
+            assert websocket.receive_json() == {"type": "state", "state": "idle"}
+
+        monkeypatch.setattr(gateway_module.sessions, "get", _approval_get)
+        with client.websocket_connect(
+            "/ws/approval-hub?token=ci-test-key"
+        ) as websocket:
+            assert websocket.receive_json() == {"type": "state", "state": "idle"}
+            websocket.send_text("instala requests")
+            assert websocket.receive_json() == {"type": "state", "state": "listening"}
+            assert websocket.receive_json() == {"type": "state", "state": "thinking"}
+            approval = websocket.receive_json()
+            assert approval["type"] == "approval_required"
+            assert approval["tool"] == "install_package"
+            assert approval["arguments"] == {
+                "manager": "pip",
+                "package": "requests",
+            }
+            websocket.send_json(
+                {
+                    "type": "approval",
+                    "approval_id": approval["approval_id"],
+                    "approved": True,
+                }
+            )
+            resolved = websocket.receive_json()
+            assert resolved == {
+                "type": "approval_resolved",
+                "approval_id": approval["approval_id"],
+                "approved": True,
+                "reason": "user",
+            }
+            assert websocket.receive_json() == {"type": "state", "state": "speaking"}
+            assert websocket.receive_json() == {"type": "reply_start"}
+            assert websocket.receive_json() == {
+                "type": "reply_delta",
+                "delta": "Instalación autorizada.",
+            }
+            assert websocket.receive_json() == {"type": "emotion", "emotion": "focused"}
+            assert websocket.receive_json() == {
+                "type": "reply",
+                "reply": "Instalación autorizada.",
+                "tools_used": [],
             }
             assert websocket.receive_json() == {"type": "state", "state": "idle"}
