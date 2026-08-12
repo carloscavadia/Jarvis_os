@@ -1,13 +1,10 @@
-"""Memoria a largo plazo respaldada por SQLite.
-
-Versión mínima: almacén clave/hecho con etiquetas y búsqueda por texto. En una fase
-posterior se añadirá búsqueda semántica con embeddings (sqlite-vec / pgvector).
-"""
+"""Memoria a largo plazo respaldada por SQLite y segura entre hilos."""
 
 from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 from dataclasses import dataclass
 
@@ -27,71 +24,88 @@ class MemoryStore:
         directory = os.path.dirname(db_path)
         if directory:
             os.makedirs(directory, exist_ok=True)
-        self._conn = sqlite3.connect(db_path)
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._init_schema()
 
     def _init_schema(self) -> None:
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memories (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                key        TEXT NOT NULL,
-                value      TEXT NOT NULL,
-                tags       TEXT NOT NULL DEFAULT '',
-                created_at REAL NOT NULL
-            )
-            """
-        )
-        self._conn.commit()
-
-    def remember(self, key: str, value: str, tags: str = "") -> int:
-        """Guarda o actualiza un hecho. Si la clave existe, se sobrescribe."""
-        cur = self._conn.execute("SELECT id FROM memories WHERE key = ?", (key,))
-        row = cur.fetchone()
-        now = time.time()
-        if row:
+        with self._lock:
             self._conn.execute(
-                "UPDATE memories SET value = ?, tags = ?, created_at = ? WHERE id = ?",
-                (value, tags, now, row["id"]),
+                """
+                CREATE TABLE IF NOT EXISTS memories (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key        TEXT NOT NULL UNIQUE,
+                    value      TEXT NOT NULL,
+                    tags       TEXT NOT NULL DEFAULT '',
+                    created_at REAL NOT NULL
+                )
+                """
+            )
+            # Repositorios anteriores pueden no tener la restricción UNIQUE. Este índice
+            # evita nuevas claves duplicadas sin exigir una migración destructiva.
+            self._conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_key ON memories(key)"
             )
             self._conn.commit()
+
+    def remember(self, key: str, value: str, tags: str = "") -> int:
+        """Guarda o actualiza un hecho de manera atómica."""
+        now = time.time()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO memories (key, value, tags, created_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    tags = excluded.tags,
+                    created_at = excluded.created_at
+                """,
+                (key, value, tags, now),
+            )
+            row = self._conn.execute(
+                "SELECT id FROM memories WHERE key = ?", (key,)
+            ).fetchone()
+            self._conn.commit()
             return int(row["id"])
-        cur = self._conn.execute(
-            "INSERT INTO memories (key, value, tags, created_at) VALUES (?, ?, ?, ?)",
-            (key, value, tags, now),
-        )
-        self._conn.commit()
-        return int(cur.lastrowid)
 
     def recall(self, query: str = "", limit: int = 10) -> list[Memory]:
         """Recupera hechos. Si hay `query`, busca en clave/valor/etiquetas."""
-        if query:
-            like = f"%{query}%"
-            cur = self._conn.execute(
-                """
-                SELECT * FROM memories
-                WHERE key LIKE ? OR value LIKE ? OR tags LIKE ?
-                ORDER BY created_at DESC LIMIT ?
-                """,
-                (like, like, like, limit),
-            )
-        else:
-            cur = self._conn.execute(
-                "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)
-            )
+        safe_limit = max(1, min(int(limit), 100))
+        with self._lock:
+            if query:
+                like = f"%{query}%"
+                rows = self._conn.execute(
+                    """
+                    SELECT * FROM memories
+                    WHERE key LIKE ? OR value LIKE ? OR tags LIKE ?
+                    ORDER BY created_at DESC LIMIT ?
+                    """,
+                    (like, like, like, safe_limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?",
+                    (safe_limit,),
+                ).fetchall()
         return [
             Memory(
-                id=r["id"], key=r["key"], value=r["value"],
-                tags=r["tags"], created_at=r["created_at"],
+                id=r["id"],
+                key=r["key"],
+                value=r["value"],
+                tags=r["tags"],
+                created_at=r["created_at"],
             )
-            for r in cur.fetchall()
+            for r in rows
         ]
 
     def forget(self, key: str) -> bool:
-        cur = self._conn.execute("DELETE FROM memories WHERE key = ?", (key,))
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM memories WHERE key = ?", (key,))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def close(self) -> None:
-        self._conn.close()
+        with self._lock:
+            self._conn.close()
