@@ -318,10 +318,11 @@
     update_file: "MODIFICAR ARCHIVO", read_file: "LEER ARCHIVO",
     list_directory: "LISTAR CARPETA", install_package: "INSTALAR PAQUETE",
     run_python_file: "EJECUTAR PYTHON", system_info: "CONSULTAR SISTEMA",
+    search_web: "BUSCAR EN INTERNET", fetch_web_page: "LEER FUENTE WEB",
   };
   function safeToolMeta(args = {}) {
     const visible = {};
-    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes"]) {
+    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes", "query", "count", "url"]) {
       if (args[key] !== undefined) visible[key] = args[key];
     }
     return Object.keys(visible).length ? JSON.stringify(visible) : "sin parámetros visibles";

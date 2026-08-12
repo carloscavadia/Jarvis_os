@@ -33,7 +33,7 @@ desde el coche". Cada fase deja algo usable.
 - [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.
 - [x] Instalación limitada de paquetes con aprobación humana interactiva.
 - [ ] Domótica: Home Assistant (encender luces, leer sensores).
-- [ ] Búsqueda web y resumen.
+- [x] Búsqueda web y lectura HTTPS pública con protección SSRF y fuentes visibles.
 - [ ] Calendario y recordatorios.
 - [ ] Control del propio servidor Proxmox (estado de VMs/LXC, arrancar/parar).
 - [ ] Multiagente: subagentes "casa", "investigación", "código".

@@ -27,6 +27,7 @@ from jarvis_core.tools.builtin.task_tools import (
     ListTasksTool,
     ScheduleTaskTool,
 )
+from jarvis_core.tools.builtin.web_tools import register_web_tools
 
 __all__ = [
     "CancelTaskTool",
@@ -80,4 +81,11 @@ def build_default_registry(
                     timeout=settings.python_execution_timeout_seconds,
                 )
             )
+    if settings.internet_access_enabled:
+        register_web_tools(
+            registry,
+            timeout=settings.web_request_timeout_seconds,
+            max_bytes=settings.web_max_download_bytes,
+            brave_api_key=settings.brave_search_api_key,
+        )
     return registry

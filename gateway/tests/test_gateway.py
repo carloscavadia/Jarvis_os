@@ -76,6 +76,9 @@ def test_tool_arguments_hide_content_and_unknown_sensitive_fields():
     assert gateway_module._public_approval_arguments(
         {"path": "script.py", "content": "print('hola')", "secret": "oculto"}
     ) == {"path": "script.py", "content_bytes": 13}
+    assert gateway_module._public_approval_arguments(
+        {"url": "https://example.com/noticia?token=secreto#parte"}
+    ) == {"url": "https://example.com/noticia"}
 
 
 def test_gateway_health_auth_chat_and_websocket(monkeypatch):

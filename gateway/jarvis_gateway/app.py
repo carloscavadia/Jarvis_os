@@ -14,6 +14,7 @@ import re
 import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from fastapi import (
     Depends,
@@ -81,6 +82,8 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "package",
         "arguments",
         "query",
+        "count",
+        "url",
         "limit",
         "title",
         "at",
@@ -90,6 +93,11 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "emotion",
     }
     public = {key: value for key, value in arguments.items() if key in visible_keys}
+    if isinstance(public.get("url"), str):
+        parsed_url = urlsplit(public["url"])
+        public["url"] = urlunsplit(
+            (parsed_url.scheme, parsed_url.netloc, parsed_url.path, "", "")
+        )
     if "content" in arguments:
         content = str(arguments["content"])
         public["content_bytes"] = len(content.encode("utf-8"))

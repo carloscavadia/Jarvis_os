@@ -72,6 +72,7 @@ Herramientas de arranque (`core/jarvis_core/tools/builtin/`):
 - `update_file` — modifica un archivo existente después de aprobación humana.
 - `install_package` — instala un paquete permitido después de aprobación humana.
 - `run_python_file` — ejecuta un `.py` del workspace con aprobación, timeout y salida limitada.
+- `search_web` / `fetch_web_page` — buscan y leen HTTPS público con URLs de fuente y protección SSRF.
 
 El acceso a archivos está confinado a `JARVIS_WORKSPACE_ROOT`. Las rutas absolutas, `..`
 que escapa de la raíz y enlaces simbólicos hacia el exterior se rechazan. El contenedor no

@@ -23,6 +23,10 @@ from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import ScheduleTaskTool
+from jarvis_core.tools.builtin.web_tools import (
+    _TextExtractor,
+    validate_public_https_url,
+)
 
 
 async def test_system_info_runs():
@@ -256,6 +260,38 @@ async def test_python_runner_blocks_symlink_outside_workspace(tmp_path):
     assert "sale del workspace" in result.content
 
 
+def test_web_url_validator_blocks_private_networks(monkeypatch):
+    def private_address(*args, **kwargs):
+        return [(None, None, None, None, ("192.168.68.100", 443))]
+
+    monkeypatch.setattr("socket.getaddrinfo", private_address)
+    with pytest.raises(ValueError, match="privada"):
+        validate_public_https_url("https://jarvis.example/status")
+    with pytest.raises(ValueError, match="HTTPS"):
+        validate_public_https_url("http://example.com")
+
+
+def test_web_url_validator_accepts_public_https(monkeypatch):
+    def public_address(*args, **kwargs):
+        return [(None, None, None, None, ("93.184.216.34", 443))]
+
+    monkeypatch.setattr("socket.getaddrinfo", public_address)
+    assert validate_public_https_url("https://example.com/news?q=jarvis") == (
+        "https://example.com/news?q=jarvis"
+    )
+
+
+def test_web_text_extractor_omits_scripts_and_keeps_visible_text():
+    parser = _TextExtractor()
+    parser.feed(
+        "<html><title>Noticias</title><script>secreto()</script>"
+        "<h1>Terremoto</h1><p>Informe actualizado.</p></html>"
+    )
+    assert parser.title == "Noticias"
+    assert "Terremoto" in parser.text()
+    assert "secreto" not in parser.text()
+
+
 async def test_registry_enables_agent_tools_from_settings(tmp_path):
     from jarvis_core.tools.builtin import build_default_registry
 
@@ -268,6 +304,7 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
                 package_install_enabled=True,
                 package_install_managers=["pip"],
                 python_execution_enabled=True,
+                internet_access_enabled=True,
             ),
             memory,
         )
@@ -279,6 +316,8 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
             "update_file",
             "install_package",
             "run_python_file",
+            "search_web",
+            "fetch_web_page",
         }.issubset(registry.names())
     finally:
         memory.close()

@@ -72,6 +72,11 @@ JARVIS también puede ejecutar archivos `.py` ya creados dentro del workspace. C
 ejecución solicita aprobación en el HUD, no acepta código inline ni shell y termina al
 agotarse `JARVIS_PYTHON_EXECUTION_TIMEOUT_SECONDS`.
 
+El acceso web de solo lectura está activo por defecto en Docker. Bloquea destinos privados,
+locales y reservados, admite únicamente HTTPS y limita tiempo, redirecciones y tamaño. La
+búsqueda funciona con Bing RSS; para resultados más fiables configura opcionalmente
+`JARVIS_BRAVE_SEARCH_API_KEY` en `.env`.
+
 Prueba desde otro equipo de la red:
 
 ```bash
