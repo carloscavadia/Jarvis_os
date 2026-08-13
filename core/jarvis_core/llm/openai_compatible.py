@@ -162,6 +162,8 @@ class OpenAICompatibleProvider(LLMProvider):
         tool_parts: dict[int, dict[str, str]] = {}
         finish_reason = "end_turn"
         usage: dict[str, int] = {}
+        streamed_text = False
+        pending_text: list[str] = []
 
         async for chunk in stream:
             if getattr(chunk, "usage", None) is not None:
@@ -183,8 +185,22 @@ class OpenAICompatibleProvider(LLMProvider):
             content = getattr(delta, "content", None)
             if content:
                 text_parts.append(content)
+                if streamed_text:
+                    await on_text_delta(content)
+                else:
+                    pending_text.append(content)
+                    # Una ventana mínima descarta el preámbulo de rondas que terminan
+                    # en herramienta, sin retener la respuesta final completa.
+                    if len(pending_text) >= 3 or (
+                        choice.finish_reason and not getattr(delta, "tool_calls", None)
+                    ):
+                        await on_text_delta("".join(pending_text))
+                        pending_text.clear()
+                        streamed_text = True
 
             for tool_delta in getattr(delta, "tool_calls", None) or []:
+                if not streamed_text:
+                    pending_text.clear()
                 index = tool_delta.index
                 current = tool_parts.setdefault(
                     index,
@@ -214,7 +230,7 @@ class OpenAICompatibleProvider(LLMProvider):
             )
 
         final_text = "" if tool_calls else "".join(text_parts).strip()
-        if final_text:
+        if final_text and not streamed_text:
             await on_text_delta(final_text)
 
         return LLMResponse(

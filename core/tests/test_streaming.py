@@ -121,6 +121,35 @@ async def test_openai_stream_emits_only_final_content():
     assert response.text == "Respuesta final en español."
 
 
+async def test_openai_stream_forwards_final_answer_incrementally():
+    provider = OpenAICompatibleProvider(
+        api_key="test",
+        model="test/model",
+        base_url="https://example.invalid/v1",
+    )
+    provider._client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=FakeCompletions(
+                [
+                    chunk(content="Uno "),
+                    chunk(content="dos "),
+                    chunk(content="tres "),
+                    chunk(content="cuatro.", finish_reason="stop"),
+                ]
+            )
+        )
+    )
+    deltas = []
+
+    async def receive(delta):
+        deltas.append(delta)
+
+    response = await provider.complete("sistema", [], [], on_text_delta=receive)
+
+    assert deltas == ["Uno dos tres ", "cuatro."]
+    assert response.text == "Uno dos tres cuatro."
+
+
 async def test_nvidia_requests_disable_visible_thinking_by_default():
     provider = OpenAICompatibleProvider(
         api_key="test",

@@ -579,7 +579,8 @@
       if (event.goal) showGoalProgress(event.goal);
       return;
     }
-    const longOutput = typeof event.output === "string" && (
+    const autoPresentToolOutput = !["search_web", "fetch_web_page"].includes(event.tool);
+    const longOutput = autoPresentToolOutput && typeof event.output === "string" && (
       event.output.length > 700 || /```|\n\s*\|.+\||\n(?:[-*]|\d+[.)])\s/.test(event.output)
     );
     if (event.phase === "completed" && longOutput && !event.is_error) {
@@ -1999,8 +2000,9 @@
       rVoice.textContent = "LOCAL";
     } catch (error) {
       setBusy(false);
-      rVoice.textContent = "ERROR";
-      addLine("SISTEMA", "No pude transcribir el audio: " + error.message, "system");
+      const noVoice = /no se detectó voz/i.test(error.message);
+      rVoice.textContent = noVoice ? "HEY JARVIS" : "ERROR";
+      if (!noVoice) addLine("SISTEMA", "No pude transcribir el audio: " + error.message, "system");
       scheduleWakeListening();
     }
   }
@@ -2172,6 +2174,7 @@
     const startedAt = performance.now();
     let speechStarted = false;
     let lastVoiceAt = startedAt;
+    let voicedFrames = 0;
     const detect = () => {
       if (recorder?.state !== "recording") return;
       analyser.getByteTimeDomainData(samples);
@@ -2183,14 +2186,17 @@
       const rms = Math.sqrt(sum / samples.length);
       const now = performance.now();
       if (rms > 0.028) {
-        speechStarted = true;
-        lastVoiceAt = now;
-        if (followUpListening) {
-          clearTimeout(followUpTimer); followUpTimer = null;
-          followUpListening = false;
+        voicedFrames += 1;
+        if (voicedFrames >= 8) {
+          speechStarted = true;
+          lastVoiceAt = now;
+          if (followUpListening) {
+            clearTimeout(followUpTimer); followUpTimer = null;
+            followUpListening = false;
+          }
+          rVoice.textContent = "ESCUCHANDO";
         }
-        rVoice.textContent = "ESCUCHANDO";
-      }
+      } else voicedFrames = Math.max(0, voicedFrames - 2);
       // Da tiempo a empezar y cierra la pregunta tras 1.25 s de silencio natural.
       if ((speechStarted && now - lastVoiceAt > 1250) || (!speechStarted && now - startedAt > initialSilenceMs)) {
         recorderDiscard = !speechStarted;
