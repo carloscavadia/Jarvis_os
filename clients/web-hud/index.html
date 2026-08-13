@@ -174,6 +174,26 @@
   .controls button:hover { color: var(--core); border-color: var(--hairline-2); box-shadow: 0 0 12px rgba(53,230,255,0.15); }
   .controls button:focus-visible, .controls input:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
   .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+  .connector-panel { display: none; position: fixed; z-index: 8; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(620px, calc(100vw - 36px)); max-height: 84vh;
+    overflow: auto; padding: 16px; border: 1px solid var(--hairline-2); border-radius: 13px;
+    background: rgba(4,12,21,.96); backdrop-filter: blur(18px); box-shadow: 0 24px 90px rgba(0,0,0,.72); }
+  .connector-panel.active { display: block; animation: workspace-in .25s ease-out; }
+  .connector-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px;
+    font: 10px var(--mono); letter-spacing: .18em; color: var(--core); }
+  .connector-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+  .connector-form label { display: grid; gap: 5px; font: 9px var(--mono); letter-spacing: .1em; color: var(--muted); }
+  .connector-form .wide { grid-column: 1 / -1; }
+  .connector-form input, .connector-form select { width: 100%; padding: 9px 10px; border: 1px solid var(--hairline);
+    border-radius: 7px; outline: 0; background: rgba(8,20,30,.8); color: var(--text); font: 12px var(--mono); }
+  .connector-actions { display: flex; gap: 8px; margin: 12px 0; }
+  .connector-actions button, .module-card button { border: 1px solid var(--hairline-2); border-radius: 7px;
+    padding: 8px 10px; background: rgba(12,29,40,.8); color: var(--text); cursor: pointer; font: 9px var(--mono); letter-spacing: .09em; }
+  .connector-status { min-height: 20px; color: var(--muted); font: 10px var(--mono); }
+  .module-list { display: grid; gap: 7px; }
+  .module-card { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+    border-left: 2px solid var(--core); background: rgba(11,26,37,.58); font: 10px var(--mono); }
+  .module-card .module-info { flex: 1; overflow-wrap: anywhere; }
 
   @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; }
     .action-trace { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 58vh; } }
@@ -217,7 +237,24 @@
     <div class="cap">192.168.68.100 · HUB TEST</div>
     <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
     <button id="ws-connect">Conectar</button>
+    <button id="connector-open">Conectores</button>
   </div>
+
+  <section class="connector-panel" id="connector-panel" aria-label="Módulos de conectores">
+    <div class="connector-head"><span>MÓDULOS DE CONECTORES</span><button class="action-close" id="connector-close" type="button">×</button></div>
+    <div class="connector-form">
+      <label>NOMBRE<input id="connector-name" placeholder="correo" maxlength="32" /></label>
+      <label>TIPO<select id="connector-type"><option value="n8n">n8n / OAuth</option><option value="home_assistant">Home Assistant</option></select></label>
+      <label class="wide">URL<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /></label>
+      <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Se cifra al guardarse" autocomplete="new-password" /></label>
+      <label class="wide">SERVICIOS<input id="connector-services" placeholder="gmail,outlook,whatsapp" /></label>
+      <label class="wide">ACCIONES DE LECTURA<input id="connector-read" placeholder="gmail.search,gmail.read" /></label>
+      <label class="wide">ACCIONES CON APROBACIÓN<input id="connector-write" placeholder="gmail.send,gmail.reply" /></label>
+    </div>
+    <div class="connector-actions"><button id="connector-save">REGISTRAR</button><button id="connector-refresh">ACTUALIZAR</button></div>
+    <div class="connector-status" id="connector-status"></div>
+    <div class="module-list" id="module-list"></div>
+  </section>
 
   <section class="action-trace" id="action-trace" aria-live="polite" aria-label="Espacio de trabajo de JARVIS">
     <div class="action-head"><span>ESPACIO DE TRABAJO · JARVIS</span><button class="action-close" id="action-close" type="button" aria-label="Cerrar espacio de trabajo">×</button></div>
@@ -277,6 +314,9 @@
   const messageInput = document.getElementById("input");
   const micButton = document.getElementById("mic");
   const voiceToggle = document.getElementById("voice-toggle");
+  const connectorPanel = document.getElementById("connector-panel");
+  const connectorStatus = document.getElementById("connector-status");
+  const moduleList = document.getElementById("module-list");
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -893,6 +933,84 @@
 
   const FIXED_WS_URL = "ws://192.168.68.100:8080/ws/hub-test";
   const tokenInput = document.getElementById("ws-token");
+
+  function connectorApiHeaders(json = false) {
+    const headers = { "X-Jarvis-Key": tokenInput.value };
+    if (json) headers["Content-Type"] = "application/json";
+    return headers;
+  }
+
+  function csvValues(id) {
+    return document.getElementById(id).value.split(",").map((value) => value.trim()).filter(Boolean);
+  }
+
+  async function connectorRequest(path, options = {}) {
+    const response = await fetch(`${gatewayHttpBase()}${path}`, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
+    return payload;
+  }
+
+  async function refreshConnectorModules() {
+    connectorStatus.textContent = "CONSULTANDO…";
+    try {
+      const modules = await connectorRequest("/connector-modules", { headers: connectorApiHeaders() });
+      moduleList.replaceChildren();
+      for (const module of modules) {
+        const card = document.createElement("div"); card.className = "module-card";
+        const info = document.createElement("div"); info.className = "module-info";
+        info.textContent = `${module.name} · ${module.type} · ${(module.services || []).join(", ") || "sin servicios"}`;
+        const test = document.createElement("button"); test.textContent = "PROBAR";
+        test.onclick = async () => {
+          connectorStatus.textContent = `PROBANDO ${module.name.toUpperCase()}…`;
+          try {
+            const result = await connectorRequest("/connector-modules/test", {
+              method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ name: module.name }),
+            });
+            connectorStatus.textContent = `✓ ${result.name}: ${result.message}`;
+          } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
+        };
+        const remove = document.createElement("button"); remove.textContent = "ELIMINAR";
+        remove.onclick = async () => {
+          if (!confirm(`¿Eliminar el módulo ${module.name}?`)) return;
+          await connectorRequest(`/connector-modules/${encodeURIComponent(module.name)}`, {
+            method: "DELETE", headers: connectorApiHeaders(),
+          });
+          refreshConnectorModules();
+        };
+        card.append(info, test, remove); moduleList.appendChild(card);
+      }
+      connectorStatus.textContent = modules.length ? `${modules.length} MÓDULO(S)` : "SIN MÓDULOS REGISTRADOS";
+    } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
+  }
+
+  document.getElementById("connector-open").addEventListener("click", () => {
+    connectorPanel.classList.add("active"); refreshConnectorModules();
+  });
+  document.getElementById("connector-close").addEventListener("click", () => connectorPanel.classList.remove("active"));
+  document.getElementById("connector-refresh").addEventListener("click", refreshConnectorModules);
+  document.getElementById("connector-save").addEventListener("click", async () => {
+    const name = document.getElementById("connector-name").value.trim().toLowerCase();
+    const body = {
+      name,
+      type: document.getElementById("connector-type").value,
+      url: document.getElementById("connector-url").value.trim(),
+      token: document.getElementById("connector-token").value,
+      services: csvValues("connector-services"),
+      read_actions: csvValues("connector-read"),
+      write_actions: csvValues("connector-write"),
+      enabled: true,
+    };
+    connectorStatus.textContent = "REGISTRANDO…";
+    try {
+      await connectorRequest(`/connector-modules/${encodeURIComponent(name)}`, {
+        method: "PUT", headers: connectorApiHeaders(true), body: JSON.stringify(body),
+      });
+      document.getElementById("connector-token").value = "";
+      connectorStatus.textContent = `✓ ${name.toUpperCase()} REGISTRADO`;
+      refreshConnectorModules();
+    } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
+  });
 
   // ── Voz: servidor local Whisper/Kokoro + fallback del navegador ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;

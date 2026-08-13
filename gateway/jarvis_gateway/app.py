@@ -29,6 +29,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from jarvis_core.config import Settings
+from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
@@ -83,6 +84,8 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
         return f"Ejecutar el script Python {arguments.get('path')}."
     if name == "run_connector_action":
         return f"Ejecutar la acción externa {arguments.get('action')} mediante n8n."
+    if name == "run_connector_module_action":
+        return f"Ejecutar {arguments.get('action')} mediante el módulo {arguments.get('connector')}."
     return f"Ejecutar la herramienta sensible {name}."
 
 
@@ -108,6 +111,7 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "task_id",
         "emotion",
         "action",
+        "connector",
     }
     public = {key: value for key, value in arguments.items() if key in visible_keys}
     if isinstance(public.get("url"), str):
@@ -308,6 +312,21 @@ class ConnectorEventRequest(BaseModel):
     title: str = Field(default="", max_length=120)
 
 
+class ConnectorModuleRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
+    type: str = Field(pattern=r"^(n8n|home_assistant)$")
+    url: str = Field(min_length=8, max_length=2000)
+    token: str = Field(min_length=8, max_length=8192)
+    services: list[str] = Field(default_factory=list, max_length=64)
+    read_actions: list[str] = Field(default_factory=list, max_length=128)
+    write_actions: list[str] = Field(default_factory=list, max_length=128)
+    enabled: bool = True
+
+
+class ConnectorModuleTestRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {
@@ -336,15 +355,21 @@ async def ready() -> dict[str, str]:
     else:
         errors.append("llm_provider")
     if settings.connectors_enabled:
-        if not settings.n8n_webhook_url:
-            errors.append("n8n_webhook_url")
-        else:
-            try:
-                validate_connector_url(settings.n8n_webhook_url)
-            except ValueError:
+        legacy_n8n_configured = bool(
+            settings.n8n_webhook_url or settings.n8n_webhook_token
+        )
+        if legacy_n8n_configured:
+            if not settings.n8n_webhook_url:
                 errors.append("n8n_webhook_url")
-        if len(settings.n8n_webhook_token) < 32:
-            errors.append("n8n_webhook_token")
+            else:
+                try:
+                    validate_connector_url(settings.n8n_webhook_url)
+                except ValueError:
+                    errors.append("n8n_webhook_url")
+            if len(settings.n8n_webhook_token) < 32:
+                errors.append("n8n_webhook_token")
+        if not legacy_n8n_configured and not settings.connector_master_key:
+            errors.append("connector_master_key")
 
     if errors:
         raise HTTPException(
@@ -352,6 +377,67 @@ async def ready() -> dict[str, str]:
             detail={"status": "not_ready", "missing_or_invalid": errors},
         )
     return {"status": "ready", "provider": settings.llm_provider}
+
+
+def _require_connector_store():
+    if sessions.connector_store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Configura JARVIS_CONNECTOR_MASTER_KEY para administrar módulos.",
+        )
+    return sessions.connector_store
+
+
+@app.get("/connector-modules", dependencies=[Depends(require_api_key)])
+async def list_connector_modules() -> list[dict[str, object]]:
+    return _require_connector_store().list_public()
+
+
+@app.put("/connector-modules/{name}", dependencies=[Depends(require_api_key)])
+async def register_connector_module(
+    name: str, req: ConnectorModuleRequest
+) -> dict[str, object]:
+    if name != req.name:
+        raise HTTPException(
+            status_code=400, detail="El nombre de la ruta y el cuerpo no coincide."
+        )
+    try:
+        url = validate_connector_url(req.url)
+        _require_connector_store().upsert(
+            req.name,
+            req.type,
+            {
+                "url": url,
+                "services": sorted(set(req.services)),
+                "read_actions": sorted(set(req.read_actions)),
+                "write_actions": sorted(set(req.write_actions)),
+            },
+            {"token": req.token},
+            enabled=req.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"name": req.name, "type": req.type, "enabled": req.enabled, "stored": True}
+
+
+@app.post("/connector-modules/test", dependencies=[Depends(require_api_key)])
+async def test_connector_module(req: ConnectorModuleTestRequest) -> dict[str, object]:
+    store = _require_connector_store()
+    runtime = ConnectorRuntime(
+        store,
+        timeout=settings.connector_timeout_seconds,
+        max_payload_bytes=settings.connector_max_payload_bytes,
+        max_response_bytes=settings.connector_max_response_bytes,
+    )
+    result = await runtime.test(req.name)
+    if result.is_error:
+        raise HTTPException(status_code=502, detail=result.content)
+    return {"name": req.name, "ok": True, "message": result.content[:1000]}
+
+
+@app.delete("/connector-modules/{name}", dependencies=[Depends(require_api_key)])
+async def delete_connector_module(name: str) -> dict[str, object]:
+    return {"name": name, "deleted": _require_connector_store().delete(name)}
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])

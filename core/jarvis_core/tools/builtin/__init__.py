@@ -9,10 +9,15 @@ from __future__ import annotations
 
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
+from jarvis_core.connectors.runtime import ConnectorRuntime
+from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
-from jarvis_core.tools.builtin.connectors import register_connector_tools
+from jarvis_core.tools.builtin.connectors import (
+    register_connector_tools,
+    register_dynamic_connector_tools,
+)
 from jarvis_core.tools.builtin.emotion_tool import SetEmotionTool
 from jarvis_core.tools.builtin.filesystem import (
     WorkspaceGuard,
@@ -51,6 +56,7 @@ def build_default_registry(
     emotion: EmotionState | None = None,
     *,
     allow_shell: bool | None = None,
+    connector_store: ConnectorStore | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -106,5 +112,16 @@ def build_default_registry(
             timeout=settings.connector_timeout_seconds,
             max_payload_bytes=settings.connector_max_payload_bytes,
             max_response_bytes=settings.connector_max_response_bytes,
+        )
+    if settings.connectors_enabled and connector_store is not None:
+        register_dynamic_connector_tools(
+            registry,
+            connector_store,
+            ConnectorRuntime(
+                connector_store,
+                timeout=settings.connector_timeout_seconds,
+                max_payload_bytes=settings.connector_max_payload_bytes,
+                max_response_bytes=settings.connector_max_response_bytes,
+            ),
         )
     return registry

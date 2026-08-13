@@ -1,7 +1,10 @@
 """Pruebas de integración del servicio principal sin consumir un LLM real."""
 
+import json
+
 from fastapi.testclient import TestClient
 from jarvis_core.agent.orchestrator import AgentReply
+from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.tools.base import ToolResult
 from jarvis_gateway import app as gateway_module
 from jarvis_gateway.voice import prepare_speech_text
@@ -375,3 +378,38 @@ def test_ready_rejects_incomplete_connector_configuration(monkeypatch):
         missing = response.json()["detail"]["missing_or_invalid"]
         assert "n8n_webhook_url" in missing
         assert "n8n_webhook_token" in missing
+
+
+def test_connector_module_api_never_returns_secrets(monkeypatch, tmp_path):
+    store = ConnectorStore(str(tmp_path / "connectors.db"), "master-key-" * 4)
+    monkeypatch.setattr(gateway_module.sessions, "connector_store", store)
+    try:
+        with TestClient(gateway_module.app) as client:
+            unauthorized = client.get("/connector-modules")
+            assert unauthorized.status_code == 401
+
+            headers = {"X-Jarvis-Key": "ci-test-key"}
+            response = client.put(
+                "/connector-modules/correo",
+                headers=headers,
+                json={
+                    "name": "correo",
+                    "type": "n8n",
+                    "url": "https://n8n.example.com/webhook/jarvis",
+                    "token": "token-secreto-de-prueba",
+                    "services": ["gmail"],
+                    "read_actions": ["gmail.search", "connector.test"],
+                    "write_actions": ["gmail.send"],
+                },
+            )
+            assert response.status_code == 200
+            listing = client.get("/connector-modules", headers=headers)
+            assert listing.status_code == 200
+            serialized = json.dumps(listing.json())
+            assert "gmail.search" in serialized
+            assert "token-secreto-de-prueba" not in serialized
+            assert client.delete("/connector-modules/correo", headers=headers).json()[
+                "deleted"
+            ]
+    finally:
+        store.close()

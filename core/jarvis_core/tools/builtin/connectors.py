@@ -8,12 +8,16 @@ import ssl
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlsplit, urlunsplit
 
 import certifi
 
 from jarvis_core.tools.base import Tool, ToolRegistry, ToolResult
+
+if TYPE_CHECKING:
+    from jarvis_core.connectors.runtime import ConnectorRuntime
+    from jarvis_core.connectors.store import ConnectorStore
 
 
 def validate_connector_url(raw_url: str) -> str:
@@ -237,3 +241,82 @@ def register_connector_tools(
         registry.register(QueryConnectorTool(client, read_actions))
     if write_actions:
         registry.register(RunConnectorActionTool(client, write_actions))
+
+
+class ListConnectorModulesTool(Tool):
+    name = "list_connector_modules"
+    description = "Lista los módulos de conectores registrados, sus servicios y acciones disponibles."
+    input_schema: ClassVar[dict[str, Any]] = {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
+
+    def __init__(self, store: ConnectorStore) -> None:
+        self.store = store
+
+    async def run(self, **kwargs: Any) -> ToolResult:
+        del kwargs
+        return ToolResult(
+            json.dumps(self.store.list_public(), ensure_ascii=False, indent=2)
+        )
+
+
+class _ModuleActionTool(Tool):
+    write = False
+
+    def __init__(self, runtime: ConnectorRuntime) -> None:
+        self.runtime = runtime
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "connector": {
+                    "type": "string",
+                    "description": "Nombre exacto del módulo registrado.",
+                },
+                "action": {
+                    "type": "string",
+                    "description": "Acción exacta expuesta por el módulo.",
+                },
+                "payload": {
+                    "type": "object",
+                    "description": "Datos mínimos para la acción.",
+                },
+            },
+            "required": ["connector", "action", "payload"],
+            "additionalProperties": False,
+        }
+
+    async def run(
+        self,
+        connector: str = "",
+        action: str = "",
+        payload: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> ToolResult:
+        del kwargs
+        if not isinstance(payload, dict):
+            return ToolResult("El payload debe ser un objeto JSON.", is_error=True)
+        return await self.runtime.invoke(connector, action, payload, write=self.write)
+
+
+class QueryConnectorModuleTool(_ModuleActionTool):
+    name = "query_connector_module"
+    description = (
+        "Consulta un módulo de conector registrado sin modificar el servicio externo."
+    )
+
+
+class RunConnectorModuleActionTool(_ModuleActionTool):
+    name = "run_connector_module_action"
+    description = "Ejecuta una acción externa de un módulo registrado. Requiere aprobación humana."
+    requires_confirmation = True
+    write = True
+
+
+def register_dynamic_connector_tools(
+    registry: ToolRegistry, store: ConnectorStore, runtime: ConnectorRuntime
+) -> None:
+    registry.register(ListConnectorModulesTool(store))
+    registry.register(QueryConnectorModuleTool(runtime))
+    registry.register(RunConnectorModuleActionTool(runtime))

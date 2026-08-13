@@ -1,5 +1,31 @@
 # Conectores de JARVIS
 
+## Registro modular desde el HUD
+
+El botón **Conectores** abre el administrador de módulos. Permite registrar, probar y
+eliminar módulos `n8n` o `home_assistant`. La clave se envía únicamente al gateway, queda
+cifrada en SQLite y nunca vuelve al navegador ni se entrega al modelo.
+
+Antes de usarlo, activa el registro en `/opt/jarvis_os/.env`:
+
+```dotenv
+JARVIS_CONNECTORS_ENABLED=true
+JARVIS_CONNECTOR_MASTER_KEY=CLAVE_ALEATORIA_DE_64_HEX
+```
+
+Genera la clave con `openssl rand -hex 32`. No la cambies mientras existan módulos, porque
+es necesaria para descifrar sus credenciales. Después reconstruye el gateway. Los módulos
+se guardan en el volumen persistente, en `/app/data/jarvis_connectors.db`.
+
+Para Gmail, Outlook, WhatsApp, Slack, Teams y Alexa registra un módulo de tipo **n8n** y
+declara las acciones exactas que implementaste. Para Home Assistant puedes usar n8n o el
+módulo directo con su URL base y un token de larga duración.
+
+JARVIS recibe tres herramientas adicionales: `list_connector_modules`,
+`query_connector_module` y `run_connector_module_action`. La última exige aprobación física
+en el HUD. Registrar, probar o eliminar claves es una función administrativa y no puede ser
+invocada por el modelo.
+
 JARVIS usa **n8n como bus de integración**. Gmail, Outlook, WhatsApp, calendarios, Slack,
 Teams, Home Assistant, Alexa y otros servicios
 conservan sus credenciales dentro del almacén de credenciales de n8n; el gateway de JARVIS

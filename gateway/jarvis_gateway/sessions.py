@@ -12,6 +12,7 @@ import asyncio
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
+from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
@@ -27,6 +28,11 @@ class SessionManager:
         self.memory = MemoryStore(settings.memory_db_path)
         self.tasks = TaskStore(settings.tasks_db_path)
         self._sessions: dict[str, Orchestrator] = {}
+        self.connector_store = (
+            ConnectorStore(settings.connector_db_path, settings.connector_master_key)
+            if settings.connectors_enabled and settings.connector_master_key
+            else None
+        )
         self._lock = asyncio.Lock()
 
     async def get(self, session_id: str) -> Orchestrator:
@@ -45,6 +51,7 @@ class SessionManager:
                     self.tasks,
                     emotion,
                     allow_shell=False,
+                    connector_store=self.connector_store,
                 )
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
@@ -58,3 +65,5 @@ class SessionManager:
     def close(self) -> None:
         self.memory.close()
         self.tasks.close()
+        if self.connector_store is not None:
+            self.connector_store.close()

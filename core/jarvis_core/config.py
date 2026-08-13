@@ -131,6 +131,8 @@ class Settings:
     brave_search_api_key: str = ""
     hud_workspace_enabled: bool = False
     connectors_enabled: bool = False
+    connector_db_path: str = "data/jarvis_connectors.db"
+    connector_master_key: str = ""
     connector_chat_enabled: bool = False
     connector_allowed_user_hashes: list[str] = field(default_factory=list)
     n8n_webhook_url: str = ""
@@ -246,6 +248,10 @@ class Settings:
             brave_search_api_key=os.environ.get("JARVIS_BRAVE_SEARCH_API_KEY", ""),
             hud_workspace_enabled=_get_bool("JARVIS_HUD_WORKSPACE_ENABLED", False),
             connectors_enabled=_get_bool("JARVIS_CONNECTORS_ENABLED", False),
+            connector_db_path=os.environ.get(
+                "JARVIS_CONNECTOR_DB", "data/jarvis_connectors.db"
+            ),
+            connector_master_key=os.environ.get("JARVIS_CONNECTOR_MASTER_KEY", ""),
             connector_chat_enabled=_get_bool("JARVIS_CONNECTOR_CHAT_ENABLED", False),
             connector_allowed_user_hashes=_get_list(
                 "JARVIS_CONNECTOR_ALLOWED_USER_HASHES", []
@@ -343,10 +349,13 @@ class Settings:
                 "espacio de trabajo, y también por iniciativa propia cuando mejore claramente "
                 "la comprensión. No la uses para respuestas conversacionales breves."
             )
-        if self.connectors_enabled and self.n8n_webhook_url:
+        if self.connectors_enabled:
             base += (
                 "\n\nDispones de conectores externos mediante un bus seguro de n8n para correo, "
-                "mensajería, calendarios, automatización y domótica. Usa list_connectors "
+                "mensajería, calendarios, automatización y domótica. Usa "
+                "list_connector_modules para descubrir módulos registrados y sus acciones. "
+                "Usa query_connector_module para lecturas y run_connector_module_action para "
+                "cambios. Si existe la integración n8n heredada, también puedes usar list_connectors, "
                 "para descubrir las acciones exactas. Usa query_connector solo para lecturas "
                 "y run_connector_action para cambios como enviar correos, mensajes o crear "
                 "eventos, controlar Home Assistant o ejecutar rutinas de Alexa; el sistema "

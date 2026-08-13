@@ -37,6 +37,10 @@ A partir de ahí, lo que escribas va a JARVIS de verdad y el orbe reacciona a lo
 que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). También recibe los
 **avisos proactivos** que dispara el scheduler.
 
+El botón **Conectores** abre el registro administrativo de módulos n8n y Home Assistant.
+Permite guardar y probar claves sin exponerlas al chat; requiere
+`JARVIS_CONNECTOR_MASTER_KEY` en el gateway.
+
 ### Voz y micrófono
 
 Al conectarse, el HUD mantiene una escucha pasiva de la frase «Hey Jarvis». Ignora todo lo
