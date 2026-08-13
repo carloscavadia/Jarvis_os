@@ -351,7 +351,7 @@ class ConnectorModuleRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
     type: str = Field(pattern=r"^(n8n|home_assistant)$")
     url: str = Field(min_length=8, max_length=2000)
-    token: str = Field(min_length=8, max_length=8192)
+    token: str = Field(default="", max_length=8192)
     services: list[str] = Field(default_factory=list, max_length=64)
     read_actions: list[str] = Field(default_factory=list, max_length=128)
     write_actions: list[str] = Field(default_factory=list, max_length=128)
@@ -442,7 +442,16 @@ async def register_connector_module(
         )
     try:
         url = validate_connector_url(req.url)
-        _require_connector_store().upsert(
+        store = _require_connector_store()
+        token = req.token
+        if not token:
+            existing = store.get(req.name)
+            if existing is None:
+                raise ValueError("La clave o token es obligatorio al crear el módulo.")
+            token = str(existing.config.get("_secrets", {}).get("token", ""))
+        if len(token) < 8:
+            raise ValueError("La clave o token debe tener al menos 8 caracteres.")
+        store.upsert(
             req.name,
             req.type,
             {
@@ -451,7 +460,7 @@ async def register_connector_module(
                 "read_actions": sorted(set(req.read_actions)),
                 "write_actions": sorted(set(req.write_actions)),
             },
-            {"token": req.token},
+            {"token": token},
             enabled=req.enabled,
         )
     except ValueError as exc:

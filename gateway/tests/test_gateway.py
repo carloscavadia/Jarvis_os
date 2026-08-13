@@ -528,6 +528,27 @@ def test_connector_module_api_never_returns_secrets(monkeypatch, tmp_path):
             serialized = json.dumps(listing.json())
             assert "gmail.search" in serialized
             assert "token-secreto-de-prueba" not in serialized
+            updated = client.put(
+                "/connector-modules/correo",
+                headers=headers,
+                json={
+                    "name": "correo",
+                    "type": "n8n",
+                    "url": "https://n8n.example.com/webhook/jarvis-v2",
+                    "token": "",
+                    "services": ["gmail", "outlook"],
+                    "read_actions": ["gmail.search"],
+                    "write_actions": ["gmail.send"],
+                    "enabled": False,
+                },
+            )
+            assert updated.status_code == 200
+            assert store.get("correo").config["_secrets"]["token"] == (
+                "token-secreto-de-prueba"
+            )
+            assert client.get("/connector-modules", headers=headers).json()[0][
+                "enabled"
+            ] is False
             assert client.delete("/connector-modules/correo", headers=headers).json()[
                 "deleted"
             ]

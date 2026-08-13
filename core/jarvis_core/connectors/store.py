@@ -125,6 +125,7 @@ class ConnectorStore:
                 "name": row[0],
                 "type": row[1],
                 "enabled": bool(row[3]),
+                "url": json.loads(row[2]).get("url", ""),
                 "services": json.loads(row[2]).get("services", []),
                 "read_actions": json.loads(row[2]).get("read_actions", []),
                 "write_actions": json.loads(row[2]).get("write_actions", []),

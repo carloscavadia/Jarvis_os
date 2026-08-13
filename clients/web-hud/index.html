@@ -175,25 +175,49 @@
   .controls button:focus-visible, .controls input:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
   .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
   .connector-panel { display: none; position: fixed; z-index: 8; inset: 50% auto auto 50%;
-    transform: translate(-50%,-50%); width: min(620px, calc(100vw - 36px)); max-height: 84vh;
-    overflow: auto; padding: 16px; border: 1px solid var(--hairline-2); border-radius: 13px;
+    transform: translate(-50%,-50%); width: min(880px, calc(100vw - 36px)); max-height: 88vh;
+    overflow: auto; padding: 18px; border: 1px solid var(--hairline-2); border-radius: 13px;
     background: rgba(4,12,21,.96); backdrop-filter: blur(18px); box-shadow: 0 24px 90px rgba(0,0,0,.72); }
   .connector-panel.active { display: block; animation: workspace-in .25s ease-out; }
-  .connector-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px;
+  .connector-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;
     font: 10px var(--mono); letter-spacing: .18em; color: var(--core); }
+  .connector-intro { margin: 0 0 15px; color: var(--muted); font: 10px/1.5 var(--mono); }
+  .connector-layout { display: grid; grid-template-columns: minmax(280px,.9fr) minmax(330px,1.1fr); gap: 15px; }
+  .connector-section { min-width: 0; padding: 13px; border: 1px solid var(--hairline); border-radius: 10px;
+    background: rgba(6,17,27,.58); }
+  .connector-section-title { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 11px;
+    color: var(--core-bright); font: 9px var(--mono); letter-spacing: .15em; }
+  .connector-help { margin: -4px 0 11px; color: rgba(150,188,204,.66); font: 9px/1.45 var(--mono); }
   .connector-form { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
   .connector-form label { display: grid; gap: 5px; font: 9px var(--mono); letter-spacing: .1em; color: var(--muted); }
+  .connector-form small { letter-spacing: 0; color: rgba(150,188,204,.58); line-height: 1.35; }
   .connector-form .wide { grid-column: 1 / -1; }
   .connector-form input, .connector-form select { width: 100%; padding: 9px 10px; border: 1px solid var(--hairline);
     border-radius: 7px; outline: 0; background: rgba(8,20,30,.8); color: var(--text); font: 12px var(--mono); }
+  .connector-form input:focus, .connector-form select:focus { border-color: var(--core); box-shadow: 0 0 12px rgba(53,230,255,.1); }
+  .connector-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .connector-actions { display: flex; gap: 8px; margin: 12px 0; }
-  .connector-actions button, .module-card button { border: 1px solid var(--hairline-2); border-radius: 7px;
+  .connector-actions button, .module-card button, .connector-presets button, .connector-section-title button { border: 1px solid var(--hairline-2); border-radius: 7px;
     padding: 8px 10px; background: rgba(12,29,40,.8); color: var(--text); cursor: pointer; font: 9px var(--mono); letter-spacing: .09em; }
-  .connector-status { min-height: 20px; color: var(--muted); font: 10px var(--mono); }
+  .connector-actions .primary { color: #baffdf; border-color: rgba(96,236,168,.45); }
+  .connector-status { min-height: 20px; color: var(--muted); font: 10px/1.4 var(--mono); }
+  .connector-status.success { color: #a8efd0; } .connector-status.error { color: #ffd0a0; }
   .module-list { display: grid; gap: 7px; }
-  .module-card { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+  .module-card { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 9px; padding: 10px;
     border-left: 2px solid var(--core); background: rgba(11,26,37,.58); font: 10px var(--mono); }
-  .module-card .module-info { flex: 1; overflow-wrap: anywhere; }
+  .module-card.disabled { opacity: .58; border-left-color: var(--muted); }
+  .module-card .module-info { min-width: 0; overflow-wrap: anywhere; }
+  .module-name { color: var(--core-bright); letter-spacing: .08em; }
+  .module-meta { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+  .module-buttons { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+  .module-card button { padding: 6px 7px; font-size: 8px; }
+  .connector-activity { grid-column: 1 / -1; }
+  .event-list { display: grid; gap: 6px; max-height: 175px; overflow: auto; }
+  .event-row { display: grid; grid-template-columns: 9px minmax(90px,.35fr) 1fr auto; gap: 8px; align-items: center;
+    padding: 7px 8px; background: rgba(11,26,37,.45); color: var(--muted); font: 9px/1.35 var(--mono); }
+  .event-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--core); box-shadow: 0 0 8px var(--core); }
+  .event-row.warning .event-dot, .event-row.critical .event-dot { background: #ffb460; box-shadow: 0 0 8px #ffb460; }
+  .event-state { text-transform: uppercase; color: var(--core-bright); }
   .goal-panel { display: none; position: fixed; z-index: 5; top: 28px; left: 28px;
     width: min(360px, calc(100vw - 56px)); padding: 12px; border: 1px solid var(--hairline-2);
     border-radius: 11px; background: rgba(4,12,21,.88); backdrop-filter: blur(14px);
@@ -211,6 +235,8 @@
   .goal-controls button { flex: 1; padding: 6px; border: 1px solid var(--hairline); border-radius: 6px;
     background: rgba(9,22,32,.72); color: var(--muted); cursor: pointer; font: 8px var(--mono); letter-spacing: .08em; }
 
+  @media (max-width: 760px) { .connector-layout { grid-template-columns: 1fr; } .connector-activity { grid-column: auto; }
+    .event-row { grid-template-columns: 9px 1fr auto; } .event-row .event-text { grid-column: 2 / -1; } }
   @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; }
     .action-trace { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 58vh; } }
 </style>
@@ -257,19 +283,38 @@
   </div>
 
   <section class="connector-panel" id="connector-panel" aria-label="Módulos de conectores">
-    <div class="connector-head"><span>MÓDULOS DE CONECTORES</span><button class="action-close" id="connector-close" type="button">×</button></div>
-    <div class="connector-form">
-      <label>NOMBRE<input id="connector-name" placeholder="correo" maxlength="32" /></label>
-      <label>TIPO<select id="connector-type"><option value="n8n">n8n / OAuth</option><option value="home_assistant">Home Assistant</option></select></label>
-      <label class="wide">URL<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /></label>
-      <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Se cifra al guardarse" autocomplete="new-password" /></label>
-      <label class="wide">SERVICIOS<input id="connector-services" placeholder="gmail,outlook,whatsapp" /></label>
-      <label class="wide">ACCIONES DE LECTURA<input id="connector-read" placeholder="gmail.search,gmail.read" /></label>
-      <label class="wide">ACCIONES CON APROBACIÓN<input id="connector-write" placeholder="gmail.send,gmail.reply" /></label>
+    <div class="connector-head"><span>CENTRO DE CONECTORES</span><button class="action-close" id="connector-close" type="button" aria-label="Cerrar conectores">×</button></div>
+    <p class="connector-intro">Conecta servicios externos. Las consultas pueden ejecutarse directamente; cualquier acción de escritura siempre exige tu aprobación.</p>
+    <div class="connector-layout">
+      <section class="connector-section">
+        <div class="connector-section-title"><span id="connector-form-title">AGREGAR CONECTOR</span><span>01</span></div>
+        <div class="connector-help" id="connector-help">n8n funciona como puente para Gmail, Outlook, WhatsApp y otros servicios.</div>
+        <div class="connector-presets">
+          <button type="button" data-connector-preset="n8n">PLANTILLA N8N</button>
+          <button type="button" data-connector-preset="home_assistant">PLANTILLA HOME ASSISTANT</button>
+        </div>
+        <div class="connector-form">
+          <label>NOMBRE<input id="connector-name" placeholder="mi_n8n" maxlength="32" /><small>Identificador interno, sin espacios.</small></label>
+          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option></select><small>Define cómo se prueba y ejecuta.</small></label>
+          <label class="wide">URL DEL ENDPOINT<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /><small id="connector-url-help">Webhook único que recibe las acciones de JARVIS.</small></label>
+          <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Obligatorio al crear · vacío conserva la clave al editar" autocomplete="new-password" /><small>Se cifra en el servidor y nunca vuelve al navegador.</small></label>
+          <label class="wide">SERVICIOS DISPONIBLES<input id="connector-services" placeholder="gmail, outlook, whatsapp" /><small>Lista descriptiva separada por comas.</small></label>
+          <label class="wide">LECTURAS PERMITIDAS<input id="connector-read" placeholder="gmail.search, gmail.read" /><small>JARVIS puede ejecutarlas sin aprobación.</small></label>
+          <label class="wide">ESCRITURAS PERMITIDAS<input id="connector-write" placeholder="gmail.send, gmail.reply" /><small>Siempre muestran APROBAR / DENEGAR antes de ejecutarse.</small></label>
+        </div>
+        <div class="connector-actions"><button class="primary" id="connector-save">GUARDAR Y PROBAR</button><button id="connector-clear" type="button">LIMPIAR</button></div>
+        <div class="connector-status" id="connector-status" aria-live="polite"></div>
+      </section>
+      <section class="connector-section">
+        <div class="connector-section-title"><span>CONECTORES REGISTRADOS</span><button id="connector-refresh" type="button">ACTUALIZAR</button></div>
+        <div class="connector-help">Edita permisos, prueba disponibilidad o elimina un módulo. El token guardado permanece oculto.</div>
+        <div class="module-list" id="module-list"></div>
+      </section>
+      <section class="connector-section connector-activity">
+        <div class="connector-section-title"><span>ACTIVIDAD RECIENTE</span><span>02</span></div>
+        <div class="event-list" id="connector-events"></div>
+      </section>
     </div>
-    <div class="connector-actions"><button id="connector-save">REGISTRAR</button><button id="connector-refresh">ACTUALIZAR</button></div>
-    <div class="connector-status" id="connector-status"></div>
-    <div class="module-list" id="module-list"></div>
   </section>
 
   <section class="goal-panel" id="goal-panel" aria-live="polite" aria-label="Objetivo activo de JARVIS">
@@ -340,6 +385,7 @@
   const connectorPanel = document.getElementById("connector-panel");
   const connectorStatus = document.getElementById("connector-status");
   const moduleList = document.getElementById("module-list");
+  const connectorEvents = document.getElementById("connector-events");
   const goalPanel = document.getElementById("goal-panel");
   const goalTitle = document.getElementById("goal-title");
   const goalCount = document.getElementById("goal-count");
@@ -1072,55 +1118,14 @@
     return document.getElementById(id).value.split(",").map((value) => value.trim()).filter(Boolean);
   }
 
-  async function connectorRequest(path, options = {}) {
-    const response = await fetch(`${gatewayHttpBase()}${path}`, options);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.detail || `HTTP ${response.status}`);
-    return payload;
+  function setConnectorStatus(text, kind = "") {
+    connectorStatus.textContent = text;
+    connectorStatus.className = `connector-status ${kind}`.trim();
   }
 
-  async function refreshConnectorModules() {
-    connectorStatus.textContent = "CONSULTANDO…";
-    try {
-      const modules = await connectorRequest("/connector-modules", { headers: connectorApiHeaders() });
-      moduleList.replaceChildren();
-      for (const module of modules) {
-        const card = document.createElement("div"); card.className = "module-card";
-        const info = document.createElement("div"); info.className = "module-info";
-        info.textContent = `${module.name} · ${module.type} · ${(module.services || []).join(", ") || "sin servicios"}`;
-        const test = document.createElement("button"); test.textContent = "PROBAR";
-        test.onclick = async () => {
-          connectorStatus.textContent = `PROBANDO ${module.name.toUpperCase()}…`;
-          try {
-            const result = await connectorRequest("/connector-modules/test", {
-              method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ name: module.name }),
-            });
-            connectorStatus.textContent = `✓ ${result.name}: ${result.message}`;
-          } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
-        };
-        const remove = document.createElement("button"); remove.textContent = "ELIMINAR";
-        remove.onclick = async () => {
-          if (!confirm(`¿Eliminar el módulo ${module.name}?`)) return;
-          await connectorRequest(`/connector-modules/${encodeURIComponent(module.name)}`, {
-            method: "DELETE", headers: connectorApiHeaders(),
-          });
-          refreshConnectorModules();
-        };
-        card.append(info, test, remove); moduleList.appendChild(card);
-      }
-      connectorStatus.textContent = modules.length ? `${modules.length} MÓDULO(S)` : "SIN MÓDULOS REGISTRADOS";
-    } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
-  }
-
-  document.getElementById("connector-open").addEventListener("click", () => {
-    connectorPanel.classList.add("active"); refreshConnectorModules();
-  });
-  document.getElementById("connector-close").addEventListener("click", () => connectorPanel.classList.remove("active"));
-  document.getElementById("connector-refresh").addEventListener("click", refreshConnectorModules);
-  document.getElementById("connector-save").addEventListener("click", async () => {
-    const name = document.getElementById("connector-name").value.trim().toLowerCase();
-    const body = {
-      name,
+  function connectorFormBody() {
+    return {
+      name: document.getElementById("connector-name").value.trim().toLowerCase(),
       type: document.getElementById("connector-type").value,
       url: document.getElementById("connector-url").value.trim(),
       token: document.getElementById("connector-token").value,
@@ -1129,15 +1134,166 @@
       write_actions: csvValues("connector-write"),
       enabled: true,
     };
-    connectorStatus.textContent = "REGISTRANDO…";
+  }
+
+  function clearConnectorForm() {
+    for (const id of ["connector-name", "connector-url", "connector-token", "connector-services", "connector-read", "connector-write"]) {
+      document.getElementById(id).value = "";
+    }
+    document.getElementById("connector-type").value = "n8n";
+    document.getElementById("connector-name").disabled = false;
+    document.getElementById("connector-form-title").textContent = "AGREGAR CONECTOR";
+    updateConnectorHelp();
+  }
+
+  function fillConnectorForm(module) {
+    document.getElementById("connector-name").value = module.name;
+    document.getElementById("connector-name").disabled = true;
+    document.getElementById("connector-type").value = module.type;
+    document.getElementById("connector-url").value = module.url || "";
+    document.getElementById("connector-token").value = "";
+    document.getElementById("connector-services").value = (module.services || []).join(", ");
+    document.getElementById("connector-read").value = (module.read_actions || []).join(", ");
+    document.getElementById("connector-write").value = (module.write_actions || []).join(", ");
+    document.getElementById("connector-form-title").textContent = `EDITAR · ${module.name.toUpperCase()}`;
+    updateConnectorHelp();
+    connectorPanel.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  }
+
+  function updateConnectorHelp() {
+    const home = document.getElementById("connector-type").value === "home_assistant";
+    document.getElementById("connector-help").textContent = home
+      ? "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa."
+      : "n8n funciona como puente para Gmail, Outlook, WhatsApp y otros servicios.";
+    document.getElementById("connector-url-help").textContent = home
+      ? "URL base de Home Assistant, normalmente http://IP:8123."
+      : "Webhook único de n8n que recibe las acciones de JARVIS.";
+  }
+
+  function applyConnectorPreset(type) {
+    clearConnectorForm();
+    document.getElementById("connector-type").value = type;
+    if (type === "home_assistant") {
+      document.getElementById("connector-name").value = "casa";
+      document.getElementById("connector-url").placeholder = "http://homeassistant.local:8123";
+      document.getElementById("connector-services").value = "homeassistant";
+      document.getElementById("connector-read").value = "homeassistant.state";
+      document.getElementById("connector-write").value = "homeassistant.service";
+    } else {
+      document.getElementById("connector-name").value = "automatizaciones";
+      document.getElementById("connector-url").placeholder = "https://n8n.example.com/webhook/jarvis";
+      document.getElementById("connector-services").value = "gmail, outlook, whatsapp";
+      document.getElementById("connector-read").value = "gmail.search, gmail.read";
+      document.getElementById("connector-write").value = "gmail.send, gmail.reply";
+    }
+    updateConnectorHelp();
+  }
+
+  async function connectorRequest(path, options = {}) {
+    const response = await fetch(`${gatewayHttpBase()}${path}`, options);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail || {});
+      throw new Error(detail || `HTTP ${response.status}`);
+    }
+    return payload;
+  }
+
+  async function testConnector(name) {
+    setConnectorStatus(`PROBANDO ${name.toUpperCase()}…`);
     try {
-      await connectorRequest(`/connector-modules/${encodeURIComponent(name)}`, {
-        method: "PUT", headers: connectorApiHeaders(true), body: JSON.stringify(body),
+      const result = await connectorRequest("/connector-modules/test", {
+        method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ name }),
       });
+      setConnectorStatus(`✓ ${result.name.toUpperCase()} CONECTADO · ${result.message}`, "success");
+      return true;
+    } catch (error) {
+      setConnectorStatus(`GUARDADO, PERO LA PRUEBA FALLÓ · ${error.message}`, "error");
+      return false;
+    }
+  }
+
+  async function saveConnectorModule(body) {
+    await connectorRequest(`/connector-modules/${encodeURIComponent(body.name)}`, {
+      method: "PUT", headers: connectorApiHeaders(true), body: JSON.stringify(body),
+    });
+  }
+
+  async function refreshConnectorEvents() {
+    try {
+      const events = await connectorRequest("/proactive/events?limit=20", { headers: connectorApiHeaders() });
+      connectorEvents.replaceChildren();
+      for (const event of events) {
+        const row = document.createElement("div"); row.className = `event-row ${event.severity}`;
+        const dot = document.createElement("span"); dot.className = "event-dot";
+        const source = document.createElement("span"); source.textContent = `${event.connector} · ${event.event}`;
+        const text = document.createElement("span"); text.className = "event-text"; text.textContent = event.title || event.text;
+        const state = document.createElement("span"); state.className = "event-state"; state.textContent = event.status.replaceAll("_", " ");
+        row.append(dot, source, text, state); connectorEvents.appendChild(row);
+      }
+      if (!events.length) connectorEvents.textContent = "SIN EVENTOS TODAVÍA";
+    } catch (error) { connectorEvents.textContent = `NO DISPONIBLE · ${error.message}`; }
+  }
+
+  async function refreshConnectorModules() {
+    setConnectorStatus("CONSULTANDO…");
+    try {
+      const modules = await connectorRequest("/connector-modules", { headers: connectorApiHeaders() });
+      moduleList.replaceChildren();
+      for (const module of modules) {
+        const card = document.createElement("div"); card.className = `module-card${module.enabled ? "" : " disabled"}`;
+        const info = document.createElement("div"); info.className = "module-info";
+        const name = document.createElement("div"); name.className = "module-name"; name.textContent = `${module.enabled ? "●" : "○"} ${module.name.toUpperCase()} · ${module.type}`;
+        const meta = document.createElement("div"); meta.className = "module-meta";
+        meta.textContent = `${(module.services || []).join(", ") || "sin servicios"} · ${(module.read_actions || []).length} lectura(s) · ${(module.write_actions || []).length} con aprobación`;
+        info.append(name, meta);
+        const buttons = document.createElement("div"); buttons.className = "module-buttons";
+        const edit = document.createElement("button"); edit.textContent = "EDITAR"; edit.onclick = () => fillConnectorForm(module);
+        const test = document.createElement("button"); test.textContent = "PROBAR";
+        test.disabled = !module.enabled; test.onclick = () => testConnector(module.name);
+        const toggle = document.createElement("button"); toggle.textContent = module.enabled ? "PAUSAR" : "ACTIVAR";
+        toggle.onclick = async () => {
+          try {
+            await saveConnectorModule({ ...module, token: "", enabled: !module.enabled });
+            setConnectorStatus(`${module.name.toUpperCase()} ${module.enabled ? "PAUSADO" : "ACTIVADO"}`, "success");
+            refreshConnectorModules();
+          } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+        };
+        const remove = document.createElement("button"); remove.textContent = "ELIMINAR";
+        remove.onclick = async () => {
+          if (!confirm(`¿Eliminar el módulo ${module.name}?`)) return;
+          try {
+            await connectorRequest(`/connector-modules/${encodeURIComponent(module.name)}`, { method: "DELETE", headers: connectorApiHeaders() });
+            clearConnectorForm(); refreshConnectorModules();
+          } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+        };
+        buttons.append(edit, test, toggle, remove); card.append(info, buttons); moduleList.appendChild(card);
+      }
+      setConnectorStatus(modules.length ? `${modules.length} CONECTOR(ES) DISPONIBLE(S)` : "SIN CONECTORES · USA UNA PLANTILLA PARA COMENZAR");
+      refreshConnectorEvents();
+    } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+  }
+
+  document.getElementById("connector-open").addEventListener("click", () => {
+    connectorPanel.classList.add("active"); refreshConnectorModules();
+  });
+  document.getElementById("connector-close").addEventListener("click", () => connectorPanel.classList.remove("active"));
+  document.getElementById("connector-refresh").addEventListener("click", refreshConnectorModules);
+  document.getElementById("connector-clear").addEventListener("click", clearConnectorForm);
+  document.getElementById("connector-type").addEventListener("change", updateConnectorHelp);
+  for (const button of document.querySelectorAll("[data-connector-preset]")) {
+    button.addEventListener("click", () => applyConnectorPreset(button.dataset.connectorPreset));
+  }
+  document.getElementById("connector-save").addEventListener("click", async () => {
+    const body = connectorFormBody();
+    if (!body.name || !body.url) { setConnectorStatus("COMPLETA NOMBRE Y URL", "error"); return; }
+    setConnectorStatus("GUARDANDO CONFIGURACIÓN…");
+    try {
+      await saveConnectorModule(body);
       document.getElementById("connector-token").value = "";
-      connectorStatus.textContent = `✓ ${name.toUpperCase()} REGISTRADO`;
-      refreshConnectorModules();
-    } catch (error) { connectorStatus.textContent = `ERROR: ${error.message}`; }
+      await refreshConnectorModules();
+      await testConnector(body.name);
+    } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
   });
 
   // ── Voz: servidor local Whisper/Kokoro + fallback del navegador ──

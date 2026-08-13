@@ -30,6 +30,7 @@ def test_connector_store_encrypts_secrets_and_lists_only_public_data(tmp_path):
         assert b"super-secret-token" not in db_path.read_bytes()
         public = store.list_public()[0]
         assert public["services"] == ["gmail"]
+        assert public["url"] == "https://n8n.example.com/webhook/jarvis"
         assert "token" not in json.dumps(public)
         assert store.get("correo").config["_secrets"]["token"] == "super-secret-token"
     finally:
