@@ -2,6 +2,7 @@
 
 import io
 import json
+import urllib.error
 from email.message import Message
 
 from jarvis_core.connectors.runtime import ConnectorRuntime
@@ -148,3 +149,122 @@ async def test_home_assistant_discovers_and_compacts_entities(tmp_path, monkeypa
     ]
     assert "homeassistant.entities" in store.list_public()[0]["read_actions"]
     store.close()
+
+
+def _service_runtime(tmp_path):
+    store = ConnectorStore(str(tmp_path / "connectors.db"), "h" * 32)
+    store.upsert(
+        "casa",
+        "home_assistant",
+        {
+            "url": "http://homeassistant.local:8123",
+            "services": ["homeassistant"],
+            "read_actions": ["homeassistant.state"],
+            "write_actions": ["homeassistant.service"],
+        },
+        {"token": "ha-token"},
+    )
+    return ConnectorRuntime(store)
+
+
+class _CapturingOpener:
+    """Registra la petición y devuelve una respuesta JSON vacía de Home Assistant."""
+
+    def __init__(self):
+        self.request = None
+
+    def open(self, request, timeout):
+        del timeout
+        self.request = request
+
+        class FakeResponse(io.BytesIO):
+            headers = Message()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.close()
+
+        return FakeResponse(b"[]")
+
+
+async def test_service_accepts_entity_id_at_the_top_level(tmp_path):
+    """La forma natural de Home Assistant, y la que el agente escribe primero.
+
+    Antes se descartaba entity_id en silencio: Home Assistant recibía un cuerpo
+    vacío y devolvía un 400 que no explicaba nada.
+    """
+    runtime = _service_runtime(tmp_path)
+    opener = _CapturingOpener()
+    runtime._opener = opener
+
+    result = await runtime.invoke(
+        "casa",
+        "homeassistant.service",
+        {"domain": "light", "service": "turn_off", "entity_id": "light.master_room"},
+        write=True,
+    )
+
+    assert not result.is_error
+    assert opener.request.full_url.endswith("/api/services/light/turn_off")
+    assert json.loads(opener.request.data) == {"entity_id": "light.master_room"}
+
+
+async def test_service_still_accepts_the_nested_form(tmp_path):
+    runtime = _service_runtime(tmp_path)
+    opener = _CapturingOpener()
+    runtime._opener = opener
+
+    await runtime.invoke(
+        "casa",
+        "homeassistant.service",
+        {
+            "domain": "light",
+            "service": "turn_on",
+            "service_data": {"entity_id": "light.salon", "brightness": 120},
+        },
+        write=True,
+    )
+
+    assert json.loads(opener.request.data) == {
+        "entity_id": "light.salon",
+        "brightness": 120,
+    }
+
+
+async def test_service_data_must_still_be_an_object_when_given(tmp_path):
+    runtime = _service_runtime(tmp_path)
+    result = await runtime.invoke(
+        "casa",
+        "homeassistant.service",
+        {"domain": "light", "service": "turn_on", "service_data": "no-es-objeto"},
+        write=True,
+    )
+    assert result.is_error
+
+
+async def test_http_errors_explain_why(tmp_path):
+    """Un 400 sin motivo obliga a adivinar; el cuerpo suele decir qué falta."""
+    runtime = _service_runtime(tmp_path)
+
+    class FailingOpener:
+        def open(self, request, timeout):
+            raise urllib.error.HTTPError(
+                request.full_url,
+                400,
+                "Bad Request",
+                Message(),
+                io.BytesIO(b'{"message": "entity_id is required"}'),
+            )
+
+    runtime._opener = FailingOpener()
+    result = await runtime.invoke(
+        "casa",
+        "homeassistant.service",
+        {"domain": "light", "service": "turn_off"},
+        write=True,
+    )
+    assert result.is_error
+    assert "400" in result.content
+    assert "entity_id is required" in result.content

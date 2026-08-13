@@ -280,7 +280,14 @@ class _ModuleActionTool(Tool):
                 },
                 "payload": {
                     "type": "object",
-                    "description": "Datos mínimos para la acción.",
+                    "description": (
+                        "Datos mínimos para la acción. Para Home Assistant: "
+                        "homeassistant.service usa {\"domain\":\"light\","
+                        "\"service\":\"turn_off\",\"entity_id\":\"light.salon\"}; "
+                        "homeassistant.state usa {\"entity_id\":\"...\"}; "
+                        "homeassistant.entities acepta {\"domain\":\"light\"} o "
+                        "{\"query\":\"salon\"} para filtrar."
+                    ),
                 },
             },
             "required": ["connector", "action", "payload"],

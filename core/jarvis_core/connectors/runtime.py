@@ -80,7 +80,19 @@ class ConnectorRuntime:
                 raw = response.read(self.max_response_bytes + 1)
                 content_type = response.headers.get_content_type().lower()
         except urllib.error.HTTPError as exc:
-            return ToolResult(f"El conector respondió HTTP {exc.code}.", is_error=True)
+            # El cuerpo del error suele decir exactamente qué falta; descartarlo
+            # dejaba al agente adivinando a ciegas ante un 400.
+            detail = ""
+            try:
+                detail = exc.read(512).decode("utf-8", errors="replace").strip()
+            except Exception:
+                pass
+            detail = " ".join(detail.split())[:300]
+            return ToolResult(
+                f"El conector respondió HTTP {exc.code}."
+                + (f" Detalle: {detail}" if detail else ""),
+                is_error=True,
+            )
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             return ToolResult(
                 f"No se pudo contactar el conector: {type(exc).__name__}.",
@@ -233,9 +245,22 @@ class ConnectorRuntime:
                 or not service.replace("_", "").isalnum()
             ):
                 return ToolResult("Dominio o servicio inválido.", is_error=True)
-            service_data = payload.get("service_data", {})
-            if not isinstance(service_data, dict):
-                return ToolResult("service_data debe ser un objeto.", is_error=True)
+            # Home Assistant recibe los datos del servicio como cuerpo directo, así
+            # que `{"domain","service","entity_id"}` es la forma natural y la que
+            # cualquiera escribe primero. Anidar en `service_data` es una convención
+            # nuestra: se aceptan las dos y, sin anidar, el resto de claves son los
+            # datos. Antes se descartaban en silencio y Home Assistant devolvía un
+            # 400 imposible de diagnosticar desde el mensaje.
+            if "service_data" in payload:
+                service_data = payload["service_data"]
+                if not isinstance(service_data, dict):
+                    return ToolResult("service_data debe ser un objeto.", is_error=True)
+            else:
+                service_data = {
+                    key: value
+                    for key, value in payload.items()
+                    if key not in {"domain", "service"}
+                }
             url = urljoin(base, f"api/services/{quote(domain)}/{quote(service)}")
             return self._request(
                 url, method="POST", headers=headers, payload=service_data
