@@ -11,6 +11,7 @@ from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
+from jarvis_core.goals.store import GoalStore
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
@@ -23,6 +24,7 @@ from jarvis_core.tools.builtin.filesystem import (
     WorkspaceGuard,
     register_filesystem_tools,
 )
+from jarvis_core.tools.builtin.goal_tools import register_goal_tools
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
 from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
@@ -57,6 +59,7 @@ def build_default_registry(
     *,
     allow_shell: bool | None = None,
     connector_store: ConnectorStore | None = None,
+    goals: GoalStore | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -69,6 +72,8 @@ def build_default_registry(
         registry.register(ScheduleTaskTool(tasks))
         registry.register(ListTasksTool(tasks))
         registry.register(CancelTaskTool(tasks))
+    if goals is not None:
+        register_goal_tools(registry, goals)
     if emotion is not None:
         registry.register(SetEmotionTool(emotion))
     if settings.agent_control_enabled:

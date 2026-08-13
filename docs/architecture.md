@@ -77,6 +77,8 @@ Herramientas de arranque (`core/jarvis_core/tools/builtin/`):
 - `list_connectors` / `query_connector` / `run_connector_action` — descubren y ejecutan
   acciones declaradas en el bus n8n para correo, mensajería, calendarios, Home Assistant,
   Alexa y APIs futuras; todo cambio requiere aprobación humana.
+- `create_goal_plan` / `get_goal_plan` / `update_goal_step` / `close_goal_plan` — convierten
+  solicitudes complejas en objetivos persistentes con pasos, evidencia y progreso visible.
 
 El acceso a archivos está confinado a `JARVIS_WORKSPACE_ROOT`. Las rutas absolutas, `..`
 que escapa de la raíz y enlaces simbólicos hacia el exterior se rechazan. El contenedor no

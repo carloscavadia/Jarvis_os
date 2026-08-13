@@ -27,6 +27,7 @@ RUN addgroup --system jarvis \
     && chown -R jarvis:jarvis /app/data /app/workspace /app/.local
 ENV JARVIS_MEMORY_DB=/app/data/jarvis_memory.db
 ENV JARVIS_TASKS_DB=/app/data/jarvis_tasks.db
+ENV JARVIS_GOALS_DB=/app/data/jarvis_goals.db
 ENV JARVIS_STT_DOWNLOAD_ROOT=/app/data/models
 # Kokoro descarga sus pesos (~330 MB) en HF_HOME durante la primera síntesis.
 ENV JARVIS_TTS_VOICE=em_alex

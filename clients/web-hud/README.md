@@ -41,6 +41,11 @@ El botón **Conectores** abre el registro administrativo de módulos n8n y Home 
 Permite guardar y probar claves sin exponerlas al chat; requiere
 `JARVIS_CONNECTOR_MASTER_KEY` en el gateway.
 
+Cuando JARVIS recibe una solicitud compleja, puede crear un objetivo persistente. El HUD
+muestra una tarjeta de misión en la esquina superior izquierda con pasos y avance. Cada paso
+solo se completa después de guardar evidencia, y el objetivo no puede cerrarse como exitoso
+si queda trabajo sin verificar.
+
 ### Voz y micrófono
 
 Al conectarse, el HUD mantiene una escucha pasiva de la frase «Hey Jarvis». Ignora todo lo

@@ -76,6 +76,7 @@ class Settings:
 
     # --- Tareas / proactividad ---
     tasks_db_path: str = "data/jarvis_tasks.db"
+    goals_db_path: str = "data/jarvis_goals.db"
     scheduler_enabled: bool = True
     scheduler_poll_seconds: float = 5.0
 
@@ -161,6 +162,7 @@ class Settings:
             persona_extra=os.environ.get("JARVIS_PERSONA_EXTRA", ""),
             memory_db_path=os.environ.get("JARVIS_MEMORY_DB", "data/jarvis_memory.db"),
             tasks_db_path=os.environ.get("JARVIS_TASKS_DB", "data/jarvis_tasks.db"),
+            goals_db_path=os.environ.get("JARVIS_GOALS_DB", "data/jarvis_goals.db"),
             scheduler_enabled=_get_bool("JARVIS_SCHEDULER_ENABLED", True),
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),
             enable_shell=_get_bool("JARVIS_ENABLE_SHELL", True),
@@ -325,6 +327,14 @@ class Settings:
             f"confirmar algo o dar buenas noticias, 'concern' ante un problema o error, "
             f"'alert' cuando algo requiere atención, 'neutral' en conversación normal. No lo "
             f"menciones por texto; simplemente ajusta tu emoción con la herramienta."
+        )
+        base += (
+            "\n\nPara solicitudes complejas con varias acciones, crea primero un objetivo con "
+            "create_goal_plan. Ejecuta sus pasos en orden usando las herramientas adecuadas; "
+            "marca cada paso running al iniciarlo y completed únicamente después de verificarlo "
+            "con evidencia concreta. Si un paso falla, márcalo failed y no finjas éxito. Cierra "
+            "el objetivo como completed solo cuando todos los pasos estén verificados. Mantén un "
+            "único objetivo activo y no crees planes para preguntas simples."
         )
         if self.internet_access_enabled:
             base += (

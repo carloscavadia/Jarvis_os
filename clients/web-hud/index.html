@@ -194,6 +194,19 @@
   .module-card { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
     border-left: 2px solid var(--core); background: rgba(11,26,37,.58); font: 10px var(--mono); }
   .module-card .module-info { flex: 1; overflow-wrap: anywhere; }
+  .goal-panel { display: none; position: fixed; z-index: 5; top: 28px; left: 28px;
+    width: min(360px, calc(100vw - 56px)); padding: 12px; border: 1px solid var(--hairline-2);
+    border-radius: 11px; background: rgba(4,12,21,.88); backdrop-filter: blur(14px);
+    box-shadow: 0 16px 55px rgba(0,0,0,.48); font-family: var(--mono); }
+  .goal-panel.active { display: block; animation: workspace-in .28s ease-out; }
+  .goal-title { display: flex; justify-content: space-between; gap: 12px; color: var(--core-bright);
+    font-size: 11px; letter-spacing: .08em; }
+  .goal-progress { height: 3px; margin: 10px 0; background: rgba(53,230,255,.1); overflow: hidden; }
+  .goal-progress span { display: block; height: 100%; background: var(--core); box-shadow: 0 0 12px var(--core); transition: width .35s ease; }
+  .goal-steps { display: grid; gap: 6px; max-height: 32vh; overflow: auto; }
+  .goal-step { display: grid; grid-template-columns: 14px 1fr; gap: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+  .goal-step.completed { color: #a8efd0; } .goal-step.running { color: var(--core-bright); }
+  .goal-step.failed { color: #ffd0a0; }
 
   @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; }
     .action-trace { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 58vh; } }
@@ -254,6 +267,12 @@
     <div class="connector-actions"><button id="connector-save">REGISTRAR</button><button id="connector-refresh">ACTUALIZAR</button></div>
     <div class="connector-status" id="connector-status"></div>
     <div class="module-list" id="module-list"></div>
+  </section>
+
+  <section class="goal-panel" id="goal-panel" aria-live="polite" aria-label="Objetivo activo de JARVIS">
+    <div class="goal-title"><span id="goal-title">OBJETIVO</span><span id="goal-count">0/0</span></div>
+    <div class="goal-progress"><span id="goal-progress"></span></div>
+    <div class="goal-steps" id="goal-steps"></div>
   </section>
 
   <section class="action-trace" id="action-trace" aria-live="polite" aria-label="Espacio de trabajo de JARVIS">
@@ -317,6 +336,11 @@
   const connectorPanel = document.getElementById("connector-panel");
   const connectorStatus = document.getElementById("connector-status");
   const moduleList = document.getElementById("module-list");
+  const goalPanel = document.getElementById("goal-panel");
+  const goalTitle = document.getElementById("goal-title");
+  const goalCount = document.getElementById("goal-count");
+  const goalProgress = document.getElementById("goal-progress");
+  const goalSteps = document.getElementById("goal-steps");
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -434,6 +458,24 @@
     if (["completed", "denied"].includes(event.phase) && !event.presentation?.keep_open) {
       workspaceCloseTimer = setTimeout(() => closeWorkspace(), 18000);
     }
+    if (event.goal) showGoalProgress(event.goal);
+  }
+
+  function showGoalProgress(goal) {
+    const progress = goal.progress || { completed: 0, total: goal.steps?.length || 0 };
+    goalPanel.classList.toggle("active", goal.status === "active");
+    goalTitle.textContent = goal.title || "OBJETIVO";
+    goalCount.textContent = `${progress.completed}/${progress.total}`;
+    goalProgress.style.width = `${progress.total ? (progress.completed / progress.total) * 100 : 0}%`;
+    goalSteps.replaceChildren();
+    for (const step of goal.steps || []) {
+      const row = document.createElement("div"); row.className = `goal-step ${step.status}`;
+      const icon = document.createElement("span");
+      icon.textContent = step.status === "completed" ? "✓" : step.status === "running" ? "›" : step.status === "failed" ? "!" : "·";
+      const text = document.createElement("span"); text.textContent = step.title;
+      row.append(icon, text); goalSteps.appendChild(row);
+    }
+    if (goal.status !== "active") setTimeout(() => goalPanel.classList.remove("active"), 4500);
   }
   function closeWorkspace() {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;

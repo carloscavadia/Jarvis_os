@@ -37,6 +37,7 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Calendario y recordatorios.
 - [ ] Control del propio servidor Proxmox (estado de VMs/LXC, arrancar/parar).
 - [ ] Multiagente: subagentes "casa", "investigación", "código".
+- [x] Motor de objetivos persistentes con planes, verificación y progreso en el HUD.
 
 ## Fase 4 — Dispositivos físicos
 - [ ] Firmware: conexión MQTT sobre 4G con TLS.

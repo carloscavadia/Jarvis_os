@@ -189,6 +189,25 @@ def _workspace_presentation(
     }
 
 
+def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | None:
+    if (
+        name
+        not in {
+            "create_goal_plan",
+            "get_goal_plan",
+            "update_goal_step",
+            "close_goal_plan",
+        }
+        or result is None
+    ):
+        return None
+    try:
+        progress = json.loads(result.content)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return progress if isinstance(progress, dict) and "goal_id" in progress else None
+
+
 def _python_preview(name: str, arguments: dict[str, object]) -> str | None:
     path_value = arguments.get("path")
     if not isinstance(path_value, str) or not path_value.lower().endswith(".py"):
@@ -698,6 +717,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     if presentation is None:
                         payload["output"] = result.content[:12000]
                     payload["is_error"] = result.is_error
+                    goal = _goal_progress(name, result)
+                    if goal is not None:
+                        payload["goal"] = goal
                 await websocket.send_json(payload)
 
             # El canal continúa disponible tras un fallo del proveedor.

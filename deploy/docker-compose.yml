@@ -36,6 +36,7 @@ services:
       JARVIS_STT_DEVICE: "${JARVIS_STT_DEVICE:-cpu}"
       JARVIS_STT_COMPUTE_TYPE: "${JARVIS_STT_COMPUTE_TYPE:-int8}"
       JARVIS_STT_DOWNLOAD_ROOT: /app/data/models
+      JARVIS_GOALS_DB: /app/data/jarvis_goals.db
       JARVIS_TTS_VOICE: "${JARVIS_TTS_VOICE:-em_alex}"
       JARVIS_TTS_LANG_CODE: "${JARVIS_TTS_LANG_CODE:-e}"
       JARVIS_TTS_SPEED: "${JARVIS_TTS_SPEED:-1.0}"
