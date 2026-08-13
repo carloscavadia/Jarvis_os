@@ -472,7 +472,10 @@ class Settings:
                 "eventos, controlar Home Assistant o ejecutar rutinas de Alexa; el sistema "
                 "solicitará aprobación humana para esos cambios. No supongas que un servicio "
                 "está conectado si no aparece en list_connectors. Nunca "
-                "inventes que una acción se completó si el conector devolvió un error."
+                "inventes que una acción se completó si el conector devolvió un error. "
+                "En Home Assistant, cuando el usuario pregunte por todos sus dispositivos, "
+                "entidades, luces o sensores, usa homeassistant.entities con payload vacío "
+                "o con el filtro domain apropiado; no pidas entity_id para descubrirlos."
             )
         if self.persona_extra:
             base += f"\n\nReglas adicionales de la casa:\n{self.persona_extra}"

@@ -1,6 +1,8 @@
 """Pruebas del registro cifrado y las herramientas modulares."""
 
+import io
 import json
+from email.message import Message
 
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
@@ -74,4 +76,75 @@ async def test_dynamic_tools_enforce_module_action_lists(tmp_path, monkeypatch):
     ).is_error
     assert action.requires_confirmation
     assert calls == [("casa", "homeassistant.state", {"entity_id": "light.office"})]
+    store.close()
+
+
+async def test_home_assistant_discovers_and_compacts_entities(tmp_path, monkeypatch):
+    store = ConnectorStore(str(tmp_path / "connectors.db"), "h" * 32)
+    store.upsert(
+        "casa",
+        "home_assistant",
+        {
+            "url": "http://homeassistant.local:8123",
+            "services": ["homeassistant"],
+            # Simula un módulo ya registrado antes de añadir descubrimiento.
+            "read_actions": ["homeassistant.state"],
+            "write_actions": ["homeassistant.service"],
+        },
+        {"token": "ha-token"},
+    )
+    runtime = ConnectorRuntime(store)
+    response_body = json.dumps(
+        [
+            {
+                "entity_id": "light.office",
+                "state": "on",
+                "attributes": {"friendly_name": "Luz oficina"},
+            },
+            {
+                "entity_id": "sensor.temperature",
+                "state": "22.4",
+                "attributes": {
+                    "friendly_name": "Temperatura sala",
+                    "device_class": "temperature",
+                    "unit_of_measurement": "°C",
+                },
+            },
+        ]
+    ).encode()
+
+    class FakeResponse(io.BytesIO):
+        headers = Message()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            assert request.full_url.endswith("/api/states")
+            assert timeout == runtime.timeout
+            return FakeResponse(response_body)
+
+    runtime._opener = FakeOpener()
+    result = await runtime.invoke(
+        "casa", "homeassistant.entities", {"domain": "sensor"}, write=False
+    )
+    payload = json.loads(result.content)
+
+    assert not result.is_error
+    assert payload["total"] == 1
+    assert payload["entities"] == [
+        {
+            "entity_id": "sensor.temperature",
+            "name": "Temperatura sala",
+            "domain": "sensor",
+            "state": "22.4",
+            "device_class": "temperature",
+            "unit": "°C",
+        }
+    ]
+    assert "homeassistant.entities" in store.list_public()[0]["read_actions"]
     store.close()

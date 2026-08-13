@@ -303,7 +303,10 @@ class _ModuleActionTool(Tool):
 class QueryConnectorModuleTool(_ModuleActionTool):
     name = "query_connector_module"
     description = (
-        "Consulta un módulo de conector registrado sin modificar el servicio externo."
+        "Consulta un módulo sin modificar el servicio externo. Para Home Assistant usa "
+        "homeassistant.entities con payload {} para listar todas las entidades; acepta "
+        "domain, query, limit y offset. Usa homeassistant.state solo cuando ya conoces "
+        "un entity_id específico."
     )
 
 

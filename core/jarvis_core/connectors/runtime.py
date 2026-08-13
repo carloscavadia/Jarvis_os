@@ -8,7 +8,7 @@ import ssl
 import urllib.error
 import urllib.request
 import uuid
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import certifi
@@ -35,6 +35,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class ConnectorRuntime:
+    HOME_ASSISTANT_READ_ACTIONS: ClassVar[frozenset[str]] = frozenset(
+        {"homeassistant.entities"}
+    )
+
     def __init__(
         self,
         store: ConnectorStore,
@@ -139,6 +143,88 @@ class ConnectorRuntime:
                 return ToolResult("Falta entity_id válido.", is_error=True)
             url = urljoin(base, f"api/states/{quote(entity_id, safe='._-')}")
             return self._request(url, method="GET", headers=headers)
+        if action == "homeassistant.entities":
+            domain = str(payload.get("domain", "")).strip().lower()
+            query = str(payload.get("query", "")).strip().lower()
+            try:
+                limit = max(1, min(int(payload.get("limit", 300)), 500))
+                offset = max(0, int(payload.get("offset", 0)))
+            except (TypeError, ValueError):
+                return ToolResult("limit u offset inválido.", is_error=True)
+            if domain and not domain.replace("_", "").isalnum():
+                return ToolResult("Dominio de Home Assistant inválido.", is_error=True)
+            request = urllib.request.Request(
+                urljoin(base, "api/states"), method="GET", headers=headers
+            )
+            try:
+                with self._opener.open(request, timeout=self.timeout) as response:
+                    # Los inventarios domésticos pueden superar el límite normal de
+                    # una respuesta individual, pero se compactan antes de llegar al LLM.
+                    raw = response.read(max(self.max_response_bytes, 2 * 1024 * 1024) + 1)
+            except urllib.error.HTTPError as exc:
+                return ToolResult(
+                    f"Home Assistant respondió HTTP {exc.code}.", is_error=True
+                )
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                return ToolResult(
+                    f"No se pudo contactar Home Assistant: {type(exc).__name__}.",
+                    is_error=True,
+                )
+            if len(raw) > max(self.max_response_bytes, 2 * 1024 * 1024):
+                return ToolResult(
+                    "El inventario de Home Assistant supera 2 MiB; usa un filtro domain.",
+                    is_error=True,
+                )
+            try:
+                states = json.loads(raw)
+            except json.JSONDecodeError:
+                return ToolResult("Home Assistant devolvió JSON inválido.", is_error=True)
+            if not isinstance(states, list):
+                return ToolResult("Home Assistant no devolvió una lista de entidades.", is_error=True)
+
+            entities: list[dict[str, Any]] = []
+            for item in states:
+                if not isinstance(item, dict):
+                    continue
+                entity_id = str(item.get("entity_id", ""))
+                entity_domain = entity_id.partition(".")[0]
+                attributes = item.get("attributes", {})
+                if not isinstance(attributes, dict):
+                    attributes = {}
+                name = str(attributes.get("friendly_name", entity_id))
+                if domain and entity_domain != domain:
+                    continue
+                if query and query not in f"{entity_id} {name}".lower():
+                    continue
+                entity = {
+                    "entity_id": entity_id,
+                    "name": name,
+                    "domain": entity_domain,
+                    "state": str(item.get("state", "")),
+                }
+                for source, target in (
+                    ("device_class", "device_class"),
+                    ("unit_of_measurement", "unit"),
+                ):
+                    if attributes.get(source) is not None:
+                        entity[target] = str(attributes[source])
+                entities.append(entity)
+
+            total = len(entities)
+            page = entities[offset : offset + limit]
+            return ToolResult(
+                json.dumps(
+                    {
+                        "total": total,
+                        "returned": len(page),
+                        "offset": offset,
+                        "has_more": offset + len(page) < total,
+                        "entities": page,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
         if action == "homeassistant.service":
             domain = str(payload.get("domain", ""))
             service = str(payload.get("service", ""))
@@ -163,7 +249,10 @@ class ConnectorRuntime:
         if record is None or not record.enabled:
             return ToolResult("El módulo no existe o está desactivado.", is_error=True)
         allowed_key = "write_actions" if write else "read_actions"
-        if action not in record.config.get(allowed_key, []):
+        allowed_actions = set(record.config.get(allowed_key, []))
+        if record.connector_type == "home_assistant" and not write:
+            allowed_actions.update(self.HOME_ASSISTANT_READ_ACTIONS)
+        if action not in allowed_actions:
             return ToolResult("Acción no permitida para este módulo.", is_error=True)
         if record.connector_type == "n8n":
             return self._n8n(record, action, payload)

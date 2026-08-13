@@ -120,19 +120,23 @@ class ConnectorStore:
             rows = self._db.execute(
                 "SELECT name, connector_type, config_json, enabled, updated_at FROM connectors ORDER BY name"
             ).fetchall()
-        return [
-            {
+        result = []
+        for row in rows:
+            config = json.loads(row[2])
+            read_actions = list(config.get("read_actions", []))
+            if row[1] == "home_assistant" and "homeassistant.entities" not in read_actions:
+                read_actions.append("homeassistant.entities")
+            result.append({
                 "name": row[0],
                 "type": row[1],
                 "enabled": bool(row[3]),
-                "url": json.loads(row[2]).get("url", ""),
-                "services": json.loads(row[2]).get("services", []),
-                "read_actions": json.loads(row[2]).get("read_actions", []),
-                "write_actions": json.loads(row[2]).get("write_actions", []),
+                "url": config.get("url", ""),
+                "services": config.get("services", []),
+                "read_actions": read_actions,
+                "write_actions": config.get("write_actions", []),
                 "updated_at": row[4],
-            }
-            for row in rows
-        ]
+            })
+        return result
 
     def delete(self, name: str) -> bool:
         with self._lock, self._db:
