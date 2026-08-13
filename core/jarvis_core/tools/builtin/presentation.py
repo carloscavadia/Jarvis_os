@@ -10,9 +10,10 @@ from jarvis_core.tools.base import Tool, ToolResult
 class ShowInWorkspaceTool(Tool):
     name = "show_in_workspace"
     description = (
-        "Abre el espacio de trabajo visual del HUD para mostrar texto, código, JSON, "
-        "tablas o resultados extensos. Úsalo cuando el usuario pida ver algo allí o cuando "
-        "una presentación separada sea claramente más útil que el chat."
+        "Abre el pizarrón visual del HUD para mostrar código, JSON, tablas, listados o "
+        "resultados extensos. Úsalo siempre que el contenido supere cuatro frases o sea "
+        "estructurado. Después responde en el chat con solo una síntesis de una o dos frases; "
+        "nunca dupliques allí el contenido del pizarrón."
     )
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",

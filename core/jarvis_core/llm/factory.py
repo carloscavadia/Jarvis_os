@@ -23,6 +23,20 @@ def build_llm(settings: Settings) -> LLMProvider:
             effort=settings.effort,
         )
 
+    if provider in {"openai_responses", "openai-native", "openai_native"}:
+        from jarvis_core.llm.openai_responses import OpenAIResponsesProvider
+
+        return OpenAIResponsesProvider(
+            api_key=settings.openai_responses_api_key,
+            model=settings.openai_responses_model,
+            max_tokens=settings.openai_responses_max_tokens,
+            reasoning_effort=settings.openai_responses_effort,
+            verbosity=settings.openai_responses_verbosity,
+            daily_token_limit=settings.openai_responses_daily_token_limit,
+            usage_db_path=settings.openai_usage_db_path,
+            history_items=settings.openai_responses_history_items,
+        )
+
     if provider in {"openai", "nvidia", "ollama", "compatible"}:
         from jarvis_core.llm.openai_compatible import OpenAICompatibleProvider
 
@@ -36,5 +50,6 @@ def build_llm(settings: Settings) -> LLMProvider:
 
     raise ValueError(
         f"Proveedor de LLM desconocido: '{settings.llm_provider}'. "
-        f"Usa 'anthropic' u 'openai' (compatible con NVIDIA NIM / Ollama)."
+        f"Usa 'anthropic', 'openai_responses' u 'openai' "
+        f"(compatible con NVIDIA NIM / Ollama)."
     )

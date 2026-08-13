@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
+from jarvis_gateway.realtime_voice import RealtimeVoiceBroker, RealtimeVoiceError
 from jarvis_gateway.sessions import SessionManager
 from jarvis_gateway.voice import VoiceRuntime
 
@@ -52,6 +53,7 @@ sessions = SessionManager(settings)
 mqtt_bridge = MqttBridge(settings, sessions)
 notifier = Notifier(mqtt_bridge)
 voice_runtime = VoiceRuntime(settings)
+realtime_voice = RealtimeVoiceBroker(settings)
 
 
 def _valid_api_key(candidate: str | None) -> bool:
@@ -374,6 +376,7 @@ async def health() -> dict[str, str]:
         "provider": settings.llm_provider,
         "scheduler": "on" if settings.scheduler_enabled else "off",
         "voice": "on" if settings.voice_enabled else "off",
+        "realtime_voice": "on" if realtime_voice.enabled else "off",
         "connectors": "on" if settings.connectors_enabled else "off",
     }
 
@@ -388,11 +391,22 @@ async def ready() -> dict[str, str]:
     if provider == "anthropic":
         if not settings.anthropic_api_key:
             errors.append("anthropic_api_key")
+    elif provider in {"openai_responses", "openai-native", "openai_native"}:
+        if not settings.openai_responses_api_key:
+            errors.append("openai_api_key")
+        if not settings.openai_responses_model:
+            errors.append("openai_responses_model")
     elif provider in {"openai", "nvidia", "ollama", "compatible"}:
         if not settings.openai_model:
             errors.append("openai_model")
     else:
         errors.append("llm_provider")
+    if (
+        settings.openai_realtime_enabled
+        and not settings.openai_responses_api_key
+        and "openai_api_key" not in errors
+    ):
+        errors.append("openai_api_key")
     if settings.connectors_enabled:
         legacy_n8n_configured = bool(
             settings.n8n_webhook_url or settings.n8n_webhook_token
@@ -708,8 +722,24 @@ async def decide_proactive_event(
 
 
 @app.get("/voice/status", dependencies=[Depends(require_api_key)])
-async def voice_status() -> dict[str, str | bool]:
-    return voice_runtime.status()
+async def voice_status() -> dict[str, object]:
+    status: dict[str, object] = dict(voice_runtime.status())
+    status["realtime"] = realtime_voice.status()
+    return status
+
+
+@app.post("/voice/realtime-token", dependencies=[Depends(require_api_key)])
+async def create_realtime_voice_token() -> dict[str, object]:
+    """Entrega una credencial breve; nunca expone OPENAI_API_KEY."""
+    try:
+        return await realtime_voice.create_client_secret()
+    except RealtimeVoiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("No se pudo crear la sesión OpenAI Realtime")
+        raise HTTPException(
+            status_code=503, detail="Voz OpenAI Realtime no disponible."
+        ) from exc
 
 
 @app.post("/voice/transcribe", dependencies=[Depends(require_api_key)])
@@ -922,6 +952,11 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     confirm=request_confirmation,
                     on_tool_event=send_tool_event,
                 )
+            except WebSocketDisconnect:
+                # El cliente puede recargar o cerrar el HUD mientras el proveedor
+                # aún genera. Deja que el manejador exterior cierre la sesión sin
+                # intentar escribir un segundo mensaje sobre el socket cerrado.
+                raise
             except Exception:
                 logger.exception("Error procesando la sesión WebSocket %s", session_id)
                 await websocket.send_json(

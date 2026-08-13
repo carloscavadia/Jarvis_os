@@ -1,12 +1,14 @@
 # Voz de JARVIS
 
-JARVIS oye y habla con motores **locales**: nada de audio sale de tu servidor y no hay
-coste por uso.
+JARVIS mantiene la escucha siempre activa con motores **locales**. Opcionalmente puede
+usar OpenAI Realtime únicamente para producir una voz más natural después de detectar
+«Hey JARVIS» y obtener una respuesta. Así no hay conexión ni consumo continuo.
 
 | Función | Motor | Notas |
 |---|---|---|
 | Oír (STT) | **faster-whisper** | Modelo `small` por defecto; buen equilibrio en español sobre CPU. |
 | Hablar (TTS) | **Kokoro-82M** | Voz `em_alex`; natural y rápida en CPU. |
+| Hablar (opcional) | **OpenAI Realtime** | Voz `marin` bajo demanda; Kokoro queda como respaldo automático. |
 
 ## Por qué Kokoro
 
@@ -56,6 +58,35 @@ JARVIS_TTS_SPEED=1.0         # 0.9 más pausado · 1.1 más ágil
 
 `em_alex` es el valor predeterminado para una voz masculina serena. Cambia la variable y
 reinicia el gateway si quieres probar otra voz; no hace falta tocar código.
+
+## OpenAI Realtime bajo demanda
+
+El navegador solicita al gateway un secreto efímero y establece WebRTC directamente con
+OpenAI. La clave `OPENAI_API_KEY` nunca llega al HUD. JARVIS envía únicamente el texto que
+va a pronunciar: wake word, detección de fin de frase y transcripción continúan locales.
+
+```bash
+OPENAI_API_KEY=sk-...
+JARVIS_OPENAI_REALTIME_ENABLED=true
+JARVIS_OPENAI_REALTIME_MODEL=gpt-realtime-2.1-mini
+JARVIS_OPENAI_REALTIME_VOICE=marin
+JARVIS_OPENAI_REALTIME_SESSION_SECONDS=45
+JARVIS_OPENAI_REALTIME_DAILY_SESSIONS=50
+JARVIS_OPENAI_REALTIME_MAX_OUTPUT_TOKENS=700
+```
+
+Cada respuesta reutiliza una sola conexión breve y la cierra al terminar. Si falta la
+clave, se alcanza el límite diario o WebRTC falla, el HUD cambia automáticamente a Kokoro
+y, como último respaldo, a la voz del navegador.
+
+Para activar los cambios en el servidor:
+
+```bash
+cd /opt/jarvis_os
+git pull --ff-only
+cd deploy
+sudo docker compose up -d --build
+```
 
 ## Diagnóstico
 

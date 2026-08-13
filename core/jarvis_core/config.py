@@ -47,7 +47,7 @@ class Settings:
     """Ajustes del núcleo. Usa `Settings.from_env()` para cargarlos."""
 
     # --- Cerebro (LLM) ---
-    # Proveedor: "anthropic" (Claude) u "openai" (compatible: NVIDIA NIM, Ollama...).
+    # Proveedor: anthropic, openai_responses o compatible (NVIDIA NIM/Ollama).
     llm_provider: str = "anthropic"
 
     # Anthropic (Claude)
@@ -62,6 +62,24 @@ class Settings:
     openai_base_url: str = ""  # p.ej. https://integrate.api.nvidia.com/v1
     openai_model: str = ""  # p.ej. meta/llama-3.1-70b-instruct
     openai_enable_thinking: bool = False
+
+    # OpenAI nativo (Responses API). Voz, wake word, STT y TTS siguen locales.
+    openai_responses_api_key: str = ""
+    openai_responses_model: str = "gpt-5.4-nano"
+    openai_responses_effort: str = "low"
+    openai_responses_verbosity: str = "low"
+    openai_responses_max_tokens: int = 900
+    openai_responses_daily_token_limit: int = 100_000
+    openai_usage_db_path: str = "data/openai_usage.db"
+    openai_responses_history_items: int = 24
+
+    # Voz OpenAI Realtime bajo demanda. La entrada de audio continúa siendo local.
+    openai_realtime_enabled: bool = False
+    openai_realtime_model: str = "gpt-realtime-2.1-mini"
+    openai_realtime_voice: str = "marin"
+    openai_realtime_max_output_tokens: int = 700
+    openai_realtime_session_seconds: int = 45
+    openai_realtime_daily_sessions: int = 50
 
     max_tokens: int = 16000
 
@@ -157,6 +175,80 @@ class Settings:
             openai_base_url=os.environ.get("JARVIS_OPENAI_BASE_URL", ""),
             openai_model=os.environ.get("JARVIS_OPENAI_MODEL", ""),
             openai_enable_thinking=_get_bool("JARVIS_OPENAI_ENABLE_THINKING", False),
+            openai_responses_api_key=os.environ.get("OPENAI_API_KEY", ""),
+            openai_responses_model=os.environ.get(
+                "JARVIS_OPENAI_RESPONSES_MODEL", "gpt-5.4-nano"
+            ),
+            openai_responses_effort=os.environ.get(
+                "JARVIS_OPENAI_RESPONSES_EFFORT", "low"
+            ),
+            openai_responses_verbosity=os.environ.get(
+                "JARVIS_OPENAI_RESPONSES_VERBOSITY", "low"
+            ),
+            openai_responses_max_tokens=max(
+                64,
+                min(
+                    4096,
+                    int(os.environ.get("JARVIS_OPENAI_RESPONSES_MAX_TOKENS", "900")),
+                ),
+            ),
+            openai_responses_daily_token_limit=max(
+                0,
+                int(
+                    os.environ.get(
+                        "JARVIS_OPENAI_DAILY_TOKEN_LIMIT", "100000"
+                    )
+                ),
+            ),
+            openai_usage_db_path=os.environ.get(
+                "JARVIS_OPENAI_USAGE_DB", "data/openai_usage.db"
+            ),
+            openai_responses_history_items=max(
+                4,
+                min(
+                    80,
+                    int(os.environ.get("JARVIS_OPENAI_HISTORY_ITEMS", "24")),
+                ),
+            ),
+            openai_realtime_enabled=_get_bool(
+                "JARVIS_OPENAI_REALTIME_ENABLED", False
+            ),
+            openai_realtime_model=os.environ.get(
+                "JARVIS_OPENAI_REALTIME_MODEL", "gpt-realtime-2.1-mini"
+            ),
+            openai_realtime_voice=os.environ.get(
+                "JARVIS_OPENAI_REALTIME_VOICE", "marin"
+            ),
+            openai_realtime_max_output_tokens=max(
+                64,
+                min(
+                    4096,
+                    int(
+                        os.environ.get(
+                            "JARVIS_OPENAI_REALTIME_MAX_OUTPUT_TOKENS", "700"
+                        )
+                    ),
+                ),
+            ),
+            openai_realtime_session_seconds=max(
+                10,
+                min(
+                    300,
+                    int(
+                        os.environ.get(
+                            "JARVIS_OPENAI_REALTIME_SESSION_SECONDS", "45"
+                        )
+                    ),
+                ),
+            ),
+            openai_realtime_daily_sessions=max(
+                0,
+                int(
+                    os.environ.get(
+                        "JARVIS_OPENAI_REALTIME_DAILY_SESSIONS", "50"
+                    )
+                ),
+            ),
             max_tokens=int(os.environ.get("JARVIS_MAX_TOKENS", "16000")),
             persona_name=os.environ.get("JARVIS_PERSONA_NAME", "JARVIS"),
             language=os.environ.get("JARVIS_LANGUAGE", "es"),
@@ -360,10 +452,13 @@ class Settings:
             )
         if self.hud_workspace_enabled:
             base += (
-                "\n\nDispones de show_in_workspace para abrir una ventana visual separada. "
-                "Úsala cuando el usuario pida mostrar código, datos, tablas o resultados en el "
-                "espacio de trabajo, y también por iniciativa propia cuando mejore claramente "
-                "la comprensión. No la uses para respuestas conversacionales breves."
+                "\n\nDispones de show_in_workspace: es tu pizarrón visual separado del chat. "
+                "Úsalo siempre para código, JSON, tablas, listados extensos, resultados de "
+                "herramientas o cualquier contenido que normalmente requiera más de cuatro "
+                "frases. También úsalo cuando el usuario pida mostrar algo en la ventana o el "
+                "pizarrón. Después de mostrar contenido allí, no lo repitas en la respuesta: "
+                "en el chat entrega únicamente una síntesis útil de una o dos frases e indica "
+                "que el detalle está visible en el pizarrón. No lo uses para conversación breve."
             )
         if self.connectors_enabled:
             base += (

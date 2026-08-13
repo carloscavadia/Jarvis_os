@@ -55,29 +55,43 @@
 
   .console {
     position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
-    width: min(680px, 90vw);
-    background: var(--panel); border: 1px solid var(--hairline); border-radius: 14px;
-    backdrop-filter: blur(6px); box-shadow: 0 0 40px rgba(0,0,0,0.45); overflow: hidden;
+    width: min(760px, calc(100vw - 420px)); min-width: 540px;
+    background: rgba(5, 13, 22, .76); border: 1px solid var(--hairline); border-radius: 14px;
+    backdrop-filter: blur(14px) saturate(115%); box-shadow: 0 16px 55px rgba(0,0,0,.48), 0 0 28px rgba(53,230,255,.045);
+    overflow: hidden; transition: width .25s ease, box-shadow .25s ease;
   }
   .action-trace { display: none; position: fixed; z-index: 4; top: 28px; right: 28px;
     width: min(430px, calc(100vw - 56px)); max-height: min(68vh, 620px); overflow: hidden;
-    border: 1px solid var(--hairline-2); border-radius: 12px; background: rgba(4,12,21,.84);
-    backdrop-filter: blur(14px); box-shadow: 0 18px 65px rgba(0,0,0,.48), 0 0 28px rgba(53,230,255,.06);
+    border: 1px solid var(--hairline-2); border-radius: 12px; background: rgba(4,12,21,.62);
+    backdrop-filter: blur(10px) saturate(118%); box-shadow: 0 18px 65px rgba(0,0,0,.42), 0 0 28px rgba(53,230,255,.06);
     transform-origin: top right; }
   .action-trace.active { display: flex; flex-direction: column; animation: workspace-in .32s cubic-bezier(.2,.8,.2,1); }
+  .action-trace.presentation-mode { width: min(720px, 52vw); max-height: min(82vh, 760px);
+    background: linear-gradient(145deg, rgba(4,12,21,.72), rgba(5,18,28,.58));
+    box-shadow: 0 22px 80px rgba(0,0,0,.58), 0 0 44px rgba(53,230,255,.08); }
+  .action-trace.maximized { inset: 24px; width: auto; max-height: none; }
   .action-trace::before { content: ""; position: absolute; inset: 0 auto auto 0; width: 54px; height: 1px;
     background: var(--core); box-shadow: 0 0 12px var(--core); pointer-events: none; }
   .action-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center;
     justify-content: space-between; min-height: 38px; padding: 9px 11px 8px 13px;
-    border-bottom: 1px solid var(--hairline); background: rgba(4,12,21,.94);
+    border-bottom: 1px solid var(--hairline); background: rgba(4,12,21,.74);
     font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--muted); }
-  .action-close { width: 25px; height: 25px; border: 1px solid var(--hairline); border-radius: 50%;
+  .action-head-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .action-head-tools { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
+  .action-format { color: var(--core); font-size: 8px; letter-spacing: .12em; }
+  .action-tool, .action-close { height: 25px; border: 1px solid var(--hairline); border-radius: 6px;
+    padding: 0 8px; background: rgba(9,22,32,.72); color: var(--muted); cursor: pointer;
+    font: 9px/1 var(--mono); letter-spacing: .08em; transition: color .16s, border-color .16s, transform .16s, box-shadow .16s; }
+  .action-close { width: 25px; border-radius: 50%; padding: 0;
     background: rgba(9,22,32,.72); color: var(--muted); cursor: pointer; font: 14px/1 var(--mono);
     transition: color .16s, border-color .16s, transform .16s, box-shadow .16s; }
+  .action-tool:hover { color: var(--core-bright); border-color: var(--core); box-shadow: 0 0 14px rgba(53,230,255,.12); }
   .action-close:hover { color: var(--core-bright); border-color: var(--core); transform: rotate(90deg);
     box-shadow: 0 0 14px rgba(53,230,255,.18); }
   #action-list { flex: 1 1 auto; min-height: 72px; max-height: min(52vh, 480px); overflow: auto; padding: 11px 12px;
     scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
+  .presentation-mode #action-list { max-height: min(72vh, 665px); padding: 15px; }
+  .maximized #action-list { max-height: none; }
   .action-card { border-left: 2px solid var(--hairline-2); padding: 8px 10px;
     background: rgba(13,28,39,.48); font-family: var(--mono); font-size: 10px; color: var(--text);
     animation: card-scan .28s ease-out; }
@@ -96,6 +110,17 @@
     line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
   .action-presentation.code, .action-presentation.json, .action-presentation.table {
     font-family: var(--mono); white-space: pre; overflow-wrap: normal; tab-size: 2; }
+  .presentation-mode .action-card { border-left-color: var(--core); padding: 0; background: transparent; }
+  .presentation-mode .action-presentation { margin: 0; max-height: min(65vh, 600px); padding: 15px 17px;
+    font-size: 12px; line-height: 1.65; background: rgba(0,4,9,.52); }
+  .maximized .action-presentation { max-height: calc(100vh - 120px); }
+  .action-presentation .md-heading { margin: 14px 0 7px; color: var(--core); font: 11px var(--mono); letter-spacing: .12em; }
+  .action-presentation p { margin: 0 0 10px; }
+  .action-presentation ul, .action-presentation ol { margin: 6px 0 12px; padding-left: 22px; }
+  .action-presentation .md-table { width: 100%; border-collapse: collapse; }
+  .action-presentation .md-table th, .action-presentation .md-table td { padding: 7px 9px; text-align: left;
+    border-bottom: 1px solid rgba(53,230,255,.12); }
+  .action-presentation .md-table th { color: var(--core); }
   .approval-actions { display: flex; gap: 8px; padding: 10px 12px 12px;
     border-top: 1px solid var(--hairline); background: rgba(3,10,18,.94); }
   .approval-actions[hidden] { display: none; }
@@ -110,27 +135,43 @@
   @keyframes workspace-in { from { opacity: 0; transform: translate(10px,-6px) scale(.97); filter: blur(3px); }
     to { opacity: 1; transform: translate(0) scale(1); filter: blur(0); } }
   @keyframes card-scan { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
-  .log { max-height: clamp(78px, 11vh, 112px); overflow-y: auto; padding: 10px 16px 8px;
-    display: flex; flex-direction: column; gap: 7px; font-size: 14px; line-height: 1.4;
-    scrollbar-width: none; }
-  .log.has-history {
-    mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.3) 14%, #000 38%, #000 100%);
-    -webkit-mask-image: linear-gradient(to bottom, transparent 0, rgba(0,0,0,.3) 14%, #000 38%, #000 100%); }
-  .log::-webkit-scrollbar { display: none; }
-  .line { display: flex; gap: 10px; transform-origin: left center;
+  .response-head { height: 27px; padding: 7px 13px 0 16px; display: flex; align-items: center;
+    justify-content: space-between; color: rgba(127,175,193,.64); font: 8px var(--mono);
+    letter-spacing: .18em; border-bottom: 1px solid rgba(53,230,255,.06); }
+  .response-head button { border: 0; padding: 2px 4px; background: transparent; color: var(--muted);
+    cursor: pointer; font: 8px var(--mono); letter-spacing: .13em; }
+  .response-head button:hover { color: var(--core); }
+  .log { height: 92px; overflow-y: auto; padding: 10px 16px 12px;
+    display: flex; flex-direction: column; gap: 7px; font-size: 14px; line-height: 1.48;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; transition: height .24s ease; }
+  .console.expanded .log { height: min(36vh, 330px); }
+  .log::-webkit-scrollbar { width: 3px; }
+  .log::-webkit-scrollbar-thumb { background: var(--hairline-2); }
+  .line { display: none; gap: 12px; transform-origin: left center;
     transition: opacity .3s ease, filter .3s ease, transform .3s ease; }
+  .line.history-current { display: flex; }
+  .console.expanded .line { display: flex; opacity: .36; filter: blur(.25px); }
+  .console.expanded .line.history-current { opacity: 1; filter: none; }
   .line .who { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
-    text-transform: uppercase; color: var(--muted); min-width: 58px; padding-top: 3px; }
+    text-transform: uppercase; color: var(--muted); min-width: 62px; padding-top: 4px; }
   .line.jarvis .who { color: var(--core); }
-  .line .txt { flex: 1; color: var(--text); }
+  .line .txt { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
   .line.jarvis .txt { color: var(--core-bright); }
   .line.system .txt { color: var(--muted); font-style: italic; }
   .line.history-current { opacity: 1; filter: blur(0); transform: translateX(0); }
   .line.history-current.jarvis .txt { color: #effdff; font-size: 15.5px; font-weight: 450;
     text-shadow: 0 0 18px rgba(53,230,255,.16); }
-  .line.history-near { opacity: .48; filter: blur(.25px); transform: translateX(-1px); }
-  .line.history-mid { opacity: .24; filter: blur(.65px); transform: translateX(-2px); }
-  .line.history-old { opacity: .10; filter: blur(1.2px); transform: translateX(-3px); }
+  .txt p { margin: 0 0 7px; }
+  .txt p:last-child { margin-bottom: 0; }
+  .txt ul, .txt ol { margin: 2px 0 6px; padding-left: 20px; }
+  .txt li { margin: 3px 0; padding-left: 2px; }
+  .txt .md-heading { color: var(--core); font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+  .txt .md-code { margin: 6px 0; padding: 8px 9px; overflow: auto; border: 1px solid var(--hairline);
+    border-radius: 6px; background: rgba(0,4,9,.7); color: #bceefa; font: 11px/1.45 var(--mono); white-space: pre; }
+  .txt .md-table { width: 100%; margin: 5px 0 7px; border-collapse: collapse; font-size: 12px; line-height: 1.35; }
+  .txt .md-table th { color: var(--core); font: 9px var(--mono); letter-spacing: .08em; text-align: left;
+    border-bottom: 1px solid var(--hairline-2); padding: 5px 8px 5px 0; }
+  .txt .md-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid rgba(53,230,255,.08); vertical-align: top; }
   .line.streaming .txt::after {
     content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px;
     vertical-align: -0.16em; background: var(--core); box-shadow: 0 0 10px var(--core);
@@ -163,6 +204,8 @@
   .voice-btn.active { color: #effdff; border-color: var(--core); background: rgba(53,230,255,.12);
     box-shadow: 0 0 18px rgba(53,230,255,.34); transform: scale(1.06); }
   .voice-btn:disabled { opacity: .25; cursor: not-allowed; }
+
+  @media (max-width: 1120px) { .console { width: min(720px, 72vw); min-width: 0; } }
 
   .controls { position: fixed; left: 24px; bottom: 30px; display: flex; flex-direction: column; gap: 7px; width: 176px; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -238,7 +281,9 @@
   @media (max-width: 760px) { .connector-layout { grid-template-columns: 1fr; } .connector-activity { grid-column: auto; }
     .event-row { grid-template-columns: 9px 1fr auto; } .event-row .event-text { grid-column: 2 / -1; } }
   @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; }
-    .action-trace { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 58vh; } }
+    .console { width: calc(100vw - 32px); bottom: 20px; }
+    .action-trace, .action-trace.presentation-mode { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 62vh; }
+    .action-trace.maximized { inset: 14px; width: auto; max-height: none; } }
 </style>
 </head>
 <body>
@@ -325,7 +370,7 @@
   </section>
 
   <section class="action-trace" id="action-trace" aria-live="polite" aria-label="Espacio de trabajo de JARVIS">
-    <div class="action-head"><span>ESPACIO DE TRABAJO · JARVIS</span><button class="action-close" id="action-close" type="button" aria-label="Cerrar espacio de trabajo">×</button></div>
+    <div class="action-head"><span class="action-head-title" id="action-head-title">PIZARRÓN · JARVIS</span><div class="action-head-tools"><span class="action-format" id="action-format">ACTIVIDAD</span><button class="action-tool" id="action-copy" type="button" hidden>COPIAR</button><button class="action-tool" id="action-expand" type="button" hidden>AMPLIAR</button><button class="action-close" id="action-close" type="button" aria-label="Cerrar pizarrón">×</button></div></div>
     <div id="action-list"></div>
     <div class="approval-actions" id="approval-actions" hidden>
       <button class="approve" id="approval-approve" type="button">APROBAR</button>
@@ -334,6 +379,7 @@
   </section>
 
   <div class="console">
+    <div class="response-head"><span>RESPUESTA ACTUAL</span><button id="history-toggle" type="button" aria-expanded="false">VER HISTORIAL</button></div>
     <div class="log" id="log"></div>
     <form class="inputbar" id="form" autocomplete="off">
       <span class="prompt">&rsaquo;</span>
@@ -367,9 +413,15 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const canvas = document.getElementById("scene");
   const ctx = canvas.getContext("2d", { alpha: false });
+  const consoleEl = document.querySelector(".console");
   const logEl = document.getElementById("log");
+  const historyToggle = document.getElementById("history-toggle");
   const actionTrace = document.getElementById("action-trace");
   const actionList = document.getElementById("action-list");
+  const actionHeadTitle = document.getElementById("action-head-title");
+  const actionFormat = document.getElementById("action-format");
+  const actionCopy = document.getElementById("action-copy");
+  const actionExpand = document.getElementById("action-expand");
   const approvalActions = document.getElementById("approval-actions");
   const approvalApprove = document.getElementById("approval-approve");
   const approvalDeny = document.getElementById("approval-deny");
@@ -449,6 +501,8 @@
   let currentToolCard = null;
   let currentToolKey = "";
   let workspaceCloseTimer = null;
+  let boardContent = "";
+  let currentTurnPresented = false;
   const TOOL_LABELS = {
     create_directory: "CREAR CARPETA", create_file: "CREAR ARCHIVO",
     update_file: "MODIFICAR ARCHIVO", read_file: "LEER ARCHIVO",
@@ -466,9 +520,83 @@
     }
     return Object.keys(visible).length ? JSON.stringify(visible) : "sin parámetros visibles";
   }
+  function presentationFormat(text, requested = "") {
+    if (["code", "json", "table", "markdown"].includes(requested)) return requested;
+    const source = String(text || "").trim();
+    if (/^\s*[\[{][\s\S]*[\]}]\s*$/.test(source)) {
+      try { JSON.parse(source); return "json"; } catch {}
+    }
+    if (/```|^#{1,4}\s|^[-*]\s|^\d+[.)]\s/m.test(source)) return "markdown";
+    if (/^\s*\|.+\|\s*$/m.test(source)) return "table";
+    return "text";
+  }
+  function showOnBoard({ title = "RESULTADO", content = "", format = "text", language = "", keepOpen = true } = {}) {
+    clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
+    boardContent = String(content || "");
+    const resolvedFormat = presentationFormat(boardContent, format);
+    actionTrace.classList.add("active", "presentation-mode");
+    actionTrace.classList.remove("maximized");
+    actionHeadTitle.textContent = `PIZARRÓN · ${String(title || "RESULTADO").toUpperCase()}`;
+    actionFormat.textContent = language ? `${resolvedFormat} · ${language}`.toUpperCase() : resolvedFormat.toUpperCase();
+    actionCopy.hidden = !boardContent;
+    actionExpand.hidden = false;
+    actionExpand.textContent = "AMPLIAR";
+    approvalActions.hidden = true;
+    actionList.replaceChildren();
+    const card = document.createElement("article"); card.className = "action-card completed";
+    const contentEl = document.createElement("div"); contentEl.className = `action-presentation ${resolvedFormat}`;
+    if (["markdown", "table"].includes(resolvedFormat)) renderStructuredText(contentEl, boardContent);
+    else if (resolvedFormat === "json") {
+      try { contentEl.textContent = JSON.stringify(JSON.parse(boardContent), null, 2); }
+      catch { contentEl.textContent = boardContent; }
+    } else contentEl.textContent = boardContent;
+    card.appendChild(contentEl); actionList.appendChild(card);
+    currentToolCard = card; currentToolKey = `board:${title}`;
+    requestAnimationFrame(() => contentEl.scrollTo({ top: 0, behavior: "auto" }));
+    if (!keepOpen) workspaceCloseTimer = setTimeout(closeWorkspace, 30000);
+  }
+  function updateBoardContent(content, { follow = true } = {}) {
+    boardContent = String(content || "");
+    const contentEl = actionList.querySelector(".action-presentation");
+    if (!contentEl) return;
+    const format = [...contentEl.classList].find(value => ["text", "code", "json", "table", "markdown"].includes(value)) || "text";
+    if (["markdown", "table"].includes(format)) renderStructuredText(contentEl, boardContent);
+    else contentEl.textContent = boardContent;
+    if (follow) requestAnimationFrame(() => contentEl.scrollTo({ top: contentEl.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" }));
+  }
   function showToolEvent(event) {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     actionTrace.classList.add("active");
+    if (event.presentation) {
+      currentTurnPresented = true;
+      showOnBoard({
+        title: event.presentation.title,
+        content: event.presentation.content,
+        format: event.presentation.format,
+        language: event.presentation.language,
+        keepOpen: event.presentation.keep_open !== false,
+      });
+      if (event.goal) showGoalProgress(event.goal);
+      return;
+    }
+    const longOutput = typeof event.output === "string" && (
+      event.output.length > 700 || /```|\n\s*\|.+\||\n(?:[-*]|\d+[.)])\s/.test(event.output)
+    );
+    if (event.phase === "completed" && longOutput && !event.is_error) {
+      currentTurnPresented = true;
+      showOnBoard({
+        title: `${TOOL_LABELS[event.tool] || event.tool} · RESULTADO`,
+        content: event.output,
+        format: presentationFormat(event.output),
+        keepOpen: true,
+      });
+      if (event.goal) showGoalProgress(event.goal);
+      return;
+    }
+    actionTrace.classList.remove("presentation-mode", "maximized");
+    actionHeadTitle.textContent = "ACTIVIDAD · JARVIS";
+    actionFormat.textContent = "EJECUCIÓN";
+    actionCopy.hidden = true; actionExpand.hidden = true;
     const key = event.tool + ":" + safeToolMeta(event.arguments);
     let card = currentToolCard;
     if (!currentToolCard || currentToolKey !== key || event.phase === "proposed") {
@@ -484,14 +612,6 @@
       const meta = document.createElement("div"); meta.className = "action-meta"; meta.textContent = safeToolMeta(event.arguments);
       card.append(title, meta); card._status = status;
       if (event.code) { const code = document.createElement("pre"); code.className = "action-code"; code.textContent = event.code; card.appendChild(code); }
-      if (event.presentation) {
-        const content = document.createElement("div");
-        const format = ["text", "code", "json", "table", "markdown"].includes(event.presentation.format) ? event.presentation.format : "text";
-        content.className = "action-presentation " + format;
-        content.textContent = event.presentation.content || "";
-        if (event.presentation.language) content.dataset.language = event.presentation.language;
-        card.appendChild(content);
-      }
       actionList.appendChild(card); currentToolCard = card;
     }
     const states = { proposed:"PREPARANDO", awaiting:"ESPERANDO PERMISO", running:"EJECUTANDO", completed:"COMPLETADO", denied:"DENEGADO" };
@@ -572,10 +692,23 @@
   document.getElementById("goal-cancel").addEventListener("click", () => controlCurrentGoal("cancel"));
   function closeWorkspace() {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
-    actionTrace.classList.remove("active"); approvalActions.hidden = true;
+    actionTrace.classList.remove("active", "presentation-mode", "maximized"); approvalActions.hidden = true;
     actionList.replaceChildren(); currentToolCard = null; currentToolKey = "";
+    boardContent = ""; actionCopy.hidden = true; actionExpand.hidden = true;
+    actionHeadTitle.textContent = "PIZARRÓN · JARVIS"; actionFormat.textContent = "ACTIVIDAD";
   }
   document.getElementById("action-close").addEventListener("click", closeWorkspace);
+  actionExpand.addEventListener("click", () => {
+    const maximized = actionTrace.classList.toggle("maximized");
+    actionExpand.textContent = maximized ? "REDUCIR" : "AMPLIAR";
+  });
+  actionCopy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(boardContent);
+      actionCopy.textContent = "COPIADO";
+      setTimeout(() => { actionCopy.textContent = "COPIAR"; }, 1400);
+    } catch { actionCopy.textContent = "ERROR"; }
+  });
 
   function refreshDot() {
     const hex = `rgb(${col.r|0},${col.g|0},${col.b|0})`;
@@ -869,10 +1002,69 @@
   requestAnimationFrame(frame);
 
   // ── Consola ──
+  function appendInline(parent, source) {
+    const parts = String(source).split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
+    for (const part of parts) {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        const strong = document.createElement("strong"); strong.textContent = part.slice(2, -2); parent.appendChild(strong);
+      } else if (part.startsWith("`") && part.endsWith("`")) {
+        const code = document.createElement("code"); code.textContent = part.slice(1, -1); parent.appendChild(code);
+      } else parent.appendChild(document.createTextNode(part));
+    }
+  }
+
+  function renderStructuredText(container, source) {
+    const lines = String(source || "").replace(/\r/g, "").split("\n");
+    container.replaceChildren();
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (!line) { i++; continue; }
+      if (line.startsWith("```")) {
+        const codeLines = []; i++;
+        while (i < lines.length && !lines[i].trim().startsWith("```")) codeLines.push(lines[i++]);
+        if (i < lines.length) i++;
+        const pre = document.createElement("pre"); pre.className = "md-code"; pre.textContent = codeLines.join("\n"); container.appendChild(pre); continue;
+      }
+      if (/^#{1,4}\s+/.test(line)) {
+        const heading = document.createElement("p"); heading.className = "md-heading";
+        appendInline(heading, line.replace(/^#{1,4}\s+/, "")); container.appendChild(heading); i++; continue;
+      }
+      if (line.includes("|") && i + 1 < lines.length && /^\s*\|?\s*:?-+/.test(lines[i + 1])) {
+        const rows = [];
+        const cells = value => value.replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+        rows.push(cells(line)); i += 2;
+        while (i < lines.length && lines[i].includes("|")) rows.push(cells(lines[i++]));
+        const table = document.createElement("table"); table.className = "md-table";
+        rows.forEach((row, rowIndex) => { const tr = document.createElement("tr"); row.forEach(value => {
+          const cell = document.createElement(rowIndex ? "td" : "th"); appendInline(cell, value); tr.appendChild(cell);
+        }); table.appendChild(tr); });
+        container.appendChild(table); continue;
+      }
+      if (/^[-*]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) {
+        const ordered = /^\d+[.)]\s+/.test(line); const list = document.createElement(ordered ? "ol" : "ul");
+        while (i < lines.length) {
+          const item = lines[i].trim(); const match = item.match(ordered ? /^\d+[.)]\s+(.+)/ : /^[-*]\s+(.+)/);
+          if (!match) break;
+          const li = document.createElement("li"); appendInline(li, match[1]); list.appendChild(li); i++;
+        }
+        container.appendChild(list); continue;
+      }
+      const paragraphLines = [line]; i++;
+      while (i < lines.length && lines[i].trim() && !/^(```|#{1,4}\s+|[-*]\s+|\d+[.)]\s+)/.test(lines[i].trim())) {
+        if (lines[i].includes("|") && i + 1 < lines.length && /^\s*\|?\s*:?-+/.test(lines[i + 1])) break;
+        paragraphLines.push(lines[i].trim()); i++;
+      }
+      const paragraph = document.createElement("p"); appendInline(paragraph, paragraphLines.join(" ")); container.appendChild(paragraph);
+    }
+  }
+
   function addLine(who, text, cls) {
     const line = document.createElement("div"); line.className = "line " + (cls || "");
     const w = document.createElement("div"); w.className = "who"; w.textContent = who;
-    const x = document.createElement("div"); x.className = "txt"; x.textContent = text;
+    const x = document.createElement("div"); x.className = "txt";
+    if ((cls || "").includes("jarvis") && !(cls || "").includes("streaming")) renderStructuredText(x, text);
+    else x.textContent = text;
     line.appendChild(w); line.appendChild(x); logEl.appendChild(line);
     focusRecentHistory();
     logEl.scrollTop = logEl.scrollHeight;
@@ -896,6 +1088,7 @@
 
   let activeReply = null;
   let activeReplyText = "";
+  let streamDirectedToBoard = false;
   let streamTokenIndex = 0;
   let requestStartedAt = 0;
   let firstDeltaSeen = false;
@@ -904,7 +1097,7 @@
   let pendingProactive = null;
   function setBusy(next) {
     busy = next;
-    if (next) stopWakeListening();
+    if (next) { stopWakeListening(); stopConversationFollowUp({ sleep: false }); }
     messageInput.disabled = next;
     messageInput.placeholder = next ? "JARVIS está respondiendo…" : "Habla con JARVIS…";
     if (!next) { messageInput.focus(); scheduleWakeListening(); }
@@ -948,6 +1141,7 @@
   function startStreamReply() {
     if (activeReply) finishStreamReply();
     activeReplyText = "";
+    streamDirectedToBoard = false;
     streamTokenIndex = 0;
     beginStreamSpeech();
     activeReply = addLine("JARVIS", "", "jarvis streaming");
@@ -956,11 +1150,28 @@
     if (!delta) return;
     if (!activeReply) startStreamReply();
     activeReplyText += delta;
-    appendStreamSpeech(delta);
     if (!firstDeltaSeen && requestStartedAt) {
       firstDeltaSeen = true;
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · PRIMER TEXTO`;
     }
+    if (currentTurnPresented) {
+      activeReply.text.textContent = "Detalle visible en el pizarrón…";
+      return;
+    }
+    appendStreamSpeech(delta);
+    const shouldUseBoard = !currentTurnPresented && (
+      activeReplyText.length > 620 || /```|\n\s*\|.+\||\n(?:[-*]|\d+[.)])\s/.test(activeReplyText)
+    );
+    if (shouldUseBoard && !streamDirectedToBoard) {
+      streamDirectedToBoard = true;
+      // El detalle pasa al pizarrón; la voz dirá únicamente la síntesis final.
+      cancelSpeechQueue();
+      const format = presentationFormat(activeReplyText);
+      const title = format === "code" || activeReplyText.includes("```") ? "CÓDIGO GENERADO" : "RESULTADO DETALLADO";
+      showOnBoard({ title, content: activeReplyText, format, keepOpen: true });
+      activeReply.text.textContent = "Preparando el resultado en el pizarrón…";
+    } else if (streamDirectedToBoard) updateBoardContent(activeReplyText);
+    if (streamDirectedToBoard) return;
     // Cada fragmento se ilumina y se asienta, como un subtítulo tipo karaoke.
     for (const token of delta.match(/\s+|[^\s]+/g) || []) {
       const span = document.createElement("span");
@@ -971,26 +1182,56 @@
     }
     logEl.scrollTop = logEl.scrollHeight;
   }
+  function boardReplySummary(source) {
+    const plain = String(source || "")
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/^#{1,4}\s+|^[-*]\s+|^\d+[.)]\s+/gm, "")
+      .replace(/\|/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const firstSentence = plain.match(/^.{1,150}?[.!?](?:\s|$)/)?.[0]?.trim();
+    if (firstSentence && /pizarrón|espacio de trabajo/i.test(firstSentence)) return firstSentence;
+    return firstSentence
+      ? `${firstSentence} Dejé el detalle completo en el pizarrón.`
+      : "Resultado listo. Dejé el detalle completo en el pizarrón.";
+  }
   function finishStreamReply(finalText) {
-    const spokenText = finalText !== undefined ? finalText : activeReplyText;
+    const authoritativeText = finalText !== undefined ? finalText : activeReplyText;
+    const autoMoveToBoard = streamDirectedToBoard || (!currentTurnPresented && (
+      authoritativeText.length > 620 || /```|\n\s*\|.+\||\n(?:[-*]|\d+[.)])\s/.test(authoritativeText)
+    ));
+    const moveToBoard = currentTurnPresented || autoMoveToBoard;
+    const displayedText = moveToBoard ? boardReplySummary(authoritativeText) : authoritativeText;
+    const spokenText = displayedText;
+    if (autoMoveToBoard) {
+      const format = presentationFormat(authoritativeText);
+      const title = format === "code" || authoritativeText.includes("```") ? "CÓDIGO GENERADO" : "RESULTADO DETALLADO";
+      if (!streamDirectedToBoard) showOnBoard({ title, content: authoritativeText, format, keepOpen: true });
+      else updateBoardContent(authoritativeText, { follow: false });
+    }
     if (!activeReply) {
-      if (finalText) addLine("JARVIS", finalText, "jarvis");
+      if (displayedText) addLine("JARVIS", displayedText, "jarvis");
     } else {
       activeReply.line.classList.remove("streaming");
       // El mensaje final es la autoridad y corrige cualquier fragmento perdido.
-      if (finalText !== undefined && activeReply.text.textContent !== finalText) {
-        activeReply.text.textContent = finalText;
-      }
+      renderStructuredText(activeReply.text, displayedText);
       activeReply = null;
     }
     if (spokenText) finishStreamSpeech(spokenText);
     activeReplyText = "";
+    streamDirectedToBoard = false;
     if (requestStartedAt) {
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · TOTAL`;
     }
     setBusy(false);
   }
   addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
+  historyToggle.addEventListener("click", () => {
+    const expanded = consoleEl.classList.toggle("expanded");
+    historyToggle.textContent = expanded ? "OCULTAR HISTORIAL" : "VER HISTORIAL";
+    historyToggle.setAttribute("aria-expanded", String(expanded));
+    logEl.scrollTop = logEl.scrollHeight;
+  });
 
   // ── WebSocket al gateway ──
   let ws = null;
@@ -1012,7 +1253,7 @@
       loadPendingProactive();
       scheduleWakeListening(100);
     };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); finishStreamReply(); setBusy(false); ws = null; };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -1100,6 +1341,7 @@
       return;
     }
     addLine("TÚ", text, "user"); messageInput.value = "";
+    currentTurnPresented = false;
     requestStartedAt = performance.now(); firstDeltaSeen = false; rLatency.textContent = "ESPERANDO…";
     setBusy(true);
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
@@ -1296,12 +1538,15 @@
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
   });
 
-  // ── Voz: servidor local Whisper/Kokoro + fallback del navegador ──
+  // ── Voz: wake/STT local + OpenAI Realtime bajo demanda + Kokoro fallback ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
   let voiceEnabled = canSpeak || "Audio" in window;
   let serverVoiceAvailable = false;
+  let realtimeVoiceAvailable = false;
+  let realtimeVoiceSession = null;
+  let realtimeVoiceConnecting = null;
   let recognition = null;
   let recorder = null;
   let recorderStream = null;
@@ -1309,6 +1554,9 @@
   let recorderTimer = null;
   let recorderVadFrame = null;
   let recorderAudioContext = null;
+  let recorderDiscard = false;
+  let followUpListening = false;
+  let followUpTimer = null;
   let wakeListening = false;
   let wakeRestartTimer = null;
   let wakeRecognition = null;
@@ -1319,6 +1567,7 @@
   let speechQueueRunning = false;
   let streamSpeechBuffer = "";
   let streamSpeechSource = "";
+  let streamSpeechStarted = false;
   let audioContext = null;
 
   function connectVoiceVisualizer(audio) {
@@ -1357,9 +1606,11 @@
       });
       const status = response.ok ? await response.json() : null;
       serverVoiceAvailable = !!status?.enabled;
-      rVoice.textContent = serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
+      realtimeVoiceAvailable = !!status?.realtime?.enabled;
+      rVoice.textContent = realtimeVoiceAvailable ? "OPENAI RT" : serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
     } catch {
       serverVoiceAvailable = false;
+      realtimeVoiceAvailable = false;
       rVoice.textContent = canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
     }
   }
@@ -1405,8 +1656,8 @@
       if (voice) utterance.voice = voice;
       utterance.onstart = () => { stopWakeListening(); voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
       utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
-      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; scheduleWakeListening(); resolve(); };
-      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; scheduleWakeListening(); resolve(); };
+      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; resolve(); };
+      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; resolve(); };
       speechSynthesis.speak(utterance);
     });
   }
@@ -1418,9 +1669,107 @@
     streamSpeechSource = "";
     if (canSpeak) speechSynthesis.cancel();
     if (stopCurrentAudio) stopCurrentAudio();
+    closeRealtimeVoiceSession();
     voiceActive = false;
     voiceAnalyser = null;
     voiceWaveform = null;
+  }
+
+  function closeRealtimeVoiceSession() {
+    const current = realtimeVoiceSession;
+    realtimeVoiceSession = null;
+    realtimeVoiceConnecting = null;
+    if (!current) return;
+    clearTimeout(current.timeout);
+    for (const pending of current.pending || []) pending.reject(new Error("sesión cancelada"));
+    try { current.channel?.close(); } catch {}
+    try { current.pc?.getReceivers().forEach((receiver) => receiver.track?.stop()); } catch {}
+    try { current.pc?.close(); } catch {}
+    try { current.audio?.pause(); } catch {}
+    voiceActive = false;
+    voiceAnalyser = null;
+    voiceWaveform = null;
+  }
+
+  function ensureRealtimeVoiceSession(session) {
+    if (realtimeVoiceSession?.session === session) return Promise.resolve(realtimeVoiceSession);
+    if (realtimeVoiceConnecting?.session === session) return realtimeVoiceConnecting.promise;
+    const promise = createRealtimeVoiceSession(session).finally(() => {
+      if (realtimeVoiceConnecting?.promise === promise) realtimeVoiceConnecting = null;
+    });
+    realtimeVoiceConnecting = { session, promise };
+    return promise;
+  }
+
+  async function createRealtimeVoiceSession(session) {
+    const tokenResponse = await fetch(`${gatewayHttpBase()}/voice/realtime-token`, {
+      method: "POST",
+      headers: { "X-Jarvis-Key": tokenInput.value },
+    });
+    const token = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || !token.value) throw new Error(token.detail || `Realtime ${tokenResponse.status}`);
+    if (session !== speechSession || !voiceEnabled) throw new Error("sesión cancelada");
+
+    const pc = new RTCPeerConnection();
+    const audio = new Audio();
+    const pending = [];
+    try {
+      audio.autoplay = true;
+      pc.addTransceiver("audio", { direction: "recvonly" });
+      pc.ontrack = (event) => {
+        audio.srcObject = event.streams[0];
+        connectVoiceVisualizer(audio);
+        audio.play().catch(() => {});
+      };
+      audio.onplay = () => {
+        stopWakeListening(); voiceActive = true; rVoice.textContent = "OPENAI RT"; setState("speaking");
+      };
+      const channel = pc.createDataChannel("oai-events");
+      channel.addEventListener("message", (event) => {
+        let message;
+        try { message = JSON.parse(event.data); } catch { return; }
+        if (message.type === "response.done") pending.shift()?.resolve();
+        if (message.type === "error") pending.shift()?.reject(new Error(message.error?.message || "Realtime"));
+      });
+      const open = new Promise((resolve, reject) => {
+        channel.addEventListener("open", resolve, { once: true });
+        channel.addEventListener("error", () => reject(new Error("canal Realtime")), { once: true });
+      });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const sdpResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST",
+        body: offer.sdp,
+        headers: { Authorization: `Bearer ${token.value}`, "Content-Type": "application/sdp" },
+      });
+      if (!sdpResponse.ok) throw new Error(`Realtime SDP ${sdpResponse.status}`);
+      await pc.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
+      await open;
+      if (session !== speechSession || !voiceEnabled) throw new Error("sesión cancelada");
+      const current = { pc, channel, audio, pending, session, timeout: null };
+      current.timeout = setTimeout(closeRealtimeVoiceSession, Math.max(10, token.max_session_seconds || 45) * 1000);
+      realtimeVoiceSession = current;
+      return current;
+    } catch (error) {
+      try { pc.getReceivers().forEach((receiver) => receiver.track?.stop()); } catch {}
+      try { pc.close(); } catch {}
+      try { audio.pause(); } catch {}
+      throw error;
+    }
+  }
+
+  async function speakRealtimeChunk(text, session) {
+    const current = await ensureRealtimeVoiceSession(session);
+    if (session !== speechSession || !voiceEnabled) throw new Error("sesión cancelada");
+    const done = new Promise((resolve, reject) => current.pending.push({ resolve, reject }));
+    current.channel.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: { type: "message", role: "user", content: [{
+        type: "input_text", text: `Lee exactamente este texto en español, sin añadir nada: ${text}`,
+      }] },
+    }));
+    current.channel.send(JSON.stringify({ type: "response.create", response: { output_modalities: ["audio"] } }));
+    await done;
   }
 
   async function requestSpeechAudio(text, session) {
@@ -1469,46 +1818,75 @@
   async function runSpeechQueue() {
     if (speechQueueRunning) return;
     speechQueueRunning = true;
-    while (speechQueue.length) {
-      const item = speechQueue.shift();
-      if (item.session !== speechSession || !voiceEnabled) continue;
-      try {
-        const audioUrl = await item.audio;
-        await playAudioUrl(audioUrl, item.session);
-      } catch {
-        serverVoiceAvailable = false;
-        await speakInBrowser(item.text, false);
+    while (true) {
+      while (speechQueue.length) {
+        const item = speechQueue.shift();
+        if (item.session !== speechSession || !voiceEnabled) continue;
+        try {
+          if (item.realtime) await speakRealtimeChunk(item.text, item.session);
+          else {
+            const audioUrl = await item.audio;
+            await playAudioUrl(audioUrl, item.session);
+          }
+        } catch {
+          if (item.realtime) {
+            realtimeVoiceAvailable = false;
+            closeRealtimeVoiceSession();
+            if (serverVoiceAvailable) {
+              const audioUrl = await requestSpeechAudio(item.text, item.session);
+              await playAudioUrl(audioUrl, item.session);
+            } else await speakInBrowser(item.text, false);
+          } else {
+            serverVoiceAvailable = false;
+            await speakInBrowser(item.text, false);
+          }
+        }
       }
+      // Mantiene la sesión mientras llegan los siguientes fragmentos del stream.
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      if (speechQueue.length) continue;
+      // Breve gracia final: evita cerrar WebRTC entre dos frases cercanas.
+      await new Promise((resolve) => setTimeout(resolve, 650));
+      if (!speechQueue.length) break;
+    }
+    if (realtimeVoiceSession) {
+      closeRealtimeVoiceSession();
     }
     speechQueueRunning = false;
-    if (voiceEnabled) rVoice.textContent = serverVoiceAvailable ? "LOCAL" : "NAVEGADOR";
+    if (speechQueue.length) { runSpeechQueue(); return; }
+    voiceActive = false;
+    if (voiceEnabled) rVoice.textContent = realtimeVoiceAvailable ? "OPENAI RT" : serverVoiceAvailable ? "LOCAL" : "NAVEGADOR";
     setState("idle");
-    scheduleWakeListening();
+    startConversationFollowUp();
   }
 
   function enqueueSpeech(text) {
     const spokenText = prepareSpeechText(text);
     if (!voiceEnabled || !spokenText) return;
-    if (!serverVoiceAvailable) { speakInBrowser(spokenText, false); return; }
+    if (!realtimeVoiceAvailable && !serverVoiceAvailable) { speakInBrowser(spokenText, false); return; }
     const session = speechSession;
-    rVoice.textContent = "SINTETIZANDO";
-    // La descarga comienza ahora; la cola solo controla el orden de reproducción.
-    speechQueue.push({ session, text: spokenText, audio: requestSpeechAudio(spokenText, session) });
+    rVoice.textContent = realtimeVoiceAvailable ? "CONECTANDO RT" : "SINTETIZANDO";
+    // Realtime conserva una sola sesión breve por respuesta. Kokoro descarga en paralelo.
+    speechQueue.push(realtimeVoiceAvailable
+      ? { session, text: spokenText, realtime: true }
+      : { session, text: spokenText, realtime: false, audio: requestSpeechAudio(spokenText, session) });
     runSpeechQueue();
   }
 
   function flushStreamSpeech(force = false) {
-    if (!serverVoiceAvailable) return;
+    if (!realtimeVoiceAvailable && !serverVoiceAvailable) return;
     while (streamSpeechBuffer.trim()) {
       const sentence = streamSpeechBuffer.match(/^[\s\S]*?[.!?](?:["'»”)]?)(?:\s|$)/);
       let cut = sentence?.[0].length || 0;
-      if (!cut && streamSpeechBuffer.length >= 180) {
-        cut = streamSpeechBuffer.lastIndexOf(" ", 180);
-        if (cut < 100) cut = 180;
+      const target = streamSpeechStarted ? 150 : 82;
+      if (!cut && streamSpeechBuffer.length >= target) {
+        cut = streamSpeechBuffer.lastIndexOf(" ", target);
+        if (cut < Math.floor(target * .65)) cut = target;
       }
       if (!cut && force) cut = streamSpeechBuffer.length;
       if (!cut) break;
       enqueueSpeech(streamSpeechBuffer.slice(0, cut));
+      streamSpeechStarted = true;
       streamSpeechBuffer = streamSpeechBuffer.slice(cut);
     }
   }
@@ -1517,6 +1895,15 @@
     cancelSpeechQueue();
     streamSpeechBuffer = "";
     streamSpeechSource = "";
+    streamSpeechStarted = false;
+    if (realtimeVoiceAvailable && voiceEnabled) {
+      rVoice.textContent = "PREPARANDO RT";
+      ensureRealtimeVoiceSession(speechSession).catch(() => {
+        realtimeVoiceAvailable = false;
+        closeRealtimeVoiceSession();
+        rVoice.textContent = serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
+      });
+    }
   }
 
   function appendStreamSpeech(delta) {
@@ -1527,7 +1914,7 @@
 
   function finishStreamSpeech(finalText) {
     if (!voiceEnabled) return;
-    if (!serverVoiceAvailable) { speak(finalText); return; }
+    if (!realtimeVoiceAvailable && !serverVoiceAvailable) { speak(finalText); return; }
     if (finalText !== streamSpeechSource) {
       // Si el mensaje final corrigió el stream, prioriza la versión autoritativa.
       cancelSpeechQueue();
@@ -1540,13 +1927,18 @@
     const spokenText = prepareSpeechText(text);
     if (!voiceEnabled || !spokenText) return;
     cancelSpeechQueue();
-    if (!serverVoiceAvailable) { await speakInBrowser(spokenText); return; }
+    if (!realtimeVoiceAvailable && !serverVoiceAvailable) {
+      await speakInBrowser(spokenText);
+      startConversationFollowUp();
+      return;
+    }
     enqueueSpeech(spokenText);
     try {
       await runSpeechQueue();
     } catch {
       serverVoiceAvailable = false;
       await speakInBrowser(spokenText);
+      startConversationFollowUp();
     }
   }
 
@@ -1566,6 +1958,7 @@
     voiceToggle.setAttribute("aria-pressed", String(voiceEnabled));
     rVoice.textContent = voiceEnabled ? "LISTA" : "SILENCIO";
     if (!voiceEnabled) {
+      stopConversationFollowUp();
       if (canSpeak) speechSynthesis.cancel();
       if (stopCurrentAudio) stopCurrentAudio();
     }
@@ -1662,9 +2055,48 @@
     wakeRecognition = null;
   }
 
+  function stopConversationFollowUp({ sleep = true } = {}) {
+    clearTimeout(followUpTimer); followUpTimer = null;
+    const wasListening = followUpListening;
+    followUpListening = false;
+    if (wasListening && recorder?.state === "recording") {
+      recorderDiscard = true;
+      try { recorder.stop(); } catch {}
+    }
+    if (sleep) {
+      setMicActive(false, "HEY JARVIS");
+      setState("idle");
+      scheduleWakeListening(250);
+    }
+  }
+
+  function startConversationFollowUp() {
+    if (!voiceEnabled || busy || !ws || ws.readyState !== WebSocket.OPEN) {
+      scheduleWakeListening();
+      return;
+    }
+    stopWakeListening();
+    stopConversationFollowUp({ sleep: false });
+    followUpListening = true;
+    rVoice.textContent = "CONTINÚA… 4S";
+    if (serverVoiceAvailable && canRecord) {
+      startServerRecording({ automatic: true, followUp: true });
+      return;
+    }
+    if (!recognition) { stopConversationFollowUp(); return; }
+    try {
+      recognition.start();
+      followUpTimer = setTimeout(() => {
+        if (!followUpListening) return;
+        try { recognition.abort(); } catch {}
+        stopConversationFollowUp();
+      }, 4000);
+    } catch { stopConversationFollowUp(); }
+  }
+
   function scheduleWakeListening(delay = 450) {
     clearTimeout(wakeRestartTimer);
-    if (!SpeechRecognition || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || recorder?.state === "recording") return;
+    if (!SpeechRecognition || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || followUpListening || recorder?.state === "recording") return;
     wakeRestartTimer = setTimeout(startWakeListening, delay);
   }
 
@@ -1727,7 +2159,7 @@
     recorderAudioContext = null;
   }
 
-  function monitorQuestionSilence(stream) {
+  function monitorQuestionSilence(stream, { initialSilenceMs = 6500 } = {}) {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
     recorderAudioContext = new AudioContextClass();
@@ -1753,10 +2185,15 @@
       if (rms > 0.028) {
         speechStarted = true;
         lastVoiceAt = now;
+        if (followUpListening) {
+          clearTimeout(followUpTimer); followUpTimer = null;
+          followUpListening = false;
+        }
         rVoice.textContent = "ESCUCHANDO";
       }
       // Da tiempo a empezar y cierra la pregunta tras 1.25 s de silencio natural.
-      if ((speechStarted && now - lastVoiceAt > 1250) || (!speechStarted && now - startedAt > 6500)) {
+      if ((speechStarted && now - lastVoiceAt > 1250) || (!speechStarted && now - startedAt > initialSilenceMs)) {
+        recorderDiscard = !speechStarted;
         recorder.stop();
         return;
       }
@@ -1765,13 +2202,14 @@
     recorderVadFrame = requestAnimationFrame(detect);
   }
 
-  async function startServerRecording({ automatic = false } = {}) {
+  async function startServerRecording({ automatic = false, followUp = false } = {}) {
     stopWakeListening();
     try {
       recorderStream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       });
       recorderChunks = [];
+      recorderDiscard = false;
       const mimeType = recordingMimeType();
       recorder = mimeType ? new MediaRecorder(recorderStream, { mimeType }) : new MediaRecorder(recorderStream);
       recorder.ondataavailable = (event) => { if (event.data.size) recorderChunks.push(event.data); };
@@ -1781,11 +2219,14 @@
         recorderStream?.getTracks().forEach((track) => track.stop()); recorderStream = null;
         const blob = new Blob(recorderChunks, { type: recorder.mimeType || mimeType || "audio/webm" });
         recorder = null; recorderChunks = []; setMicActive(false, "TRANSCRIBIENDO");
-        if (blob.size) sendRecordedAudio(blob);
+        if (recorderDiscard || !blob.size) {
+          recorderDiscard = false;
+          stopConversationFollowUp();
+        } else sendRecordedAudio(blob);
       };
       recorder.start(250);
-      setMicActive(true, automatic ? "ESCUCHANDO" : "GRABANDO");
-      if (automatic) monitorQuestionSilence(recorderStream);
+      setMicActive(true, followUp ? "CONTINÚA… 4S" : automatic ? "ESCUCHANDO" : "GRABANDO");
+      if (automatic) monitorQuestionSilence(recorderStream, { initialSilenceMs: followUp ? 4000 : 6500 });
       recorderTimer = setTimeout(() => { if (recorder?.state === "recording") recorder.stop(); }, 20000);
     } catch (error) {
       setMicActive(false, "ERROR");
@@ -1810,10 +2251,24 @@
         isFinal ||= event.results[i].isFinal;
       }
       messageInput.value = transcript.trim();
-      if (isFinal && messageInput.value) document.getElementById("form").requestSubmit();
+      if (messageInput.value && followUpListening) {
+        clearTimeout(followUpTimer); followUpTimer = null;
+        // Una vez iniciada la frase, permite terminarla aunque vencieran los 4 segundos.
+        followUpTimer = setTimeout(() => {
+          try { recognition.stop(); } catch {}
+        }, 6000);
+      }
+      if (isFinal && messageInput.value) {
+        followUpListening = false;
+        document.getElementById("form").requestSubmit();
+      }
     };
     recognition.onend = () => {
       setMicActive(false, serverVoiceAvailable ? "LOCAL" : "NAVEGADOR");
+      if (followUpListening && messageInput.value.trim()) {
+        followUpListening = false;
+        document.getElementById("form").requestSubmit();
+      } else if (followUpListening) stopConversationFollowUp();
     };
     recognition.onerror = (event) => {
       if (event.error !== "no-speech" && event.error !== "aborted") {
@@ -1823,6 +2278,7 @@
   }
 
   micButton.addEventListener("click", () => {
+    stopConversationFollowUp({ sleep: false });
     if (recorder?.state === "recording") { recorder.stop(); return; }
     if (busy) return;
     if (SpeechRecognition) {

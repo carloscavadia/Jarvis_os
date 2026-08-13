@@ -14,7 +14,8 @@ dependencies = [
 [project.optional-dependencies]
 # Proveedores compatibles con OpenAI (NVIDIA NIM, Ollama, etc.)
 openai = [
-    "openai>=1.40",
+    # Realtime client secrets and GPT-Realtime-2.1 require the current SDK.
+    "openai>=3.0.0",
 ]
 voice = [
     "faster-whisper>=1.1",
