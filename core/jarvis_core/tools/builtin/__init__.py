@@ -13,6 +13,7 @@ from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.repairs.store import RepairStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin.connectors import (
@@ -29,6 +30,7 @@ from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.packages import InstallPackageTool
 from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
 from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
+from jarvis_core.tools.builtin.self_repair import register_self_repair_tools
 from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import (
@@ -60,6 +62,7 @@ def build_default_registry(
     allow_shell: bool | None = None,
     connector_store: ConnectorStore | None = None,
     goals: GoalStore | None = None,
+    repairs: RepairStore | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -103,6 +106,8 @@ def build_default_registry(
         )
     if settings.hud_workspace_enabled:
         registry.register(ShowInWorkspaceTool())
+    if settings.self_repair_enabled and repairs is not None:
+        register_self_repair_tools(registry, repairs)
     if (
         settings.connectors_enabled
         and settings.n8n_webhook_url

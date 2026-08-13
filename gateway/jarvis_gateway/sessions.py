@@ -17,6 +17,7 @@ from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.repairs.store import RepairStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.builtin import build_default_registry
 
@@ -31,6 +32,15 @@ class SessionManager:
         self.tasks = TaskStore(settings.tasks_db_path)
         self.goals = GoalStore(settings.goals_db_path)
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
+        self.repairs = (
+            RepairStore(
+                settings.self_repair_db_path,
+                settings.self_repair_root,
+                settings.self_repair_max_file_bytes,
+            )
+            if settings.self_repair_enabled
+            else None
+        )
         self._sessions: dict[str, Orchestrator] = {}
         self.connector_store = (
             ConnectorStore(settings.connector_db_path, settings.connector_master_key)
@@ -57,6 +67,7 @@ class SessionManager:
                     allow_shell=False,
                     connector_store=self.connector_store,
                     goals=self.goals,
+                    repairs=self.repairs,
                 )
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
@@ -72,5 +83,7 @@ class SessionManager:
         self.tasks.close()
         self.goals.close()
         self.proactive_events.close()
+        if self.repairs is not None:
+            self.repairs.close()
         if self.connector_store is not None:
             self.connector_store.close()

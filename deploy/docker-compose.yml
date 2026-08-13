@@ -56,6 +56,9 @@ services:
       JARVIS_HUD_WORKSPACE_ENABLED: "${JARVIS_HUD_WORKSPACE_ENABLED:-true}"
       JARVIS_CONNECTOR_DB: /app/data/jarvis_connectors.db
       JARVIS_PROACTIVE_EVENTS_DB: /app/data/jarvis_proactive_events.db
+      JARVIS_SELF_REPAIR_DB: /app/data/jarvis_repairs.db
+      JARVIS_SELF_REPAIR_ROOT: /app/workspace
+      JARVIS_SELF_REPAIR_ENABLED: "${JARVIS_SELF_REPAIR_ENABLED:-true}"
     ports:
       - "8080:8080"
     volumes:

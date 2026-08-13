@@ -88,6 +88,10 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
         return f"Ejecutar la acción externa {arguments.get('action')} mediante n8n."
     if name == "run_connector_module_action":
         return f"Ejecutar {arguments.get('action')} mediante el módulo {arguments.get('connector')}."
+    if name == "apply_self_repair":
+        return f"Aplicar la autorreparación validada {arguments.get('proposal_id')}."
+    if name == "rollback_self_repair":
+        return f"Revertir la autorreparación {arguments.get('proposal_id')}."
     return f"Ejecutar la herramienta sensible {name}."
 
 
@@ -95,6 +99,7 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
     """Evita reenviar contenidos completos o secretos innecesarios al cliente."""
     visible_keys = {
         "path",
+        "proposal_id",
         "mode",
         "manager",
         "package",

@@ -163,6 +163,10 @@ class Settings:
     connector_max_payload_bytes: int = 64 * 1024
     connector_max_response_bytes: int = 256 * 1024
     approval_timeout_seconds: float = 120.0
+    self_repair_enabled: bool = False
+    self_repair_root: str = "data/workspace"
+    self_repair_db_path: str = "data/jarvis_repairs.db"
+    self_repair_max_file_bytes: int = 512 * 1024
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -381,6 +385,21 @@ class Settings:
                     ),
                 ),
             ),
+            self_repair_enabled=_get_bool("JARVIS_SELF_REPAIR_ENABLED", False),
+            self_repair_root=os.environ.get(
+                "JARVIS_SELF_REPAIR_ROOT",
+                os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
+            ),
+            self_repair_db_path=os.environ.get(
+                "JARVIS_SELF_REPAIR_DB", "data/jarvis_repairs.db"
+            ),
+            self_repair_max_file_bytes=max(
+                1024,
+                min(
+                    2 * 1024 * 1024,
+                    int(os.environ.get("JARVIS_SELF_REPAIR_MAX_FILE_BYTES", "524288")),
+                ),
+            ),
             approval_timeout_seconds=max(
                 15.0,
                 float(os.environ.get("JARVIS_APPROVAL_TIMEOUT_SECONDS", "120")),
@@ -459,6 +478,19 @@ class Settings:
                 "pizarrón. Después de mostrar contenido allí, no lo repitas en la respuesta: "
                 "en el chat entrega únicamente una síntesis útil de una o dos frases e indica "
                 "que el detalle está visible en el pizarrón. No lo uses para conversación breve."
+            )
+        if self.self_repair_enabled:
+            base += (
+                "\n\nTienes autorreparación controlada. Cuando una capacidad falle o no exista, "
+                "diagnostica con evidencia local y, si hace falta, consulta documentación o "
+                "Internet. Usa inspect_repair_target antes de preparar un cambio. "
+                "propose_self_repair solo crea y valida una versión en staging: no la instala. "
+                "Muestra diagnóstico, alcance, validación y propuesta en el pizarrón. Solo usa "
+                "apply_self_repair cuando el usuario autorice mediante los botones; nunca eludas "
+                "esa aprobación. Después verifica operativamente el resultado. Si la verificación "
+                "falla, explica el fallo y ofrece rollback_self_repair, que también requiere "
+                "aprobación. No afirmes que te reparaste si solo preparaste la propuesta. No "
+                "modifiques secretos, credenciales ni rutas fuera de la raíz autorizada."
             )
         if self.connectors_enabled:
             base += (
