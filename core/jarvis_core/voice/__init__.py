@@ -3,6 +3,7 @@
 from jarvis_core.voice.base import SpeechToText, TextToSpeech
 from jarvis_core.voice.factory import build_tts
 from jarvis_core.voice.local import FasterWhisperSTT, KokoroTTS, LocalVoiceError
+from jarvis_core.voice.wakeword import WakeWordDetector
 
 __all__ = [
     "FasterWhisperSTT",
@@ -10,5 +11,6 @@ __all__ = [
     "LocalVoiceError",
     "SpeechToText",
     "TextToSpeech",
+    "WakeWordDetector",
     "build_tts",
 ]

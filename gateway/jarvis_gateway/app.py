@@ -7,6 +7,7 @@ captura de entrada; el núcleo sigue siendo la única fuente de inteligencia y e
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import hmac
 import json
@@ -34,7 +35,7 @@ from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
-from jarvis_core.voice import LocalVoiceError
+from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
 from jarvis_gateway.mqtt_bridge import MqttBridge
@@ -54,6 +55,9 @@ mqtt_bridge = MqttBridge(settings, sessions)
 notifier = Notifier(mqtt_bridge)
 voice_runtime = VoiceRuntime(settings)
 realtime_voice = RealtimeVoiceBroker(settings)
+# Escuchas de activación abiertas. Cada una carga su propio detector, así que el
+# límite acota tanto la memoria como la CPU dedicada a la escucha permanente.
+_wake_streams = 0
 
 
 def _valid_api_key(candidate: str | None) -> bool:
@@ -285,6 +289,19 @@ async def lifespan(app: FastAPI):
     mqtt_bridge.start()
     if settings.scheduler_enabled:
         scheduler.start()
+    if settings.voice_enabled and settings.wakeword_enabled:
+        # Descarga y compila el modelo de activación ahora (~6 MB) para que la
+        # primera conexión de un HUB no espere. Un fallo aquí no impide arrancar:
+        # el resto del gateway funciona igual sin escucha permanente.
+        async def _warm_up_wakeword() -> None:
+            try:
+                await asyncio.to_thread(
+                    WakeWordDetector(settings.wakeword_model).warm_up
+                )
+            except Exception:
+                logger.exception("No se pudo precargar el modelo de activación")
+
+        asyncio.create_task(_warm_up_wakeword())
     try:
         yield
     finally:
@@ -725,6 +742,13 @@ async def decide_proactive_event(
 async def voice_status() -> dict[str, object]:
     status: dict[str, object] = dict(voice_runtime.status())
     status["realtime"] = realtime_voice.status()
+    status["wakeword"] = {
+        "enabled": settings.voice_enabled and settings.wakeword_enabled,
+        "model": settings.wakeword_model,
+        "sample_rate": WakeWordDetector.SAMPLE_RATE,
+        "frame_samples": WakeWordDetector.FRAME_SAMPLES,
+        "engine": "openwakeword",
+    }
     return status
 
 
@@ -790,6 +814,88 @@ async def synthesize_voice(req: SpeechRequest) -> Response:
         media_type="audio/wav",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.websocket("/ws/wake/{device_id}")
+async def wakeword_endpoint(websocket: WebSocket, device_id: str) -> None:
+    """Escucha permanente: recibe PCM crudo y avisa al oír «Hey JARVIS».
+
+    Es el único canal siempre abierto, y por eso vive entero en el servidor: el
+    audio de reposo no llega a ningún tercero ni consume presupuesto de OpenAI.
+    Los ESP32 usan exactamente esta misma ruta que el HUD.
+    """
+    global _wake_streams
+
+    if not _valid_api_key(websocket.query_params.get("token")):
+        await websocket.close(code=1008, reason="Credenciales inválidas")
+        return
+    if not _SESSION_RE.fullmatch(device_id):
+        await websocket.close(code=1008, reason="Identificador de dispositivo inválido")
+        return
+    if not (settings.voice_enabled and settings.wakeword_enabled):
+        await websocket.close(code=1013, reason="Palabra de activación desactivada")
+        return
+    if _wake_streams >= settings.wakeword_max_streams:
+        await websocket.close(code=1013, reason="Límite de escuchas alcanzado")
+        return
+
+    detector = WakeWordDetector(
+        settings.wakeword_model,
+        threshold=settings.wakeword_threshold,
+        vad_threshold=settings.wakeword_vad_threshold,
+        refractory_seconds=settings.wakeword_refractory_seconds,
+    )
+    await websocket.accept()
+    _wake_streams += 1
+    logger.info("Escucha de activación conectada: %s", device_id)
+    try:
+        await websocket.send_json(
+            {
+                "type": "wake_ready",
+                "model": settings.wakeword_model,
+                "sample_rate": WakeWordDetector.SAMPLE_RATE,
+                "frame_samples": WakeWordDetector.FRAME_SAMPLES,
+            }
+        )
+        while True:
+            packet = await websocket.receive()
+            if packet["type"] == "websocket.disconnect":
+                break
+            # El cliente pide reiniciar al reanudar la escucha, para que el audio
+            # anterior a una respuesta de JARVIS no dispare una activación tardía.
+            if packet.get("text") is not None:
+                if packet["text"].strip() == "reset":
+                    detector.reset()
+                continue
+            chunk = packet.get("bytes")
+            if not chunk:
+                continue
+            if len(chunk) > WakeWordDetector.MAX_BUFFER_BYTES:
+                await websocket.close(code=1009, reason="Fragmento de audio excesivo")
+                return
+            try:
+                score = await asyncio.to_thread(detector.process, chunk)
+            except LocalVoiceError as exc:
+                logger.error("Detector de activación no disponible: %s", exc)
+                await websocket.send_json({"type": "error", "error": str(exc)})
+                await websocket.close(code=1011, reason="Detector no disponible")
+                return
+            if score is not None:
+                logger.info("Activación detectada en %s (%.2f)", device_id, score)
+                await websocket.send_json(
+                    {"type": "wake", "score": round(score, 4), "device": device_id}
+                )
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Error en la escucha de activación %s", device_id)
+        # Sin un cierre explícito el cliente se queda esperando audio que nunca
+        # llegará, en vez de reintentar la conexión.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=1011, reason="Error interno de escucha")
+    finally:
+        _wake_streams -= 1
+        logger.info("Escucha de activación cerrada: %s", device_id)
 
 
 @app.websocket("/ws/{session_id}")

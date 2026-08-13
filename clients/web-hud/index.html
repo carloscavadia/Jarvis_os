@@ -1249,12 +1249,14 @@
     ws.onopen = () => {
       rLink.textContent = "EN LÍNEA";
       addLine("SISTEMA", "Conectado a " + target.host, "system");
-      refreshVoiceStatus();
+      // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
+      // si el detector local está disponible; encadenarlo evita una carrera en la
+      // que el HUD se rinde antes de recibir la respuesta.
+      refreshVoiceStatus().finally(() => scheduleWakeListening(100));
       loadCurrentGoal();
       loadPendingProactive();
-      scheduleWakeListening(100);
     };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -1560,7 +1562,12 @@
   let followUpTimer = null;
   let wakeListening = false;
   let wakeRestartTimer = null;
-  let wakeRecognition = null;
+  let wakeAvailable = false;
+  let wakeSocket = null;
+  let wakeAudioContext = null;
+  let wakeStream = null;
+  let wakeNode = null;
+  let wakeStarting = null;
   let currentAudio = null;
   let stopCurrentAudio = null;
   let speechSession = 0;
@@ -1608,6 +1615,7 @@
       const status = response.ok ? await response.json() : null;
       serverVoiceAvailable = !!status?.enabled;
       realtimeVoiceAvailable = !!status?.realtime?.enabled;
+      wakeAvailable = !!status?.wakeword?.enabled;
       rVoice.textContent = realtimeVoiceAvailable ? "OPENAI RT" : serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
     } catch {
       serverVoiceAvailable = false;
@@ -2007,15 +2015,6 @@
     }
   }
 
-  function normalizeWakeText(text) {
-    return text.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  }
-
-  function wakeCommand(text) {
-    // Web Speech suele representar "Hey" como "ey/ei" y "Jarvis" como "Yarvis".
-    const match = normalizeWakeText(text).match(/(?:^|\s)(?:hey|ey|ei|oye)\s+(?:jarvis|yarvis)\b[\s,.:;!?-]*(.*)$/i);
-    return match ? match[1].trim() : null;
-  }
 
   async function playWakeChime() {
     if (!voiceEnabled) return;
@@ -2046,15 +2045,12 @@
     }
   }
 
+  // Deja de enviar audio, pero conserva el micrófono y el zócalo abiertos: volver a
+  // pedir getUserMedia en cada respuesta encendería el indicador del navegador una
+  // y otra vez, y añadiría casi un segundo antes de poder volver a escuchar.
   function stopWakeListening() {
     clearTimeout(wakeRestartTimer); wakeRestartTimer = null;
     wakeListening = false;
-    if (wakeRecognition) {
-      wakeRecognition.onend = null;
-      wakeRecognition.onerror = null;
-      try { wakeRecognition.abort(); } catch {}
-    }
-    wakeRecognition = null;
   }
 
   function stopConversationFollowUp({ sleep = true } = {}) {
@@ -2098,60 +2094,156 @@
 
   function scheduleWakeListening(delay = 450) {
     clearTimeout(wakeRestartTimer);
-    if (!SpeechRecognition || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || followUpListening || recorder?.state === "recording") return;
+    if (!wakeAvailable || !canRecord || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || followUpListening || recorder?.state === "recording") return;
     wakeRestartTimer = setTimeout(startWakeListening, delay);
   }
 
-  function startWakeListening() {
-    if (!SpeechRecognition || busy || voiceActive || wakeListening) return;
-    wakeRecognition = new SpeechRecognition();
-    wakeRecognition.lang = "es-MX";
-    wakeRecognition.interimResults = true;
-    wakeRecognition.continuous = true;
-    wakeRecognition.onstart = () => {
-      wakeListening = true;
-      setMicActive(true, "HEY JARVIS");
-      setState("idle");
-    };
-    wakeRecognition.onresult = async (event) => {
-      let heard = "";
-      let finalResult = false;
-      for (let i = 0; i < event.results.length; i++) {
-        heard += " " + event.results[i][0].transcript;
-        finalResult ||= event.results[i].isFinal;
+  // El micrófono se convierte a PCM de 16 bits a 16 kHz —el formato que espera
+  // openWakeWord— dentro de un AudioWorklet, para no bloquear el hilo del HUD ni
+  // interferir con la animación. Va en un Blob para que el HUD siga siendo un
+  // único fichero sin dependencias.
+  const WAKE_WORKLET = `
+    class WakeTap extends AudioWorkletProcessor {
+      constructor() { super(); this.buffer = []; this.filled = 0; }
+      process(inputs) {
+        const channel = inputs[0]?.[0];
+        if (!channel) return true;
+        const pcm = new Int16Array(channel.length);
+        for (let i = 0; i < channel.length; i++) {
+          const sample = Math.max(-1, Math.min(1, channel[i]));
+          pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+        }
+        this.buffer.push(pcm); this.filled += pcm.length;
+        // Agrupa en bloques de 1280 muestras (80 ms), la ventana del detector.
+        while (this.filled >= 1280) {
+          const frame = new Int16Array(1280);
+          let written = 0;
+          while (written < 1280) {
+            const head = this.buffer[0];
+            const take = Math.min(head.length, 1280 - written);
+            frame.set(head.subarray(0, take), written);
+            written += take;
+            if (take === head.length) this.buffer.shift();
+            else this.buffer[0] = head.subarray(take);
+          }
+          this.filled -= 1280;
+          this.port.postMessage(frame.buffer, [frame.buffer]);
+        }
+        return true;
       }
-      const command = wakeCommand(heard);
-      if (command === null) return;
-      // Espera el resultado final para no perder una pregunta dicha en la misma frase.
-      if (!finalResult) return;
-      firePulse();
-      stopWakeListening();
-      setMicActive(false, "ACTIVADO");
-      await playWakeChime();
-      if (command) {
-        messageInput.value = command;
-        document.getElementById("form").requestSubmit();
-      } else if (serverVoiceAvailable && canRecord) {
-        startServerRecording({ automatic: true });
-      } else {
-        recognition?.start();
+    }
+    registerProcessor("wake-tap", WakeTap);
+  `;
+
+  function wakeSocketUrl() {
+    try {
+      const url = new URL(FIXED_WS_URL);
+      url.pathname = "/ws/wake/hud";
+      url.searchParams.set("token", tokenInput.value);
+      return url.toString();
+    } catch { return ""; }
+  }
+
+  function teardownWakeListening() {
+    stopWakeListening();
+    if (wakeSocket) { wakeSocket.onclose = null; try { wakeSocket.close(); } catch {} }
+    wakeSocket = null;
+    if (wakeNode) { wakeNode.port.onmessage = null; try { wakeNode.disconnect(); } catch {} }
+    wakeNode = null;
+    wakeStream?.getTracks().forEach((track) => track.stop());
+    wakeStream = null;
+    wakeAudioContext?.close().catch(() => {});
+    wakeAudioContext = null;
+    wakeStarting = null;
+  }
+
+  async function onWakeDetected() {
+    // Deja de enviar antes de nada: si no, la propia respuesta de JARVIS y el
+    // tono de activación vuelven a entrar por el micrófono y reactivan.
+    stopWakeListening();
+    firePulse();
+    setMicActive(false, "ACTIVADO");
+    await playWakeChime();
+    if (serverVoiceAvailable && canRecord) startServerRecording({ automatic: true });
+    else if (recognition) { try { recognition.start(); } catch { scheduleWakeListening(); } }
+    else scheduleWakeListening();
+  }
+
+  async function buildWakePipeline() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("sin AudioContext");
+    // Pedir 16 kHz directamente deja el remuestreo en manos del navegador, que lo
+    // hace mejor y más barato que nosotros a mano.
+    const context = new AudioContextClass({ sampleRate: 16000 });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    const workletUrl = URL.createObjectURL(new Blob([WAKE_WORKLET], { type: "text/javascript" }));
+    try {
+      await context.audioWorklet.addModule(workletUrl);
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
+    const node = new AudioWorkletNode(context, "wake-tap");
+    context.createMediaStreamSource(stream).connect(node);
+    // Sin destino el grafo no corre en algunos navegadores; un nodo mudo lo evita.
+    const mute = context.createGain();
+    mute.gain.value = 0;
+    node.connect(mute).connect(context.destination);
+
+    const socket = new WebSocket(wakeSocketUrl());
+    socket.binaryType = "arraybuffer";
+    socket.onmessage = (event) => {
+      let message; try { message = JSON.parse(event.data); } catch { return; }
+      if (message.type === "wake" && wakeListening) onWakeDetected();
+      else if (message.type === "error") {
+        wakeAvailable = false;
+        addLine("SISTEMA", "Escucha permanente no disponible: " + message.error, "system");
+        teardownWakeListening();
       }
     };
-    wakeRecognition.onend = () => {
-      wakeListening = false;
-      wakeRecognition = null;
-      scheduleWakeListening(350);
+    socket.onclose = () => {
+      wakeSocket = null;
+      teardownWakeListening();
+      scheduleWakeListening(3000);
     };
-    wakeRecognition.onerror = (event) => {
-      wakeListening = false;
-      wakeRecognition = null;
-      if (!["no-speech", "aborted"].includes(event.error)) {
-        rVoice.textContent = event.error === "not-allowed" ? "PERMISO MICRÓFONO" : "ERROR DE MICRÓFONO";
-        micButton.classList.add("permission-needed");
+    node.port.onmessage = (event) => {
+      if (!wakeListening || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(event.data);
+    };
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = () => reject(new Error("no se pudo abrir la escucha"));
+    });
+
+    wakeAudioContext = context; wakeStream = stream; wakeNode = node; wakeSocket = socket;
+  }
+
+  async function startWakeListening() {
+    if (!wakeAvailable || !canRecord || busy || voiceActive || wakeListening) return;
+    if (!wakeSocket) {
+      if (!wakeStarting) {
+        wakeStarting = buildWakePipeline()
+          .catch((error) => {
+            teardownWakeListening();
+            const denied = error?.name === "NotAllowedError";
+            rVoice.textContent = denied ? "PERMISO MICRÓFONO" : "ESCUCHA NO DISPONIBLE";
+            if (denied) micButton.classList.add("permission-needed");
+            else scheduleWakeListening(5000);
+            throw error;
+          })
+          .finally(() => { wakeStarting = null; });
       }
-      scheduleWakeListening(event.error === "not-allowed" ? 10000 : 800);
-    };
-    try { wakeRecognition.start(); } catch { scheduleWakeListening(1000); }
+      try { await wakeStarting; } catch { return; }
+      // Mientras se abría el micrófono pudo llegar una respuesta o un envío.
+      if (busy || voiceActive || followUpListening) return;
+    }
+    await wakeAudioContext?.resume().catch(() => {});
+    // Descarta lo oído durante la respuesta anterior para no activar con eco.
+    try { wakeSocket.send("reset"); } catch {}
+    wakeListening = true;
+    setMicActive(true, "HEY JARVIS");
+    setState("idle");
   }
 
   function stopRecorderVad() {
@@ -2287,11 +2379,13 @@
     stopConversationFollowUp({ sleep: false });
     if (recorder?.state === "recording") { recorder.stop(); return; }
     if (busy) return;
-    if (SpeechRecognition) {
+    if (wakeAvailable && canRecord) {
       micButton.classList.remove("permission-needed");
-      stopWakeListening();
+      // Reconstruye el micrófono entero: el botón existe justamente para cuando
+      // la escucha se ha quedado colgada o el permiso acaba de concederse.
+      teardownWakeListening();
       startWakeListening();
-      addLine("SISTEMA", "Escucha de «Hey Jarvis» reiniciada.", "system");
+      addLine("SISTEMA", "Escucha de «Hey JARVIS» reiniciada.", "system");
     } else if (serverVoiceAvailable && canRecord) startServerRecording();
     else addLine("SISTEMA", "Este navegador no permite capturar voz.", "system");
   });

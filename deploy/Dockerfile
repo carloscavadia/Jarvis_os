@@ -19,6 +19,11 @@ COPY README.md ./README.md
 # El núcleo con soporte OpenAI/NVIDIA y voz local Whisper + Kokoro.
 RUN pip install --no-cache-dir "./core[openai,voice]" ./gateway
 
+# Modelo de la palabra de activación (~6 MB). Se baja aquí, como root, porque
+# openWakeWord lo guarda dentro de site-packages: en ejecución el usuario jarvis
+# no podría escribir ahí. Además evita depender de la red en el primer arranque.
+RUN python -c "from openwakeword.utils import download_models; download_models(model_names=['hey_jarvis'])"
+
 # Carpeta de datos (memoria interna persistente; se monta como volumen).
 RUN addgroup --system jarvis \
     && adduser --system --ingroup jarvis --home /app jarvis \

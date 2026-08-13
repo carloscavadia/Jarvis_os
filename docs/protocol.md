@@ -95,6 +95,38 @@ Los clientes web capturan audio con `MediaRecorder` y usan dos endpoints autenti
 Los tres requieren `X-Jarvis-Key`. El HUD usa estos endpoints cuando están disponibles y
 recurre a las capacidades de voz del navegador si el servidor los tiene desactivados.
 
+`GET /voice/status` incluye el bloque `wakeword`, que el cliente debe consultar antes de
+abrir la escucha permanente:
+
+```json
+{"wakeword": {"enabled": true, "model": "hey_jarvis",
+              "sample_rate": 16000, "frame_samples": 1280, "engine": "openwakeword"}}
+```
+
+### Escucha permanente «Hey JARVIS»
+
+Conexión: `ws://<servidor>:8080/ws/wake/<device_id>?token=<JARVIS_GATEWAY_API_KEY>`
+
+Es el canal que el HUD y cada punto ESP32 mantienen abierto en reposo. La detección
+ocurre **en el servidor**: el dispositivo solo captura y envía.
+
+| Sentido | Mensaje | Significado |
+|---|---|---|
+| → servidor | *binario* | PCM 16 bits **con signo, mono, 16 kHz, little-endian**. Cualquier tamaño; el ideal son bloques de 1280 muestras (80 ms). Máximo 81 920 bytes por mensaje. |
+| → servidor | `reset` (texto) | Descarta el audio acumulado. Envíalo al reanudar la escucha tras hablar, para no activarte con tu propio eco. |
+| ← cliente | `{"type":"wake_ready","model":…,"sample_rate":16000,"frame_samples":1280}` | Canal listo. |
+| ← cliente | `{"type":"wake","score":0.87,"device":"hud"}` | Frase reconocida. |
+| ← cliente | `{"type":"error","error":"…"}` | Detector no disponible; el servidor cierra a continuación. |
+
+**Reglas para el dispositivo:**
+
+1. **Deja de enviar mientras reproduces audio de JARVIS.** Si no, su voz reactiva la escucha.
+2. Al reanudar, manda `reset` antes de volver a enviar.
+3. Si el zócalo se cierra, reintenta con espera (el HUD usa 3 s).
+
+Códigos de cierre: `1008` credenciales o identificador inválidos, `1013` escucha
+desactivada o límite de dispositivos alcanzado, `1009` fragmento excesivo.
+
 ### Emociones (color del enjambre)
 
 | Emoción    | Color        | Uso                                   |

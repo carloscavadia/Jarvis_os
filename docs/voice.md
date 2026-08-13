@@ -6,9 +6,49 @@ usar OpenAI Realtime únicamente para producir una voz más natural después de 
 
 | Función | Motor | Notas |
 |---|---|---|
+| Activarse | **openWakeWord** | Modelo preentrenado `hey_jarvis`. Local: es la etapa que escucha siempre. |
 | Oír (STT) | **faster-whisper** | Modelo `small` por defecto; buen equilibrio en español sobre CPU. |
 | Hablar (TTS) | **Kokoro-82M** | Voz `em_alex`; natural y rápida en CPU. |
 | Hablar (opcional) | **OpenAI Realtime** | Voz `marin` bajo demanda; Kokoro queda como respaldo automático. |
+
+## Palabra de activación: «Hey JARVIS»
+
+La detección corre **en el servidor**, con [openWakeWord](https://github.com/dscripka/openWakeWord)
+y su modelo preentrenado `hey_jarvis`. Que sea local no es solo privacidad: es la
+única etapa permanentemente encendida, así que decide la factura. Una sesión de voz
+en la nube escuchando la habitación las 24 horas cuesta cientos de euros al año;
+detectar la activación en casa cuesta **cero** y unos 2 % de un núcleo por dispositivo.
+
+El HUD y los puntos ESP32 usan la misma ruta: envían PCM de 16 bits a 16 kHz por
+`ws://<servidor>:8080/ws/wake/<dispositivo>?token=…`, y el servidor responde
+`{"type":"wake"}` al reconocer la frase. El cliente puede mandar el texto `reset`
+para descartar lo oído mientras JARVIS hablaba y no activarse con su propio eco.
+
+### Ajustar el umbral con tu voz
+
+El valor por defecto (`0.5`) es un punto de partida, no una verdad. Grábate diciendo
+«Hey JARVIS» como lo dices de verdad y mídelo:
+
+```bash
+jarvis wake-test activacion1.wav activacion2.wav conversacion-normal.wav
+```
+
+Sube el umbral si se activa solo; bájalo si no te reconoce. El correcto queda por
+encima del pico de las frases normales y claramente por debajo del de las activaciones.
+
+> El modelo se entrenó con pronunciación inglesa de «Jarvis». Si dices «Yarvis» con
+> jota española puede que puntúe bajo: mídelo antes de dar por hecho que funciona, y
+> si hace falta baja el umbral a ~0,35.
+
+### Diagnóstico
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| No se activa nunca | Umbral alto para tu pronunciación | Mide con `jarvis wake-test` y baja `JARVIS_WAKEWORD_THRESHOLD` |
+| Se activa sola con la tele | Ruido de fondo con habla | Sube el umbral y prueba `JARVIS_WAKEWORD_VAD_THRESHOLD=0.3` |
+| Se activa con su propia voz | El cliente no dejó de enviar al hablar | El HUD ya lo hace; en un ESP32, corta el envío durante la reproducción |
+| «ESCUCHA NO DISPONIBLE» en el HUD | `JARVIS_VOICE_ENABLED` o `JARVIS_WAKEWORD_ENABLED` en false | Actívalos y reinicia el gateway |
+| El HUD no pide el micrófono | Origen inseguro | Sírvelo desde `localhost` o por HTTPS |
 
 ## Por qué Kokoro
 
@@ -46,6 +86,9 @@ JARVIS_VOICE_ENABLED=true
 JARVIS_TTS_VOICE=em_alex     # voz masculina predeterminada
 JARVIS_TTS_LANG_CODE=e       # 'e' = español
 JARVIS_TTS_SPEED=1.0         # 0.9 más pausado · 1.1 más ágil
+
+JARVIS_WAKEWORD_ENABLED=true
+JARVIS_WAKEWORD_THRESHOLD=0.5   # mídelo con  jarvis wake-test
 ```
 
 ### Voces en español

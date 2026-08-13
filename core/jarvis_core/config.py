@@ -127,6 +127,17 @@ class Settings:
     tts_kokoro_repo: str = ""
     voice_max_audio_bytes: int = 15 * 1024 * 1024
     voice_max_text_chars: int = 4000
+
+    # --- Palabra de activación (openWakeWord, 100% local) ---
+    # La etapa que escucha de forma permanente nunca sale del servidor.
+    wakeword_enabled: bool = True
+    wakeword_model: str = "hey_jarvis"
+    wakeword_threshold: float = 0.5
+    # VAD de Silero previo al detector: 0 lo desactiva; ~0.3 reduce falsos positivos
+    # en habitaciones con televisión o música de fondo.
+    wakeword_vad_threshold: float = 0.0
+    wakeword_refractory_seconds: float = 2.0
+    wakeword_max_streams: int = 8
     gateway_cors_origins: list[str] = field(
         default_factory=lambda: [
             "http://127.0.0.1:4173",
@@ -293,6 +304,26 @@ class Settings:
             ),
             voice_max_text_chars=max(
                 1, int(os.environ.get("JARVIS_VOICE_MAX_TEXT_CHARS", "4000"))
+            ),
+            wakeword_enabled=_get_bool("JARVIS_WAKEWORD_ENABLED", True),
+            wakeword_model=os.environ.get("JARVIS_WAKEWORD_MODEL", "hey_jarvis"),
+            wakeword_threshold=min(
+                0.99,
+                max(0.05, float(os.environ.get("JARVIS_WAKEWORD_THRESHOLD", "0.5"))),
+            ),
+            wakeword_vad_threshold=min(
+                0.99,
+                max(0.0, float(os.environ.get("JARVIS_WAKEWORD_VAD_THRESHOLD", "0"))),
+            ),
+            wakeword_refractory_seconds=min(
+                30.0,
+                max(
+                    0.0,
+                    float(os.environ.get("JARVIS_WAKEWORD_REFRACTORY_SECONDS", "2")),
+                ),
+            ),
+            wakeword_max_streams=max(
+                1, int(os.environ.get("JARVIS_WAKEWORD_MAX_STREAMS", "8"))
             ),
             gateway_cors_origins=_get_list(
                 "JARVIS_GATEWAY_CORS_ORIGINS",

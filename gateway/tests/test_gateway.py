@@ -1,13 +1,17 @@
 """Pruebas de integración del servicio principal sin consumir un LLM real."""
 
 import json
+from typing import ClassVar
 
+import pytest
 from fastapi.testclient import TestClient
+from fastapi.websockets import WebSocketDisconnect
 from jarvis_core.agent.orchestrator import AgentReply
 from jarvis_core.connectors.events import ProactiveEventStore
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.tools.base import ToolResult
+from jarvis_core.voice import WakeWordDetector
 from jarvis_gateway import app as gateway_module
 from jarvis_gateway.voice import prepare_speech_text
 
@@ -554,3 +558,109 @@ def test_connector_module_api_never_returns_secrets(monkeypatch, tmp_path):
             ]
     finally:
         store.close()
+
+
+class FakeWakeDetector(WakeWordDetector):
+    """Sustituye a openWakeWord: activa cuando el audio no es silencio.
+
+    Hereda del detector real para que las constantes del protocolo (frecuencia,
+    tamaño de frame y tope de fragmento) sean las de producción y no una copia
+    que pueda quedarse desfasada.
+    """
+
+    instances: ClassVar[list["FakeWakeDetector"]] = []
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.chunks: list[bytes] = []
+        self.resets = 0
+        FakeWakeDetector.instances.append(self)
+
+    def warm_up(self) -> None:
+        """No carga nada: evita descargar openWakeWord durante las pruebas."""
+
+    def process(self, pcm: bytes) -> float | None:
+        self.chunks.append(pcm)
+        return 0.93 if any(pcm) else None
+
+    def reset(self) -> None:
+        self.resets += 1
+
+
+def test_wakeword_stream_requires_auth_and_reports_detections(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "voice_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "wakeword_enabled", True)
+    monkeypatch.setattr(gateway_module, "WakeWordDetector", FakeWakeDetector)
+    FakeWakeDetector.instances.clear()
+
+    with TestClient(gateway_module.app) as client:
+        with (
+            pytest.raises(WebSocketDisconnect),
+            client.websocket_connect("/ws/wake/hud?token=incorrecta"),
+        ):
+            pass
+
+        with client.websocket_connect("/ws/wake/hud?token=ci-test-key") as socket:
+            assert socket.receive_json()["type"] == "wake_ready"
+
+            # El silencio no activa y no genera tráfico de vuelta.
+            socket.send_bytes(b"\x00\x00" * 1280)
+            socket.send_bytes(b"\x11\x22" * 1280)
+            message = socket.receive_json()
+            assert message["type"] == "wake"
+            assert message["score"] == 0.93
+            assert message["device"] == "hud"
+
+            # «reset» descarta el audio previo a una respuesta de JARVIS.
+            socket.send_text("reset")
+            socket.send_bytes(b"\x11\x22" * 1280)
+            assert socket.receive_json()["type"] == "wake"
+
+    detector = FakeWakeDetector.instances[-1]
+    assert detector.resets == 1
+    assert len(detector.chunks) == 3
+
+
+def test_wakeword_stream_closes_when_disabled(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "voice_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "wakeword_enabled", False)
+
+    with (
+        TestClient(gateway_module.app) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/ws/wake/hud?token=ci-test-key"),
+    ):
+        pass
+
+
+def test_wakeword_stream_rejects_oversized_chunks(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "voice_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "wakeword_enabled", True)
+    monkeypatch.setattr(gateway_module, "WakeWordDetector", FakeWakeDetector)
+
+    with (
+        TestClient(gateway_module.app) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/ws/wake/hud?token=ci-test-key") as socket,
+    ):
+        socket.receive_json()
+        socket.send_bytes(b"\x01" * (WakeWordDetector.MAX_BUFFER_BYTES + 1))
+        socket.receive_json()
+
+
+def test_voice_status_exposes_wakeword(monkeypatch):
+    monkeypatch.setattr(gateway_module, "voice_runtime", FakeVoiceRuntime())
+    monkeypatch.setattr(gateway_module.settings, "voice_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "wakeword_enabled", True)
+
+    with TestClient(gateway_module.app) as client:
+        status = client.get(
+            "/voice/status", headers={"X-Jarvis-Key": "ci-test-key"}
+        ).json()
+    assert status["wakeword"] == {
+        "enabled": True,
+        "model": "hey_jarvis",
+        "sample_rate": 16000,
+        "frame_samples": 1280,
+        "engine": "openwakeword",
+    }

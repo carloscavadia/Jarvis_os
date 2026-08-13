@@ -24,6 +24,9 @@ voice = [
     "kokoro==0.9.4",
     "soundfile>=0.12",
     "numpy>=1.26",
+    # Palabra de activación local. Trae un modelo preentrenado de «hey jarvis»,
+    # así que la etapa que escucha siempre no depende de ningún servicio externo.
+    "openwakeword>=0.6",
 ]
 dev = [
     "pytest>=8",

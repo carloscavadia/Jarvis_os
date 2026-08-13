@@ -48,14 +48,22 @@ si queda trabajo sin verificar.
 
 ### Voz y micrófono
 
-Al conectarse, el HUD mantiene una escucha pasiva de la frase «Hey Jarvis». Ignora todo lo
-demás y solo abre una interacción al oírla. Puedes decir la pregunta en la misma frase o
-hacer una pausa y continuar. En ese segundo caso, la detección de actividad de voz cierra y
-envía la pregunta después de 1,25 segundos de silencio. El micrófono se suspende mientras
-JARVIS habla para evitar que se active con su propia voz. El botón **●** queda como control
-de recuperación para conceder o reintentar el permiso si el navegador bloquea la escucha.
-Al reconocer la frase de activación reproduce un tono ascendente corto tipo “bluuup” antes
-de abrir la pregunta; el tono respeta el control de silencio **◖**.
+Al conectarse, el HUD mantiene una escucha pasiva de la frase «Hey JARVIS». Ignora todo lo
+demás y solo abre una interacción al oírla. Tras oírla, haz la pregunta: la detección de
+actividad de voz la cierra y la envía después de 1,25 segundos de silencio. El micrófono
+deja de enviar mientras JARVIS habla, para que no se active con su propia voz. El botón
+**●** reconstruye la escucha si se queda colgada o si acabas de conceder el permiso. Al
+reconocer la frase reproduce un tono ascendente corto tipo “bluuup”; el tono respeta el
+control de silencio **◖**.
+
+**La detección es local.** El micrófono se convierte a PCM de 16 kHz en un AudioWorklet y
+viaja por WebSocket al gateway, que lo evalúa con openWakeWord. No interviene el
+reconocimiento de voz del navegador, así que el audio de reposo **no sale de tu red**.
+Requiere `JARVIS_VOICE_ENABLED=true` y `JARVIS_WAKEWORD_ENABLED=true`; si no, el HUD lo
+indica con `ESCUCHA NO DISPONIBLE` y el botón **●** pasa a grabación manual.
+
+Si no te reconoce o se activa sola, ajusta el umbral midiendo tu propia voz — ver
+[`docs/voice.md`](../../docs/voice.md#ajustar-el-umbral-con-tu-voz).
 
 Si el gateway tiene voz local activa, Whisper transcribe la grabación y Kokoro reproduce la
 respuesta con `em_alex`. El botón **◖** activa o silencia la salida de voz. Durante el
@@ -64,9 +72,10 @@ anticipada y reproduce la cola en orden, reduciendo la espera entre texto y audi
 Mientras se reproduce Kokoro, Web Audio mide la amplitud real de la voz y sincroniza con
 ella el núcleo, el halo, la expansión y la turbulencia de las partículas.
 
-Si el servicio local no está disponible, el HUD usa el reconocimiento y la síntesis del
-navegador. Chrome ofrece la mejor compatibilidad para ese fallback. El HUD debe servirse
-desde `localhost` o mediante HTTPS para que el navegador permita usar el micrófono.
+Si el servicio local no está disponible, el HUD recurre al reconocimiento y la síntesis del
+navegador **solo para la pregunta**, nunca para la escucha permanente. Chrome ofrece la
+mejor compatibilidad para ese respaldo. El HUD debe servirse desde `localhost` o mediante
+HTTPS para que el navegador permita usar el micrófono.
 
 ### Aprobaciones de acciones sensibles
 
