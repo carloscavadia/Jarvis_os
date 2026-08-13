@@ -346,6 +346,10 @@ class ConnectorModuleTestRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
 
 
+class GoalControlRequest(BaseModel):
+    action: str = Field(pattern=r"^(resume|block|cancel)$")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {
@@ -457,6 +461,28 @@ async def test_connector_module(req: ConnectorModuleTestRequest) -> dict[str, ob
 @app.delete("/connector-modules/{name}", dependencies=[Depends(require_api_key)])
 async def delete_connector_module(name: str) -> dict[str, object]:
     return {"name": name, "deleted": _require_connector_store().delete(name)}
+
+
+@app.get("/goals/current", dependencies=[Depends(require_api_key)])
+async def current_goal() -> dict[str, object]:
+    goal = sessions.goals.current()
+    if goal is None:
+        return {"active": False}
+    return {"active": goal.status == "active", "goal": json.loads(sessions.goals.serialize(goal))}
+
+
+@app.post("/goals/{goal_id}/control", dependencies=[Depends(require_api_key)])
+async def control_goal(goal_id: int, req: GoalControlRequest) -> dict[str, object]:
+    try:
+        if req.action == "resume":
+            goal = sessions.goals.resume(goal_id)
+        else:
+            goal = sessions.goals.set_status(
+                goal_id, "blocked" if req.action == "block" else "cancelled"
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return json.loads(sessions.goals.serialize(goal))
 
 
 @app.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])

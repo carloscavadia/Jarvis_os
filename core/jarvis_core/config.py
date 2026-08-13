@@ -334,7 +334,9 @@ class Settings:
             "marca cada paso running al iniciarlo y completed únicamente después de verificarlo "
             "con evidencia concreta. Si un paso falla, márcalo failed y no finjas éxito. Cierra "
             "el objetivo como completed solo cuando todos los pasos estén verificados. Mantén un "
-            "único objetivo activo y no crees planes para preguntas simples."
+            "único objetivo activo y no crees planes para preguntas simples. Antes de crear "
+            "otro plan, consulta get_goal_plan y recupera el existente si corresponde a la "
+            "petición actual."
         )
         if self.internet_access_enabled:
             base += (

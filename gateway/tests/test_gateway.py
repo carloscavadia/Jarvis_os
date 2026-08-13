@@ -5,6 +5,7 @@ import json
 from fastapi.testclient import TestClient
 from jarvis_core.agent.orchestrator import AgentReply
 from jarvis_core.connectors.store import ConnectorStore
+from jarvis_core.goals.store import GoalStore
 from jarvis_core.tools.base import ToolResult
 from jarvis_gateway import app as gateway_module
 from jarvis_gateway.voice import prepare_speech_text
@@ -188,7 +189,6 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
 
         unauthorized_voice = client.get("/voice/status")
         assert unauthorized_voice.status_code == 401
-
         preflight = client.options(
             "/voice/transcribe",
             headers={
@@ -233,6 +233,51 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
                 "tools_used": ["system_info"],
             }
             assert websocket.receive_json() == {"type": "state", "state": "idle"}
+
+
+def test_goal_supervisor_recovers_and_controls_blocked_goal(monkeypatch, tmp_path):
+    store = GoalStore(str(tmp_path / "goals.db"))
+    monkeypatch.setattr(gateway_module.sessions, "goals", store)
+    goal_id = store.create(
+        "Desplegar servicio",
+        "Actualizar y verificar JARVIS.",
+        [
+            {"title": "Actualizar", "verification": "Commit desplegado"},
+            {"title": "Verificar", "verification": "Health OK"},
+        ],
+    )
+    headers = {"X-Jarvis-Key": "ci-test-key"}
+    try:
+        with TestClient(gateway_module.app) as client:
+            assert client.get("/goals/current").status_code == 401
+
+            current = client.get("/goals/current", headers=headers)
+            assert current.status_code == 200
+            assert current.json()["goal"]["goal_id"] == goal_id
+
+            blocked = client.post(
+                f"/goals/{goal_id}/control",
+                headers=headers,
+                json={"action": "block"},
+            )
+            assert blocked.status_code == 200
+            assert blocked.json()["status"] == "blocked"
+            assert client.get("/goals/current", headers=headers).json()["active"] is False
+
+            resumed = client.post(
+                f"/goals/{goal_id}/control",
+                headers=headers,
+                json={"action": "resume"},
+            )
+            assert resumed.status_code == 200
+            assert resumed.json()["status"] == "active"
+            assert [event["type"] for event in resumed.json()["events"]] == [
+                "created",
+                "blocked",
+                "resumed",
+            ]
+    finally:
+        store.close()
 
 
 def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):

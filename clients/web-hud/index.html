@@ -207,6 +207,9 @@
   .goal-step { display: grid; grid-template-columns: 14px 1fr; gap: 7px; color: var(--muted); font-size: 9px; line-height: 1.35; }
   .goal-step.completed { color: #a8efd0; } .goal-step.running { color: var(--core-bright); }
   .goal-step.failed { color: #ffd0a0; }
+  .goal-controls { display: flex; gap: 6px; margin-top: 10px; }
+  .goal-controls button { flex: 1; padding: 6px; border: 1px solid var(--hairline); border-radius: 6px;
+    background: rgba(9,22,32,.72); color: var(--muted); cursor: pointer; font: 8px var(--mono); letter-spacing: .08em; }
 
   @media (max-width: 620px) { .controls { display: none; } .readout { font-size: 10px; top: 22px; left: 26px; }
     .action-trace { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 58vh; } }
@@ -273,6 +276,7 @@
     <div class="goal-title"><span id="goal-title">OBJETIVO</span><span id="goal-count">0/0</span></div>
     <div class="goal-progress"><span id="goal-progress"></span></div>
     <div class="goal-steps" id="goal-steps"></div>
+    <div class="goal-controls"><button id="goal-resume">REANUDAR</button><button id="goal-block">BLOQUEAR</button><button id="goal-cancel">CANCELAR</button></div>
   </section>
 
   <section class="action-trace" id="action-trace" aria-live="polite" aria-label="Espacio de trabajo de JARVIS">
@@ -341,6 +345,7 @@
   const goalCount = document.getElementById("goal-count");
   const goalProgress = document.getElementById("goal-progress");
   const goalSteps = document.getElementById("goal-steps");
+  let currentGoal = null;
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -462,10 +467,11 @@
   }
 
   function showGoalProgress(goal) {
+    currentGoal = goal;
     const progress = goal.progress || { completed: 0, total: goal.steps?.length || 0 };
-    goalPanel.classList.toggle("active", goal.status === "active");
+    goalPanel.classList.toggle("active", ["active", "blocked"].includes(goal.status));
     goalTitle.textContent = goal.title || "OBJETIVO";
-    goalCount.textContent = `${progress.completed}/${progress.total}`;
+    goalCount.textContent = `${goal.status === "blocked" ? "BLOQUEADO · " : ""}${progress.completed}/${progress.total}`;
     goalProgress.style.width = `${progress.total ? (progress.completed / progress.total) * 100 : 0}%`;
     goalSteps.replaceChildren();
     for (const step of goal.steps || []) {
@@ -475,8 +481,33 @@
       const text = document.createElement("span"); text.textContent = step.title;
       row.append(icon, text); goalSteps.appendChild(row);
     }
-    if (goal.status !== "active") setTimeout(() => goalPanel.classList.remove("active"), 4500);
+    document.getElementById("goal-resume").hidden = goal.status !== "blocked";
+    document.getElementById("goal-block").hidden = goal.status !== "active";
+    if (!["active", "blocked"].includes(goal.status)) {
+      setTimeout(() => goalPanel.classList.remove("active"), 4500);
+    }
   }
+
+  async function loadCurrentGoal() {
+    try {
+      const payload = await connectorRequest("/goals/current", { headers: connectorApiHeaders() });
+      if (payload.goal) showGoalProgress(payload.goal);
+    } catch {}
+  }
+
+  async function controlCurrentGoal(action) {
+    if (!currentGoal?.goal_id) return;
+    if (action === "cancel" && !confirm(`¿Cancelar el objetivo ${currentGoal.title}?`)) return;
+    try {
+      const goal = await connectorRequest(`/goals/${currentGoal.goal_id}/control`, {
+        method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ action }),
+      });
+      showGoalProgress(goal);
+    } catch (error) { addLine("SISTEMA", `No pude ${action} el objetivo: ${error.message}`, "system"); }
+  }
+  document.getElementById("goal-resume").addEventListener("click", () => controlCurrentGoal("resume"));
+  document.getElementById("goal-block").addEventListener("click", () => controlCurrentGoal("block"));
+  document.getElementById("goal-cancel").addEventListener("click", () => controlCurrentGoal("cancel"));
   function closeWorkspace() {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     actionTrace.classList.remove("active"); approvalActions.hidden = true;
@@ -892,6 +923,7 @@
       rLink.textContent = "EN LÍNEA";
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       refreshVoiceStatus();
+      loadCurrentGoal();
       scheduleWakeListening(100);
     };
     ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); finishStreamReply(); setBusy(false); ws = null; };

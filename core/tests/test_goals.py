@@ -59,3 +59,23 @@ async def test_only_one_goal_can_be_active(tmp_path):
         assert (await tool.run(title="Segundo", description="B", steps=steps)).is_error
     finally:
         store.close()
+
+
+def test_blocked_goal_can_resume_and_keeps_audit_events(tmp_path):
+    store = GoalStore(str(tmp_path / "goals.db"))
+    try:
+        goal_id = store.create(
+            "Objetivo",
+            "Descripción",
+            [
+                {"title": "Uno", "verification": "ok"},
+                {"title": "Dos", "verification": "ok"},
+            ],
+        )
+        store.set_status(goal_id, "blocked")
+        assert store.current().status == "blocked"
+        assert store.resume(goal_id).status == "active"
+        events = store.events(goal_id)
+        assert [event["type"] for event in events] == ["created", "blocked", "resumed"]
+    finally:
+        store.close()
