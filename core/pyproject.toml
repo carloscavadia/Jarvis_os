@@ -19,13 +19,9 @@ voice = [
     "faster-whisper>=1.1",
     # Kokoro-82M: motor TTS por defecto (natural y rápido en CPU).
     # Necesita el binario del sistema `espeak-ng` para fonemizar español.
-    "kokoro>=0.9",
+    "kokoro==0.9.4",
     "soundfile>=0.12",
     "numpy>=1.26",
-]
-# Motor TTS ultraligero alternativo (robótico, para hardware muy limitado).
-voice-piper = [
-    "piper-tts>=1.4",
 ]
 dev = [
     "pytest>=8",

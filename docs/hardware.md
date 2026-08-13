@@ -6,7 +6,7 @@
 **VM**:
 
 - **CPU/RAM:** el núcleo en sí es ligero (llama a la API de Claude). 2 vCPU / 2 GB bastan
-  para empezar. Si añades **voz local** (Whisper/Piper) o **modelos LLM locales** (Ollama),
+  para empezar. Si añades **voz local** (Whisper/Kokoro) o **modelos LLM locales** (Ollama),
   sube a 4-8 vCPU / 8-16 GB y considera una **GPU** con passthrough para inferencia local.
 - **Disco:** 20 GB de sobra para el software; más si guardas mucho audio/historial.
 - **Red:** el contenedor necesita salida a Internet (API de Claude) y ser accesible por los

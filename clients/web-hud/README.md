@@ -41,7 +41,8 @@ que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). Ta
 
 El botón **●** graba audio; vuelve a pulsarlo para enviar (también se detiene automáticamente
 a los 15 segundos). Si el gateway tiene voz local activa, Whisper transcribe la grabación
-y Piper reproduce la respuesta. El botón **◖** activa o silencia la salida de voz.
+y Kokoro reproduce la respuesta con `em_alex`. El botón **◖** activa o silencia la salida
+de voz.
 
 Si el servicio local no está disponible, el HUD usa el reconocimiento y la síntesis del
 navegador. Chrome ofrece la mejor compatibilidad para ese fallback. El HUD debe servirse

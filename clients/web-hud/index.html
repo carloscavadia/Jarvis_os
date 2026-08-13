@@ -865,7 +865,7 @@
   const FIXED_WS_URL = "ws://192.168.68.100:8080/ws/hub-test";
   const tokenInput = document.getElementById("ws-token");
 
-  // ── Voz: servidor local Whisper/Piper + fallback del navegador ──
+  // ── Voz: servidor local Whisper/Kokoro + fallback del navegador ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const canSpeak = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
   const canRecord = !!(navigator.mediaDevices?.getUserMedia && window.MediaRecorder);

@@ -89,7 +89,7 @@ Los clientes web capturan audio con `MediaRecorder` y usan dos endpoints autenti
 
 - `POST /voice/transcribe`, cuerpo binario `audio/webm`, `audio/mp4` u otro formato
   reconocido por Whisper. Devuelve `{"text":"..."}`.
-- `POST /voice/synthesize`, JSON `{"text":"..."}`. Devuelve audio WAV generado por Piper.
+- `POST /voice/synthesize`, JSON `{"text":"..."}`. Devuelve audio WAV generado por Kokoro.
 - `GET /voice/status` informa si la voz local está activada.
 
 Los tres requieren `X-Jarvis-Key`. El HUD usa estos endpoints cuando están disponibles y

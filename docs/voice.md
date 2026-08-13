@@ -6,15 +6,12 @@ coste por uso.
 | Función | Motor | Notas |
 |---|---|---|
 | Oír (STT) | **faster-whisper** | Modelo `small` por defecto; buen equilibrio en español sobre CPU. |
-| Hablar (TTS) | **Kokoro-82M** | Por defecto. Natural y rápido en CPU. |
-| Hablar (alternativa) | **Piper** | Ultraligero pero robótico. Solo para hardware muy limitado. |
+| Hablar (TTS) | **Kokoro-82M** | Voz `em_alex`; natural y rápida en CPU. |
 
-## Por qué Kokoro y no Piper
+## Por qué Kokoro
 
-Piper está pensado para Raspberry Pi: prioriza tamaño y velocidad sobre naturalidad, y
-suena claramente sintético. **Kokoro-82M** (82 M de parámetros, Apache 2.0, ~330 MB) suena
-mucho más natural y sigue corriendo con soltura en CPU — el punto dulce para un asistente
-encendido 24/7 sin coste.
+**Kokoro-82M** (82 M de parámetros, Apache 2.0, ~330 MB) ofrece una voz natural y sigue
+corriendo en CPU: el punto dulce para un asistente encendido 24/7 sin coste por uso.
 
 ## Instalación
 
@@ -44,8 +41,7 @@ pip install "./core[voice]"
 ```bash
 JARVIS_VOICE_ENABLED=true
 
-JARVIS_TTS_ENGINE=kokoro     # kokoro | piper
-JARVIS_TTS_VOICE=ef_dora     # voz (ver tabla abajo)
+JARVIS_TTS_VOICE=em_alex     # voz masculina predeterminada
 JARVIS_TTS_LANG_CODE=e       # 'e' = español
 JARVIS_TTS_SPEED=1.0         # 0.9 más pausado · 1.1 más ágil
 ```
@@ -58,33 +54,20 @@ JARVIS_TTS_SPEED=1.0         # 0.9 más pausado · 1.1 más ágil
 | `em_alex` | Masculina |
 | `em_santa` | Masculina |
 
-Para un JARVIS clásico (voz masculina serena), prueba `em_alex`. Cambia la variable y
-reinicia el gateway — no hace falta tocar código.
-
-### Volver a Piper
-
-```bash
-pip install "./core[voice-piper]"
-```
-
-```bash
-JARVIS_TTS_ENGINE=piper
-JARVIS_TTS_MODEL_PATH=/app/voices/es_MX-ald-medium.onnx
-```
+`em_alex` es el valor predeterminado para una voz masculina serena. Cambia la variable y
+reinicia el gateway si quieres probar otra voz; no hace falta tocar código.
 
 ## Diagnóstico
 
 | Síntoma | Causa probable | Solución |
 |---|---|---|
 | Error "Comprueba que 'espeak-ng' esté instalado" | Falta el fonemizador | `sudo apt install espeak-ng` |
-| La voz suena **robótica** | Estás en Piper | `JARVIS_TTS_ENGINE=kokoro` |
 | Suena **aguda/grave o acelerada** | Desajuste de frecuencia en el cliente | El WAV es **PCM 16 bits mono a 24 kHz**; asegúrate de que el reproductor respeta la cabecera. |
 | La primera respuesta tarda mucho | Descarga inicial de pesos | Normal; solo la primera vez. |
 | Voz cortada o sin audio | Texto vacío tras limpiar Markdown | `prepare_speech_text` elimina código y enlaces; revisa qué se envía. |
 
 ## Arquitectura
 
-Todos los motores cumplen la interfaz `TextToSpeech` (`core/jarvis_core/voice/base.py`),
-y `build_tts()` (`core/jarvis_core/voice/factory.py`) elige según configuración. Añadir un
-motor nuevo (por ejemplo ElevenLabs en la nube) es escribir una clase con un método
-`synthesize()` y registrarla en la fábrica: ni el agente ni el gateway cambian.
+Kokoro cumple la interfaz `TextToSpeech` (`core/jarvis_core/voice/base.py`) y se construye
+mediante `build_tts()` (`core/jarvis_core/voice/factory.py`). El agente y el gateway quedan
+desacoplados de los detalles del modelo.

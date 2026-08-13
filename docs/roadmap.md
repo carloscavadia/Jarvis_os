@@ -25,7 +25,7 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Suite de tests del bucle de agente y del registro de herramientas.
 
 ## Fase 2 — Voz
-- [x] Integrar STT (Whisper) y TTS (Piper) locales.
+- [x] Integrar STT (Whisper) y TTS (Kokoro con `em_alex`) locales.
 - [x] Pipeline web de voz extremo a extremo: audio → texto → agente → texto → audio.
 - [ ] Detección de palabra de activación ("Jarvis").
 

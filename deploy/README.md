@@ -35,8 +35,9 @@ docker compose logs -f gateway
 - Broker MQTT: ligado a `127.0.0.1:1883` y desactivado en el gateway por defecto.
 - Reinicio automático activado (`restart: always`).
 
-La imagen incluye una voz Piper en español. En la primera transcripción descarga el modelo
-Whisper configurado (`small` por defecto) al volumen persistente; ese primer uso tarda más.
+La imagen incluye Kokoro con la voz española `em_alex`. El primer uso descarga los modelos
+de Kokoro y Whisper configurado (`small` por defecto) al volumen persistente, por lo que
+esa primera interacción tarda más.
 Puedes desactivar toda la voz local con `JARVIS_VOICE_ENABLED=false` en `.env`.
 
 Comprueba el servicio de voz con:

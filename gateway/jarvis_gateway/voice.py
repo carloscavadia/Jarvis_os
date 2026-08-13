@@ -45,10 +45,7 @@ class VoiceRuntime:
         return self.settings.voice_enabled
 
     def _tts_label(self) -> str:
-        engine = (self.settings.tts_engine or "kokoro").lower()
-        if engine == "piper":
-            return f"piper:{self.settings.tts_model_path}"
-        return f"{engine}:{self.settings.tts_voice}"
+        return f"kokoro:{self.settings.tts_voice}"
 
     def status(self) -> dict[str, str | bool]:
         return {
@@ -77,6 +74,5 @@ class VoiceRuntime:
     async def synthesize(self, text: str) -> bytes:
         self._require_enabled()
         if self._tts is None:
-            # La fábrica valida el motor y su configuración (lanza LocalVoiceError).
             self._tts = build_tts(self.settings)
         return await self._tts.synthesize(prepare_speech_text(text))

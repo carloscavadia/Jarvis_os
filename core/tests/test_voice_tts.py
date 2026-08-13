@@ -1,4 +1,4 @@
-"""Tests del motor TTS: selector de motor y conversión de audio a WAV.
+"""Tests del motor Kokoro y su conversión de audio a WAV.
 
 No descargan modelos: inyectan un doble del pipeline de Kokoro.
 """
@@ -9,10 +9,9 @@ import wave
 
 import numpy as np
 import pytest
-
 from jarvis_core.config import Settings
 from jarvis_core.voice.factory import build_tts
-from jarvis_core.voice.local import KokoroTTS, LocalVoiceError, PiperTTS
+from jarvis_core.voice.local import KokoroTTS, LocalVoiceError
 
 
 class FakeKokoroPipeline:
@@ -39,29 +38,14 @@ class FakeKokoroPipeline:
             )
 
 
-# ── Selector de motor ────────────────────────────────────────────────────────
+# ── Construcción del motor ───────────────────────────────────────────────────
 
 
-def test_default_engine_is_kokoro():
+def test_default_tts_is_kokoro_with_alex_voice():
     tts = build_tts(Settings())
     assert isinstance(tts, KokoroTTS)
-    assert tts.voice == "ef_dora"
+    assert tts.voice == "em_alex"
     assert tts.lang_code == "e"
-
-
-def test_piper_engine_requires_model_path():
-    with pytest.raises(LocalVoiceError):
-        build_tts(Settings(tts_engine="piper", tts_model_path=""))
-
-
-def test_piper_engine_selected_with_path():
-    tts = build_tts(Settings(tts_engine="piper", tts_model_path="/tmp/voice.onnx"))
-    assert isinstance(tts, PiperTTS)
-
-
-def test_unknown_engine_raises():
-    with pytest.raises(LocalVoiceError):
-        build_tts(Settings(tts_engine="inexistente"))
 
 
 # ── Conversión de audio ──────────────────────────────────────────────────────

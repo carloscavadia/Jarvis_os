@@ -6,7 +6,6 @@ import asyncio
 import io
 import threading
 import wave
-from pathlib import Path
 from typing import Any
 
 
@@ -77,50 +76,6 @@ class FasterWhisperSTT:
         return await asyncio.to_thread(self._transcribe_sync, audio, language)
 
 
-class PiperTTS:
-    """Síntesis WAV local mediante Piper, con el modelo residente en memoria."""
-
-    def __init__(self, model_path: str, *, use_cuda: bool = False) -> None:
-        self.model_path = Path(model_path)
-        self.use_cuda = use_cuda
-        self._voice: Any = None
-        self._lock = threading.Lock()
-        self._inference_lock = threading.Lock()
-
-    def _get_voice(self) -> Any:
-        if self._voice is not None:
-            return self._voice
-        with self._lock:
-            if self._voice is None:
-                if not self.model_path.is_file():
-                    raise LocalVoiceError(
-                        f"No se encontró el modelo Piper: {self.model_path}"
-                    )
-                try:
-                    from piper import PiperVoice
-                except ImportError as exc:
-                    raise LocalVoiceError(
-                        "piper-tts no está instalado; usa la dependencia voice."
-                    ) from exc
-                self._voice = PiperVoice.load(
-                    str(self.model_path), use_cuda=self.use_cuda
-                )
-        return self._voice
-
-    def _synthesize_sync(self, text: str) -> bytes:
-        with self._inference_lock:
-            output = io.BytesIO()
-            with wave.open(output, "wb") as wav_file:
-                self._get_voice().synthesize_wav(text, wav_file)
-            return output.getvalue()
-
-    async def synthesize(self, text: str, *, voice: str | None = None) -> bytes:
-        del voice  # Un archivo ONNX representa una voz concreta.
-        if not text.strip():
-            return b""
-        return await asyncio.to_thread(self._synthesize_sync, text)
-
-
 def _pcm16_wav(samples: Any, sample_rate: int) -> bytes:
     """Empaqueta muestras float (-1..1) como WAV PCM 16 bits mono."""
     import numpy as np
@@ -141,7 +96,7 @@ def _pcm16_wav(samples: Any, sample_rate: int) -> bytes:
 
 
 class KokoroTTS:
-    """Síntesis local con Kokoro-82M: mucho más natural que Piper y aún rápida en CPU.
+    """Síntesis local con Kokoro-82M, natural y suficientemente rápida en CPU.
 
     Kokoro devuelve audio float32 a 24 kHz; aquí se convierte a WAV PCM16 para
     mantener el mismo contrato que el resto de motores.
@@ -154,7 +109,7 @@ class KokoroTTS:
 
     def __init__(
         self,
-        voice: str = "ef_dora",
+        voice: str = "em_alex",
         *,
         lang_code: str = "e",
         speed: float = 1.0,
@@ -184,7 +139,7 @@ class KokoroTTS:
                     kwargs["repo_id"] = self.repo_id
                 try:
                     self._pipeline = KPipeline(**kwargs)
-                except Exception as exc:  # noqa: BLE001 — falta de espeak-ng, modelo, etc.
+                except Exception as exc:
                     raise LocalVoiceError(
                         f"No se pudo inicializar Kokoro ({exc}). "
                         "Comprueba que 'espeak-ng' esté instalado."
@@ -218,7 +173,7 @@ class KokoroTTS:
                     self._extract_audio(chunk)
                     for chunk in pipeline(text, voice=self.voice, speed=self.speed)
                 ]
-            except Exception as exc:  # noqa: BLE001 — voz inexistente, fallo de fonemizado…
+            except Exception as exc:
                 raise LocalVoiceError(f"Kokoro falló al sintetizar: {exc}") from exc
 
             usable = [np.asarray(c, dtype=np.float32).reshape(-1) for c in chunks]

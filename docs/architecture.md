@@ -137,12 +137,11 @@ a su formato nativo. Cambiar de cerebro **no afecta a la memoria interna** de JA
 para que JARVIS sea manejable por voz:
 
 - STT: Whisper (local) o un servicio en la nube.
-- TTS: Piper (local, rápido) o un servicio en la nube.
+- TTS: Kokoro-82M local con voz `em_alex`.
 
 La implementación local carga ambos modelos bajo demanda: `faster-whisper` transcribe el
-audio grabado por el HUD y Piper genera WAV. El modelo STT permanece en el volumen de datos
-y la voz Piper se incluye en la imagen Docker, por lo que las peticiones siguientes no
-recargan los modelos.
+audio grabado por el HUD y Kokoro genera WAV. Los modelos permanecen en el volumen de datos,
+por lo que las peticiones siguientes no vuelven a descargarlos.
 
 Los dispositivos ESP32 pueden capturar audio y enviarlo al gateway, que lo pasa por STT →
 agente → TTS → devuelve audio al dispositivo.
@@ -198,6 +197,6 @@ Recomendado: un **contenedor LXC** (ligero) o una **VM** con Debian 12. Dentro:
 
 - El núcleo + gateway como servicios systemd (o vía Docker Compose).
 - Un broker **Mosquitto** (MQTT).
-- (Opcional) Whisper/Piper para voz local.
+- (Opcional) Whisper/Kokoro para voz local.
 
 Ver `deploy/` para los archivos concretos.
