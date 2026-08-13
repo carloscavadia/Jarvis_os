@@ -29,6 +29,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.tasks.scheduler import Scheduler
@@ -38,8 +39,10 @@ from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
+from jarvis_gateway import realtime_session as realtime_module
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
+from jarvis_gateway.realtime_session import RealtimeConversation
 from jarvis_gateway.realtime_voice import RealtimeVoiceBroker, RealtimeVoiceError
 from jarvis_gateway.sessions import SessionManager
 from jarvis_gateway.voice import VoiceRuntime
@@ -58,6 +61,9 @@ realtime_voice = RealtimeVoiceBroker(settings)
 # Escuchas de activación abiertas. Cada una carga su propio detector, así que el
 # límite acota tanto la memoria como la CPU dedicada a la escucha permanente.
 _wake_streams = 0
+# Conversaciones Realtime abiertas. Estas sí cuestan dinero mientras viven, así
+# que el límite es la última barrera contra un gasto inesperado.
+_realtime_sessions = 0
 
 
 def _valid_api_key(candidate: str | None) -> bool:
@@ -896,6 +902,171 @@ async def wakeword_endpoint(websocket: WebSocket, device_id: str) -> None:
     finally:
         _wake_streams -= 1
         logger.info("Escucha de activación cerrada: %s", device_id)
+
+
+@app.websocket("/ws/voice/{session_id}")
+async def realtime_voice_endpoint(websocket: WebSocket, session_id: str) -> None:
+    """Conversación por voz con OpenAI Realtime, alojada en el servidor.
+
+    El dispositivo solo captura y reproduce audio PCM de 24 kHz. Todo lo demás
+    —herramientas, aprobaciones, objetivos, conectores— sigue ocurriendo aquí,
+    igual que en el canal de texto. La sesión se abre después de «Hey JARVIS»,
+    nunca en reposo: es lo que mantiene el gasto acotado.
+    """
+    global _realtime_sessions
+
+    if not _valid_api_key(websocket.query_params.get("token")):
+        await websocket.close(code=1008, reason="Credenciales inválidas")
+        return
+    if not _SESSION_RE.fullmatch(session_id):
+        await websocket.close(code=1008, reason="Identificador de sesión inválido")
+        return
+    if not settings.realtime_conversation_enabled:
+        await websocket.close(code=1013, reason="Conversación Realtime desactivada")
+        return
+    if not realtime_voice.budget_available():
+        await websocket.close(code=1013, reason="Presupuesto diario agotado")
+        return
+    if _realtime_sessions >= settings.realtime_max_sessions:
+        await websocket.close(code=1013, reason="Límite de conversaciones alcanzado")
+        return
+
+    emotion = EmotionState()
+    pending_approvals: dict[str, asyncio.Future[bool]] = {}
+
+    async def on_audio(pcm: bytes) -> None:
+        await websocket.send_bytes(pcm)
+
+    async def on_event(payload: dict[str, object]) -> None:
+        # La emoción la elige JARVIS con set_emotion; el HUD la pinta.
+        if payload.get("type") == "tool" and payload.get("phase") == "completed":
+            await websocket.send_json({"type": "emotion", "emotion": emotion.current})
+        if payload.get("type") == "tool":
+            arguments = payload.get("arguments")
+            if isinstance(arguments, dict):
+                payload = dict(payload)
+                payload["arguments"] = _public_approval_arguments(arguments)
+        await websocket.send_json(payload)
+
+    async def confirm(name: str, arguments: dict[str, object]) -> bool:
+        approval_id = secrets.token_urlsafe(8)
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        pending_approvals[approval_id] = future
+        await websocket.send_json(
+            {
+                "type": "approval_required",
+                "approval_id": approval_id,
+                "tool": name,
+                "summary": _approval_summary(name, arguments),
+                "arguments": _public_approval_arguments(arguments),
+                "timeout_seconds": settings.approval_timeout_seconds,
+            }
+        )
+        try:
+            approved = await asyncio.wait_for(
+                future, timeout=settings.approval_timeout_seconds
+            )
+            reason = "usuario"
+        except asyncio.TimeoutError:
+            approved, reason = False, "timeout"
+        finally:
+            pending_approvals.pop(approval_id, None)
+        await websocket.send_json(
+            {
+                "type": "approval_resolved",
+                "approval_id": approval_id,
+                "approved": approved,
+                "reason": reason,
+            }
+        )
+        return approved
+
+    conversation = RealtimeConversation(
+        settings,
+        sessions.build_registry(emotion),
+        on_audio=on_audio,
+        on_event=on_event,
+        confirm=confirm,
+    )
+    await websocket.accept()
+    try:
+        await conversation.connect()
+    except Exception as exc:
+        logger.exception("No pude abrir la conversación Realtime")
+        await websocket.send_json({"type": "error", "error": str(exc)})
+        await websocket.close(code=1011, reason="Realtime no disponible")
+        return
+
+    _realtime_sessions += 1
+    realtime_voice.record_session()
+    logger.info("Conversación Realtime abierta: %s", session_id)
+    pump = asyncio.create_task(conversation.pump())
+    try:
+        await websocket.send_json(
+            {
+                "type": "voice_ready",
+                "sample_rate": realtime_module.SAMPLE_RATE,
+                "model": settings.openai_realtime_model,
+            }
+        )
+        while True:
+            # Un solo bucle de recepción reparte el canal: binario es audio y texto
+            # son órdenes. Leer aprobaciones aparte robaría fragmentos de audio.
+            packet = await asyncio.wait_for(
+                websocket.receive(), timeout=settings.realtime_idle_seconds
+            )
+            if packet["type"] == "websocket.disconnect" or pump.done():
+                break
+            if packet.get("text") is not None:
+                await _handle_voice_command(
+                    packet["text"], conversation, pending_approvals
+                )
+                continue
+            chunk = packet.get("bytes")
+            if chunk:
+                await conversation.send_audio(chunk)
+    except asyncio.TimeoutError:
+        # Silencio prolongado: cerrar libera la sesión y detiene cualquier gasto.
+        logger.info("Conversación Realtime inactiva: %s", session_id)
+        with contextlib.suppress(Exception):
+            await websocket.send_json({"type": "voice_idle_timeout"})
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("Error en la conversación Realtime %s", session_id)
+    finally:
+        pump.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await pump
+        await conversation.close()
+        _realtime_sessions -= 1
+        realtime_voice.record_usage(conversation.usage)
+        logger.info(
+            "Conversación Realtime cerrada: %s (%s)", session_id, conversation.usage
+        )
+        with contextlib.suppress(Exception):
+            await websocket.close()
+
+
+async def _handle_voice_command(
+    raw: str,
+    conversation: RealtimeConversation,
+    pending_approvals: dict[str, asyncio.Future[bool]],
+) -> None:
+    """Órdenes de texto que el dispositivo intercala en el canal de audio."""
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(payload, dict):
+        return
+    if payload.get("type") == "cancel":
+        await conversation.cancel_response()
+        return
+    if payload.get("type") == "approval" and isinstance(payload.get("approved"), bool):
+        future = pending_approvals.get(str(payload.get("approval_id")))
+        if future is not None and not future.done():
+            future.set_result(payload["approved"])
 
 
 @app.websocket("/ws/{session_id}")

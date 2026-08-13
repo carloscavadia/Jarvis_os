@@ -65,6 +65,19 @@ indica con `ESCUCHA NO DISPONIBLE` y el botón **●** pasa a grabación manual.
 Si no te reconoce o se activa sola, ajusta el umbral midiendo tu propia voz — ver
 [`docs/voice.md`](../../docs/voice.md#ajustar-el-umbral-con-tu-voz).
 
+### Conversación Realtime
+
+Si el gateway tiene `JARVIS_REALTIME_CONVERSATION_ENABLED=true`, al activarse el HUD
+abre una conversación por voz con OpenAI Realtime **a través del servidor**. A partir
+de ahí hablas con normalidad: no hay que pulsar para enviar ni esperar turnos, porque
+el final de cada pregunta lo cierra el VAD de OpenAI y puedes interrumpirle mientras
+habla. Las herramientas se ejecutan en el gateway, así que las acciones sensibles
+piden aprobación en el mismo panel de siempre.
+
+Mientras dura la conversación, Kokoro queda en silencio: el audio ya viene hecho, y
+sintetizarlo otra vez haría que JARVIS se hablara encima. Al cerrarse por silencio
+—90 s por defecto— el HUD vuelve solo a la escucha de «Hey JARVIS».
+
 Si el gateway tiene voz local activa, Whisper transcribe la grabación y Kokoro reproduce la
 respuesta con `em_alex`. El botón **◖** activa o silencia la salida de voz. Durante el
 streaming, el HUD envía cada frase terminada a Kokoro de forma

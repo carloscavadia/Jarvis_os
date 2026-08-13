@@ -10,6 +10,43 @@ usar OpenAI Realtime únicamente para producir una voz más natural después de 
 | Oír (STT) | **faster-whisper** | Modelo `small` por defecto; buen equilibrio en español sobre CPU. |
 | Hablar (TTS) | **Kokoro-82M** | Voz `em_alex`; natural y rápida en CPU. |
 | Hablar (opcional) | **OpenAI Realtime** | Voz `marin` bajo demanda; Kokoro queda como respaldo automático. |
+| Conversar y actuar | **OpenAI Realtime** | Sesión alojada en el gateway, con herramientas y aprobaciones. |
+
+## Reparto: qué es local y qué no
+
+Local: la palabra de activación, el VAD, la transcripción de registro y el TTS de
+respaldo. En la nube: entender, responder y decidir. Es un reparto deliberado, y
+la razón es el coste tanto como la privacidad.
+
+`gpt-realtime-2.1-mini` cobra **$10/M** de tokens de audio de entrada, **$0,30/M**
+si están cacheados, y **$20/M** de salida. La conversión es 1 token por 100 ms de
+tu voz y 1 por **50 ms** de la suya, así que **JARVIS hablando cuesta cuatro veces
+más que escuchándote**. De ahí salen las tres decisiones del diseño:
+
+1. **Nada se envía en reposo.** La activación es local. Una sesión abierta
+   escuchando la habitación 24/7 costaría del orden de 260 $/año solo en silencio.
+2. **Respuestas cortas.** El prompt pide frases breves y `max_output_tokens` lo
+   respalda. Recortar una respuesta de 12 s a 6 s ahorra más que cualquier otra cosa.
+3. **La sesión no se cierra tras cada turno.** `JARVIS_REALTIME_IDLE_SECONDS=90`
+   mantiene viva la caché, que es 33 veces más barata que la entrada fresca. Cerrar
+   en cada turno parece ahorrativo y es justo lo contrario.
+
+Con uso doméstico normal (unos 40 turnos al día) sale en torno a **5 $/mes**.
+
+## Conversación Realtime
+
+Con `JARVIS_REALTIME_CONVERSATION_ENABLED=true`, tras «Hey JARVIS» el dispositivo
+abre `ws://<servidor>:8080/ws/voice/<sesión>` y envía audio PCM de 24 kHz. El
+gateway mantiene la sesión con OpenAI y **ejecuta las herramientas él mismo**: las
+acciones sensibles siguen pidiendo aprobación en el HUD exactamente igual que por
+texto, y un conector o un objetivo funcionan igual hablando que escribiendo.
+
+La sesión vive en el servidor y no en el navegador por dos razones concretas: las
+herramientas y las aprobaciones no deben pasar por un cliente no confiable, y un
+ESP32 no puede montar WebRTC pero sí este WebSocket.
+
+Si la conversación Realtime está desactivada o falla, el HUD cae al camino local
+de siempre: Whisper transcribe y Kokoro responde.
 
 ## Palabra de activación: «Hey JARVIS»
 

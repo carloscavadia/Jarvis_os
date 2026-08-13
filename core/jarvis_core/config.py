@@ -81,6 +81,20 @@ class Settings:
     openai_realtime_session_seconds: int = 45
     openai_realtime_daily_sessions: int = 50
 
+    # Conversación Realtime alojada en el gateway: JARVIS responde y **actúa**
+    # por voz con las mismas herramientas y aprobaciones que por texto.
+    realtime_conversation_enabled: bool = False
+    realtime_vad_threshold: float = 0.5
+    realtime_silence_ms: int = 600
+    realtime_speed: float = 1.0
+    realtime_max_tool_output: int = 4000
+    # Segundos de inactividad antes de cerrar la sesión. Conviene que sea holgado:
+    # la entrada de audio cacheada cuesta 33 veces menos que la fresca, así que una
+    # pregunta de seguimiento dentro de la ventana sale mucho más barata que
+    # reabrir la sesión con la caché fría.
+    realtime_idle_seconds: float = 90.0
+    realtime_max_sessions: int = 2
+
     max_tokens: int = 16000
 
     # --- Personalidad ---
@@ -259,6 +273,33 @@ class Settings:
                         "JARVIS_OPENAI_REALTIME_DAILY_SESSIONS", "50"
                     )
                 ),
+            ),
+            realtime_conversation_enabled=_get_bool(
+                "JARVIS_REALTIME_CONVERSATION_ENABLED", False
+            ),
+            realtime_vad_threshold=min(
+                0.95,
+                max(0.1, float(os.environ.get("JARVIS_REALTIME_VAD_THRESHOLD", "0.5"))),
+            ),
+            realtime_silence_ms=min(
+                4000, max(200, int(os.environ.get("JARVIS_REALTIME_SILENCE_MS", "600")))
+            ),
+            realtime_speed=min(
+                1.5, max(0.5, float(os.environ.get("JARVIS_REALTIME_SPEED", "1.0")))
+            ),
+            realtime_max_tool_output=min(
+                32000,
+                max(
+                    500,
+                    int(os.environ.get("JARVIS_REALTIME_MAX_TOOL_OUTPUT", "4000")),
+                ),
+            ),
+            realtime_idle_seconds=min(
+                600.0,
+                max(10.0, float(os.environ.get("JARVIS_REALTIME_IDLE_SECONDS", "90"))),
+            ),
+            realtime_max_sessions=max(
+                1, int(os.environ.get("JARVIS_REALTIME_MAX_SESSIONS", "2"))
             ),
             max_tokens=int(os.environ.get("JARVIS_MAX_TOKENS", "16000")),
             persona_name=os.environ.get("JARVIS_PERSONA_NAME", "JARVIS"),

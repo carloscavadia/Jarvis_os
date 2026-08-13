@@ -1,5 +1,6 @@
 """Pruebas de integración del servicio principal sin consumir un LLM real."""
 
+import asyncio
 import json
 from typing import ClassVar
 
@@ -664,3 +665,154 @@ def test_voice_status_exposes_wakeword(monkeypatch):
         "frame_samples": 1280,
         "engine": "openwakeword",
     }
+
+
+class FakeConversation:
+    """Sustituye la sesión Realtime: registra el audio y dispara la aprobación."""
+
+    instances: ClassVar[list["FakeConversation"]] = []
+
+    def __init__(self, settings, registry, *, on_audio, on_event, confirm=None):
+        self.settings = settings
+        self.registry = registry
+        self.on_audio = on_audio
+        self.on_event = on_event
+        self.confirm = confirm
+        self.audio: list[bytes] = []
+        self.cancels = 0
+        self.closed = False
+        self.approval_result: bool | None = None
+        self.usage = {"input_audio_tokens": 7, "output_audio_tokens": 11}
+        self._released = asyncio.Event()
+        FakeConversation.instances.append(self)
+
+    async def connect(self):
+        pass
+
+    async def send_audio(self, pcm):
+        self.audio.append(pcm)
+
+    async def cancel_response(self):
+        self.cancels += 1
+
+    async def pump(self):
+        # Devuelve audio y pide aprobación, como haría una respuesta real.
+        await self.on_audio(b"pcm-de-jarvis")
+        await self.on_event({"type": "state", "state": "speaking"})
+        if self.confirm is not None:
+            self.approval_result = await self.confirm(
+                "install_package", {"manager": "pip", "package": "requests"}
+            )
+        self._released.set()
+        await asyncio.Event().wait()  # se queda viva hasta que la cancelen
+
+    async def close(self):
+        self.closed = True
+
+
+def _enable_realtime(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "realtime_conversation_enabled", True)
+    monkeypatch.setattr(gateway_module, "RealtimeConversation", FakeConversation)
+    monkeypatch.setattr(
+        gateway_module.realtime_voice, "budget_available", lambda: True
+    )
+    monkeypatch.setattr(gateway_module.realtime_voice, "record_session", lambda: None)
+    FakeConversation.instances.clear()
+
+
+def test_realtime_voice_requires_auth_and_being_enabled(monkeypatch):
+    monkeypatch.setattr(
+        gateway_module.settings, "realtime_conversation_enabled", False
+    )
+    with (
+        TestClient(gateway_module.app) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/ws/voice/hud?token=ci-test-key"),
+    ):
+        pass
+
+    _enable_realtime(monkeypatch)
+    with (
+        TestClient(gateway_module.app) as client,
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect("/ws/voice/hud?token=incorrecta"),
+    ):
+        pass
+
+
+def test_realtime_voice_streams_audio_and_resolves_approvals(monkeypatch):
+    _enable_realtime(monkeypatch)
+    recorded: list[dict] = []
+    monkeypatch.setattr(
+        gateway_module.realtime_voice, "record_usage", recorded.append
+    )
+
+    with (
+        TestClient(gateway_module.app) as client,
+        client.websocket_connect("/ws/voice/hud?token=ci-test-key") as socket,
+    ):
+        assert socket.receive_json() == {
+            "type": "voice_ready",
+            "sample_rate": 24000,
+            "model": gateway_module.settings.openai_realtime_model,
+        }
+        # El audio de JARVIS llega como binario, no como JSON.
+        assert socket.receive_bytes() == b"pcm-de-jarvis"
+        assert socket.receive_json() == {"type": "state", "state": "speaking"}
+
+        approval = socket.receive_json()
+        assert approval["type"] == "approval_required"
+        assert approval["tool"] == "install_package"
+        assert approval["arguments"] == {"manager": "pip", "package": "requests"}
+
+        # El micrófono sigue enviando mientras la aprobación está pendiente.
+        socket.send_bytes(b"audio-del-usuario")
+        socket.send_text(
+            json.dumps(
+                {
+                    "type": "approval",
+                    "approval_id": approval["approval_id"],
+                    "approved": True,
+                }
+            )
+        )
+        resolved = socket.receive_json()
+        assert resolved["type"] == "approval_resolved"
+        assert resolved["approved"] is True
+
+    conversation = FakeConversation.instances[-1]
+    assert conversation.approval_result is True
+    assert b"audio-del-usuario" in conversation.audio
+    assert conversation.closed
+    # El consumo se contabiliza al cerrar, aunque el cliente se desconecte.
+    assert recorded == [conversation.usage]
+
+
+def test_realtime_voice_relays_cancel_and_ignores_junk(monkeypatch):
+    _enable_realtime(monkeypatch)
+    monkeypatch.setattr(gateway_module.realtime_voice, "record_usage", lambda usage: None)
+
+    with (
+        TestClient(gateway_module.app) as client,
+        client.websocket_connect("/ws/voice/hud?token=ci-test-key") as socket,
+    ):
+        socket.receive_json()
+        socket.receive_bytes()
+        socket.receive_json()
+        approval = socket.receive_json()
+        socket.send_text("esto no es json")
+        socket.send_text(json.dumps({"type": "desconocido"}))
+        socket.send_text(json.dumps({"type": "cancel"}))
+        socket.send_text(
+            json.dumps(
+                {
+                    "type": "approval",
+                    "approval_id": approval["approval_id"],
+                    "approved": False,
+                }
+            )
+        )
+        assert socket.receive_json()["approved"] is False
+
+    conversation = FakeConversation.instances[-1]
+    assert conversation.cancels == 1

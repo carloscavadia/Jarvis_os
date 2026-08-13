@@ -45,6 +45,18 @@ class RealtimeVoiceBroker:
                        sessions INTEGER NOT NULL DEFAULT 0
                    )"""
             )
+            # El audio es lo que cuesta, y hablar cuesta el doble por token que
+            # escuchar. Guardarlo separado permite ver de dónde sale la factura.
+            database.execute(
+                """CREATE TABLE IF NOT EXISTS realtime_daily_usage (
+                       day TEXT PRIMARY KEY,
+                       input_tokens INTEGER NOT NULL DEFAULT 0,
+                       output_tokens INTEGER NOT NULL DEFAULT 0,
+                       input_audio_tokens INTEGER NOT NULL DEFAULT 0,
+                       output_audio_tokens INTEGER NOT NULL DEFAULT 0,
+                       cached_tokens INTEGER NOT NULL DEFAULT 0
+                   )"""
+            )
 
     def sessions_today(self) -> int:
         with sqlite3.connect(self.settings.openai_usage_db_path) as database:
@@ -62,6 +74,53 @@ class RealtimeVoiceBroker:
                 (self._today(),),
             )
 
+    def record_session(self) -> None:
+        """Cuenta una conversación abierta desde el gateway."""
+        self._record_session()
+
+    def usage_today(self) -> dict[str, int]:
+        columns = (
+            "input_tokens",
+            "output_tokens",
+            "input_audio_tokens",
+            "output_audio_tokens",
+            "cached_tokens",
+        )
+        with sqlite3.connect(self.settings.openai_usage_db_path) as database:
+            row = database.execute(
+                f"SELECT {', '.join(columns)} FROM realtime_daily_usage WHERE day = ?",
+                (self._today(),),
+            ).fetchone()
+        return dict(zip(columns, row, strict=True)) if row else dict.fromkeys(columns, 0)
+
+    def record_usage(self, usage: dict[str, int]) -> None:
+        """Acumula el consumo de una conversación ya terminada."""
+        if not any(usage.values()):
+            return
+        with sqlite3.connect(self.settings.openai_usage_db_path) as database:
+            database.execute(
+                """INSERT INTO realtime_daily_usage(
+                       day, input_tokens, output_tokens,
+                       input_audio_tokens, output_audio_tokens, cached_tokens
+                   ) VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(day) DO UPDATE SET
+                     input_tokens = input_tokens + excluded.input_tokens,
+                     output_tokens = output_tokens + excluded.output_tokens,
+                     input_audio_tokens =
+                       input_audio_tokens + excluded.input_audio_tokens,
+                     output_audio_tokens =
+                       output_audio_tokens + excluded.output_audio_tokens,
+                     cached_tokens = cached_tokens + excluded.cached_tokens""",
+                (
+                    self._today(),
+                    max(0, int(usage.get("input_tokens", 0))),
+                    max(0, int(usage.get("output_tokens", 0))),
+                    max(0, int(usage.get("input_audio_tokens", 0))),
+                    max(0, int(usage.get("output_audio_tokens", 0))),
+                    max(0, int(usage.get("cached_tokens", 0))),
+                ),
+            )
+
     def budget_available(self) -> bool:
         limit = self.settings.openai_realtime_daily_sessions
         return not limit or self.sessions_today() < limit
@@ -74,7 +133,13 @@ class RealtimeVoiceBroker:
             "voice": self.settings.openai_realtime_voice,
             "sessions_today": self.sessions_today(),
             "daily_session_limit": self.settings.openai_realtime_daily_sessions,
-            "input_mode": "local_text_only",
+            "input_mode": (
+                "local_audio_streamed"
+                if self.settings.realtime_conversation_enabled
+                else "local_text_only"
+            ),
+            "conversation": self.settings.realtime_conversation_enabled and self.enabled,
+            "usage_today": self.usage_today(),
         }
 
     async def create_client_secret(self) -> dict[str, object]:

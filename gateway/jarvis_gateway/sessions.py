@@ -18,6 +18,7 @@ from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
+from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin import build_default_registry
 
 
@@ -61,6 +62,22 @@ class SessionManager:
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
             return orch
+
+    def build_registry(self, emotion: EmotionState) -> ToolRegistry:
+        """Herramientas para un canal que no usa el orquestador (voz Realtime).
+
+        Comparte memoria, tareas, objetivos y conectores con las sesiones de texto:
+        lo que JARVIS aprenda hablando sigue ahí cuando escribas, y al revés.
+        """
+        return build_default_registry(
+            self._settings,
+            self.memory,
+            self.tasks,
+            emotion,
+            allow_shell=False,
+            connector_store=self.connector_store,
+            goals=self.goals,
+        )
 
     def reset(self, session_id: str) -> None:
         orch = self._sessions.get(session_id)

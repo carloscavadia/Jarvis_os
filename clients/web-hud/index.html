@@ -1126,16 +1126,19 @@
       }
       return;
     }
-    if (!pendingApproval || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!pendingApproval) return;
+    // La decisión tiene que volver por el canal que la pidió: el de voz o el de texto.
+    const channel = pendingApproval.channel === "voice" ? voiceSocket : ws;
+    if (!channel || channel.readyState !== WebSocket.OPEN) return;
     approvalApprove.disabled = true; approvalDeny.disabled = true;
     if (currentToolCard?._status) currentToolCard._status.textContent = "ENVIANDO DECISIÓN";
     addLine("TÚ", approved ? "APROBAR" : "DENEGAR", "user");
-    ws.send(JSON.stringify({
+    channel.send(JSON.stringify({
       type: "approval",
       approval_id: pendingApproval.approval_id,
       approved,
     }));
-    setBusy(true);
+    if (pendingApproval.channel !== "voice") setBusy(true);
   }
   approvalApprove.addEventListener("click", () => sendApprovalDecision(true));
   approvalDeny.addEventListener("click", () => sendApprovalDecision(false));
@@ -1218,7 +1221,7 @@
       renderStructuredText(activeReply.text, displayedText);
       activeReply = null;
     }
-    if (spokenText) finishStreamSpeech(spokenText);
+    if (spokenText && !voiceSocket) finishStreamSpeech(spokenText);
     activeReplyText = "";
     streamDirectedToBoard = false;
     if (requestStartedAt) {
@@ -1568,6 +1571,13 @@
   let wakeStream = null;
   let wakeNode = null;
   let wakeStarting = null;
+  let realtimeConversationAvailable = false;
+  let voiceSocket = null;
+  let voiceAudioContext = null;
+  let voiceStream = null;
+  let voiceMicNode = null;
+  let voicePlayhead = 0;
+  let voiceGain = null;
   let currentAudio = null;
   let stopCurrentAudio = null;
   let speechSession = 0;
@@ -1615,11 +1625,13 @@
       const status = response.ok ? await response.json() : null;
       serverVoiceAvailable = !!status?.enabled;
       realtimeVoiceAvailable = !!status?.realtime?.enabled;
+      realtimeConversationAvailable = !!status?.realtime?.conversation;
       wakeAvailable = !!status?.wakeword?.enabled;
       rVoice.textContent = realtimeVoiceAvailable ? "OPENAI RT" : serverVoiceAvailable ? "LOCAL" : canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
     } catch {
       serverVoiceAvailable = false;
       realtimeVoiceAvailable = false;
+      realtimeConversationAvailable = false;
       rVoice.textContent = canSpeak ? "NAVEGADOR" : "NO DISPONIBLE";
     }
   }
@@ -1916,6 +1928,9 @@
   }
 
   function appendStreamSpeech(delta) {
+    // Con Realtime el audio ya viene hecho: sintetizar además con Kokoro haría
+    // que JARVIS se hablara encima de sí mismo.
+    if (voiceSocket) return;
     streamSpeechSource += delta;
     streamSpeechBuffer += delta;
     flushStreamSpeech(false);
@@ -2164,6 +2179,12 @@
     firePulse();
     setMicActive(false, "ACTIVADO");
     await playWakeChime();
+    // Realtime es el camino preferente: responde y actúa en la misma sesión, sin
+    // el rodeo de transcribir, pensar y sintetizar por separado.
+    if (realtimeConversationAvailable && canRecord) {
+      if (await startRealtimeConversation()) return;
+      realtimeConversationAvailable = false;  // no insistas si acaba de fallar
+    }
     if (serverVoiceAvailable && canRecord) startServerRecording({ automatic: true });
     else if (recognition) { try { recognition.start(); } catch { scheduleWakeListening(); } }
     else scheduleWakeListening();
@@ -2244,6 +2265,149 @@
     wakeListening = true;
     setMicActive(true, "HEY JARVIS");
     setState("idle");
+  }
+
+  // ── Conversación OpenAI Realtime (alojada en el gateway) ──────────────────
+  //
+  // El micrófono va a nuestro servidor, no directamente a OpenAI: así las
+  // herramientas y las aprobaciones siguen ejecutándose donde deben. El audio
+  // sube en PCM de 24 kHz y baja igual, en fragmentos que se encolan para que
+  // suenen sin cortes.
+
+  function voiceSocketUrl() {
+    try {
+      const url = new URL(FIXED_WS_URL);
+      const session = url.pathname.split("/").filter(Boolean).pop() || "hud";
+      url.pathname = `/ws/voice/${session}`;
+      url.searchParams.set("token", tokenInput.value);
+      return url.toString();
+    } catch { return ""; }
+  }
+
+  function playRealtimeAudio(buffer) {
+    if (!voiceAudioContext || buffer.byteLength < 2) return;
+    const pcm = new Int16Array(buffer);
+    const audioBuffer = voiceAudioContext.createBuffer(1, pcm.length, 24000);
+    const channel = audioBuffer.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) channel[i] = pcm[i] / 32768;
+    const source = voiceAudioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(voiceGain);
+    // Un colchón de 80 ms absorbe el jitter de la red sin que se note retardo.
+    const now = voiceAudioContext.currentTime;
+    if (voicePlayhead < now) voicePlayhead = now + 0.08;
+    source.start(voicePlayhead);
+    voicePlayhead += audioBuffer.duration;
+    voiceActive = true;
+    voiceEnergy = Math.max(voiceEnergy, 0.55);
+  }
+
+  function stopRealtimeConversation({ resumeWake = true } = {}) {
+    if (voiceSocket) { voiceSocket.onclose = null; try { voiceSocket.close(); } catch {} }
+    voiceSocket = null;
+    if (voiceMicNode) { voiceMicNode.port.onmessage = null; try { voiceMicNode.disconnect(); } catch {} }
+    voiceMicNode = null;
+    voiceStream?.getTracks().forEach((track) => track.stop());
+    voiceStream = null;
+    voiceAudioContext?.close().catch(() => {});
+    voiceAudioContext = null;
+    voiceAnalyser = null; voiceWaveform = null; voiceGain = null;
+    voicePlayhead = 0;
+    voiceActive = false;
+    setBusy(false);
+    if (resumeWake) {
+      setMicActive(false, "HEY JARVIS");
+      setState("idle");
+      scheduleWakeListening(400);
+    }
+  }
+
+  function handleVoiceMessage(message) {
+    if (message.type === "state") setState(message.state);
+    else if (message.type === "emotion") setEmotion(message.emotion);
+    else if (message.type === "transcript") addLine("TÚ", message.text, "user");
+    else if (message.type === "reply_delta") appendStreamDelta(message.delta);
+    else if (message.type === "reply_done") finishStreamReply(message.text);
+    else if (message.type === "tool") showToolEvent(message);
+    else if (message.type === "approval_required") {
+      // La decisión vuelve por el mismo canal de voz, no por el de texto.
+      pendingApproval = { ...message, channel: "voice" };
+      showToolEvent({ phase: "awaiting", tool: message.tool, arguments: message.arguments });
+      approvalActions.hidden = false;
+      approvalApprove.disabled = false; approvalDeny.disabled = false;
+      setEmotion("alert");
+      addLine("SISTEMA", "PERMISO REQUERIDO · " + message.summary, "system");
+    }
+    else if (message.type === "approval_resolved") {
+      pendingApproval = null;
+      approvalActions.hidden = true;
+      if (message.reason === "timeout") addLine("SISTEMA", "La aprobación venció sin respuesta.", "system");
+    }
+    else if (message.type === "voice_idle_timeout") {
+      addLine("SISTEMA", "Conversación cerrada por inactividad.", "system");
+      stopRealtimeConversation();
+    }
+    else if (message.type === "error") {
+      addLine("SISTEMA", "Voz Realtime: " + message.error, "system");
+      stopRealtimeConversation();
+    }
+  }
+
+  async function startRealtimeConversation() {
+    // Suelta el micrófono de la escucha permanente: dos capturas simultáneas
+    // se estorban en muchos sistemas, y aquí ya no hace falta.
+    teardownWakeListening();
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    try {
+      const context = new AudioContextClass({ sampleRate: 24000 });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      const workletUrl = URL.createObjectURL(new Blob([WAKE_WORKLET], { type: "text/javascript" }));
+      try { await context.audioWorklet.addModule(workletUrl); }
+      finally { URL.revokeObjectURL(workletUrl); }
+
+      const node = new AudioWorkletNode(context, "wake-tap");
+      context.createMediaStreamSource(stream).connect(node);
+      const mute = context.createGain();
+      mute.gain.value = 0;
+      node.connect(mute).connect(context.destination);
+
+      // La salida pasa por el analizador para que las partículas sigan la voz
+      // real, igual que hacen con Kokoro.
+      voiceGain = context.createGain();
+      voiceAnalyser = context.createAnalyser();
+      voiceAnalyser.fftSize = reduceMotion ? 256 : 512;
+      voiceAnalyser.smoothingTimeConstant = 0.58;
+      voiceWaveform = new Uint8Array(voiceAnalyser.fftSize);
+      voiceGain.connect(voiceAnalyser);
+      voiceAnalyser.connect(context.destination);
+
+      const socket = new WebSocket(voiceSocketUrl());
+      socket.binaryType = "arraybuffer";
+      socket.onmessage = (event) => {
+        if (typeof event.data !== "string") { playRealtimeAudio(event.data); return; }
+        let message; try { message = JSON.parse(event.data); } catch { return; }
+        handleVoiceMessage(message);
+      };
+      socket.onclose = () => { voiceSocket = null; stopRealtimeConversation(); };
+      node.port.onmessage = (event) => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(event.data);
+      };
+      await new Promise((resolve, reject) => {
+        socket.onopen = resolve;
+        socket.onerror = () => reject(new Error("no se pudo abrir la voz Realtime"));
+      });
+
+      voiceAudioContext = context; voiceStream = stream; voiceMicNode = node; voiceSocket = socket;
+      setMicActive(true, "OPENAI RT");
+      setState("listening");
+      return true;
+    } catch (error) {
+      addLine("SISTEMA", "No pude abrir la conversación por voz: " + error.message, "system");
+      stopRealtimeConversation({ resumeWake: false });
+      return false;
+    }
   }
 
   function stopRecorderVad() {

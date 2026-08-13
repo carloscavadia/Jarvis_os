@@ -127,6 +127,34 @@ ocurre **en el servidor**: el dispositivo solo captura y envía.
 Códigos de cierre: `1008` credenciales o identificador inválidos, `1013` escucha
 desactivada o límite de dispositivos alcanzado, `1009` fragmento excesivo.
 
+### Conversación por voz (OpenAI Realtime)
+
+Conexión: `ws://<servidor>:8080/ws/voice/<session_id>?token=<JARVIS_GATEWAY_API_KEY>`
+
+Se abre **después** de la activación, nunca en reposo. El gateway mantiene la
+sesión con OpenAI; el dispositivo solo captura y reproduce.
+
+| Sentido | Mensaje | Significado |
+|---|---|---|
+| → servidor | *binario* | PCM 16 bits con signo, mono, **24 kHz**, little-endian. |
+| → servidor | `{"type":"approval","approval_id":…,"approved":true}` | Decisión sobre una acción sensible. |
+| → servidor | `{"type":"cancel"}` | Corta lo que JARVIS esté diciendo. |
+| ← cliente | `{"type":"voice_ready","sample_rate":24000,"model":…}` | Sesión lista. |
+| ← cliente | *binario* | Audio de JARVIS, mismo formato. Reprodúcelo en orden. |
+| ← cliente | `{"type":"state","state":"listening\|thinking\|idle"}` | Estado para la animación. |
+| ← cliente | `{"type":"transcript","text":…}` | Lo que entendió de ti. |
+| ← cliente | `{"type":"reply_delta","delta":…}` · `{"type":"reply_done","text":…}` | Transcripción de su respuesta. |
+| ← cliente | `{"type":"tool","phase":"proposed\|running\|completed\|denied",…}` | Herramienta en curso. |
+| ← cliente | `{"type":"approval_required",…}` · `{"type":"approval_resolved",…}` | Igual que en el canal de texto. |
+| ← cliente | `{"type":"voice_idle_timeout"}` | Cerrada por silencio; vuelve a la escucha de activación. |
+
+El turno lo cierra el VAD de OpenAI, así que el dispositivo **no** necesita
+detectar el final de la pregunta: basta con enviar audio de forma continua
+mientras la sesión esté abierta.
+
+Códigos de cierre: `1008` credenciales inválidas, `1013` conversación desactivada,
+presupuesto diario agotado o límite de sesiones, `1011` fallo al abrir la sesión.
+
 ### Emociones (color del enjambre)
 
 | Emoción    | Color        | Uso                                   |
