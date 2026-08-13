@@ -98,7 +98,7 @@ jarvis chat
 
 # 4. (Opcional) Levantar todo el stack (gateway + broker MQTT)
 cd ../deploy
-docker compose up -d
+docker compose --env-file ../.env up -d
 ```
 
 El gateway no arranca sin `JARVIS_GATEWAY_API_KEY`. Los clientes REST envían la clave

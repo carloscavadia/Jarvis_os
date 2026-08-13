@@ -27,7 +27,7 @@ Levanta el broker MQTT + el gateway en un comando:
 
 ```bash
 cd deploy
-docker compose up -d
+docker compose --env-file ../.env up -d
 docker compose logs -f gateway
 ```
 

@@ -91,8 +91,8 @@ Aunque la CLI local puede usar shell, el gateway remoto nunca registra esa herra
 
 ```bash
 cd /opt/jarvis_os/deploy
-docker compose config
-docker compose up -d --build
+docker compose --env-file ../.env config
+docker compose --env-file ../.env up -d --build
 docker compose ps
 docker compose logs --tail=100 gateway
 ```
@@ -167,7 +167,7 @@ docker compose ps
 docker compose logs -f gateway
 docker compose restart gateway
 docker compose down
-docker compose up -d
+docker compose --env-file ../.env up -d
 ```
 
 Actualización después de fusionar cambios:
@@ -176,7 +176,7 @@ Actualización después de fusionar cambios:
 cd /opt/jarvis_os
 git pull --ff-only
 cd deploy
-docker compose up -d --build
+docker compose --env-file ../.env up -d --build
 ```
 
 ## 8. Copias de seguridad

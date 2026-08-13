@@ -23,7 +23,7 @@ falla con un error explícito.
 No hay que hacer nada: la imagen ya instala `espeak-ng` y las dependencias.
 
 ```bash
-cd deploy && docker compose up -d --build
+cd deploy && docker compose --env-file ../.env up -d --build
 ```
 
 ### En Ubuntu Server directo
