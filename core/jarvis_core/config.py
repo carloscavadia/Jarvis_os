@@ -304,7 +304,9 @@ class Settings:
             f"permiso para acciones triviales y reversibles. Para acciones destructivas o "
             f"que cambian el estado del sistema, confirma primero.\n\n"
             f"Cuando uses la memoria, guarda hechos y preferencias útiles del usuario para "
-            f"recordarlos en el futuro. Sé conciso: responde lo que se te pide sin relleno.\n\n"
+            f"recordarlos en el futuro. Responde de forma directa y breve: normalmente entre "
+            f"una y cuatro frases, sin introducciones, recapitulaciones ni ofrecimientos "
+            f"innecesarios. Amplía solo si el usuario pide detalle o la seguridad lo exige.\n\n"
             f"Para trabajar con archivos usa exclusivamente las herramientas del workspace; "
             f"nunca inventes que accediste a una ruta externa. Puedes crear archivos y carpetas "
             f"nuevos directamente. Modificar archivos existentes, instalar paquetes o ejecutar "
@@ -322,7 +324,9 @@ class Settings:
             base += (
                 "\n\nCuando la pregunta dependa de información reciente, busca en Internet y "
                 "verifica al menos dos fuentes relevantes cuando sea posible. Incluye las URLs "
-                "consultadas y distingue hechos encontrados de inferencias. Las fuentes pueden "
+                "consultadas y distingue hechos encontrados de inferencias. Resume primero la "
+                "respuesta en un máximo de tres puntos cortos y añade al final solo las fuentes "
+                "realmente utilizadas; evita narrar el proceso de búsqueda. Las fuentes pueden "
                 "estar en cualquier idioma, pero debes traducir y redactar todos los títulos, "
                 "hallazgos, fechas explicadas y resúmenes al idioma de respuesta configurado; "
                 "conserva únicamente nombres propios, términos técnicos necesarios y URLs en su "
@@ -341,10 +345,13 @@ class Settings:
             )
         if self.connectors_enabled and self.n8n_webhook_url:
             base += (
-                "\n\nDispones de conectores externos mediante n8n. Usa list_connectors "
+                "\n\nDispones de conectores externos mediante un bus seguro de n8n para correo, "
+                "mensajería, calendarios, automatización y domótica. Usa list_connectors "
                 "para descubrir las acciones exactas. Usa query_connector solo para lecturas "
                 "y run_connector_action para cambios como enviar correos, mensajes o crear "
-                "eventos; el sistema solicitará aprobación humana para esos cambios. Nunca "
+                "eventos, controlar Home Assistant o ejecutar rutinas de Alexa; el sistema "
+                "solicitará aprobación humana para esos cambios. No supongas que un servicio "
+                "está conectado si no aparece en list_connectors. Nunca "
                 "inventes que una acción se completó si el conector devolvió un error."
             )
         if self.persona_extra:

@@ -1,11 +1,12 @@
 # Conectores de JARVIS
 
-JARVIS usa **n8n como bus de integración**. Gmail, Outlook, WhatsApp y otros servicios
+JARVIS usa **n8n como bus de integración**. Gmail, Outlook, WhatsApp, calendarios, Slack,
+Teams, Home Assistant, Alexa y otros servicios
 conservan sus credenciales dentro del almacén de credenciales de n8n; el gateway de JARVIS
 solo conoce un webhook y un token independiente.
 
 ```text
-HUD/voz → JARVIS → webhook n8n → Gmail / Outlook / WhatsApp / otros
+HUD/voz → JARVIS → webhook n8n → correo / mensajes / domótica / APIs
                      ↑       ↓
               eventos y chat entrante
 ```
@@ -57,6 +58,30 @@ Las acciones permitidas se dividen en:
 JARVIS_N8N_READ_ACTIONS=gmail.search,gmail.read,outlook.search,outlook.calendar.list,whatsapp.unread
 JARVIS_N8N_WRITE_ACTIONS=gmail.send,gmail.reply,outlook.send,outlook.calendar.create,whatsapp.send
 ```
+
+### Catálogo recomendado
+
+El nombre antes del punto identifica el servicio y el resto la operación. Solo declara una
+acción cuando su rama exista y haya sido probada en el workflow.
+
+| Servicio | Lecturas | Escrituras con aprobación |
+|---|---|---|
+| Gmail | `gmail.search`, `gmail.read` | `gmail.send`, `gmail.reply` |
+| Outlook | `outlook.search`, `outlook.calendar.list` | `outlook.send`, `outlook.calendar.create` |
+| WhatsApp | `whatsapp.unread` | `whatsapp.send` |
+| Google Calendar | `googlecalendar.list` | `googlecalendar.create`, `googlecalendar.update` |
+| Slack / Teams | `slack.search`, `teams.search` | `slack.send`, `teams.send` |
+| Home Assistant | `homeassistant.state`, `homeassistant.history` | `homeassistant.service`, `homeassistant.scene` |
+| Alexa | `alexa.devices` | `alexa.routine` |
+| Genérico | `api.get` | `api.post` |
+
+Para **Home Assistant**, n8n puede usar su REST API y un token de larga duración guardado
+como credencial. Restringe las acciones a entidades y servicios autorizados; encender,
+apagar, abrir, cerrar o cambiar una escena siempre se considera escritura.
+
+Para **Alexa**, usa uno de estos puentes administrados: una integración Alexa–Home
+Assistant, un skill propio que invoque un webhook o una rutina expuesta a n8n. JARVIS no
+debe almacenar cookies de Amazon ni automatizar la interfaz web de Alexa.
 
 ## 2. n8n llama a JARVIS
 
@@ -110,7 +135,7 @@ JARVIS_CONNECTORS_ENABLED=true
 JARVIS_N8N_WEBHOOK_URL=http://IP_O_HOST_N8N:5678/webhook/jarvis-connector
 JARVIS_N8N_WEBHOOK_TOKEN=SECRETO_GENERADO
 JARVIS_N8N_READ_ACTIONS=gmail.search,gmail.read
-JARVIS_N8N_WRITE_ACTIONS=gmail.send,gmail.reply
+JARVIS_N8N_WRITE_ACTIONS=gmail.send,gmail.reply,homeassistant.service,alexa.routine
 ```
 
 Para autorizar, por ejemplo, tu número de WhatsApp:

@@ -124,7 +124,7 @@ class N8nConnectorClient:
 
 class ListConnectorsTool(Tool):
     name = "list_connectors"
-    description = "Lista los sistemas y acciones conectados a JARVIS mediante n8n."
+    description = "Lista los servicios y acciones actualmente conectados a JARVIS."
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {},
@@ -146,10 +146,11 @@ class ListConnectorsTool(Tool):
         return ToolResult(
             json.dumps(
                 {
-                    "backend": "n8n",
+                    "backend": "n8n_connector_bus",
                     "services": services,
                     "read_actions": self.read_actions,
                     "write_actions_requiring_approval": self.write_actions,
+                    "note": "Solo estas acciones están disponibles; no inventes conectores.",
                 },
                 ensure_ascii=False,
                 indent=2,

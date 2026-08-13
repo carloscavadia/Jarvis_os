@@ -352,6 +352,18 @@ def test_spanish_web_prompt_requires_translation():
     assert "Responde siempre en español" in prompt
     assert "fuentes pueden estar en cualquier idioma" in prompt
     assert "traducir y redactar" in prompt
+    assert "máximo de tres puntos cortos" in prompt
+    assert "una y cuatro frases" in prompt
+
+
+def test_connector_prompt_covers_automation_without_inventing_services():
+    prompt = Settings(
+        connectors_enabled=True,
+        n8n_webhook_url="https://n8n.example.com/webhook/jarvis",
+    ).system_prompt()
+    assert "Home Assistant" in prompt
+    assert "Alexa" in prompt
+    assert "No supongas que un servicio está conectado" in prompt
 
 
 async def test_registry_enables_agent_tools_from_settings(tmp_path):
