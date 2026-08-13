@@ -95,12 +95,20 @@ class Settings:
     gateway_max_sessions: int = 100
     mqtt_max_payload_chars: int = 16000
 
-    # --- Voz local (Whisper + Piper) ---
+    # --- Voz local (Whisper + Kokoro/Piper) ---
     voice_enabled: bool = False
     stt_model: str = "small"
     stt_device: str = "cpu"
     stt_compute_type: str = "int8"
     stt_download_root: str = "data/models"
+    # Motor TTS: "kokoro" (natural, recomendado) o "piper" (ultraligero, robótico).
+    tts_engine: str = "kokoro"
+    # Kokoro: voces españolas ef_dora (femenina), em_alex / em_santa (masculinas).
+    tts_voice: str = "ef_dora"
+    tts_lang_code: str = "e"  # 'e' = español en Kokoro
+    tts_speed: float = 1.0
+    tts_kokoro_repo: str = ""
+    # Piper: ruta al modelo .onnx
     tts_model_path: str = ""
     tts_use_cuda: bool = False
     voice_max_audio_bytes: int = 15 * 1024 * 1024
@@ -173,6 +181,11 @@ class Settings:
             stt_device=os.environ.get("JARVIS_STT_DEVICE", "cpu"),
             stt_compute_type=os.environ.get("JARVIS_STT_COMPUTE_TYPE", "int8"),
             stt_download_root=os.environ.get("JARVIS_STT_DOWNLOAD_ROOT", "data/models"),
+            tts_engine=os.environ.get("JARVIS_TTS_ENGINE", "kokoro"),
+            tts_voice=os.environ.get("JARVIS_TTS_VOICE", "ef_dora"),
+            tts_lang_code=os.environ.get("JARVIS_TTS_LANG_CODE", "e"),
+            tts_speed=float(os.environ.get("JARVIS_TTS_SPEED", "1.0")),
+            tts_kokoro_repo=os.environ.get("JARVIS_TTS_KOKORO_REPO", ""),
             tts_model_path=os.environ.get("JARVIS_TTS_MODEL_PATH", ""),
             tts_use_cuda=_get_bool("JARVIS_TTS_USE_CUDA", False),
             voice_max_audio_bytes=max(
