@@ -6,7 +6,12 @@ import html
 import re
 
 from jarvis_core.config import Settings
-from jarvis_core.voice import FasterWhisperSTT, LocalVoiceError, PiperTTS
+from jarvis_core.voice import (
+    FasterWhisperSTT,
+    LocalVoiceError,
+    TextToSpeech,
+    build_tts,
+)
 
 
 def prepare_speech_text(text: str) -> str:
@@ -33,17 +38,23 @@ class VoiceRuntime:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._stt: FasterWhisperSTT | None = None
-        self._tts: PiperTTS | None = None
+        self._tts: TextToSpeech | None = None
 
     @property
     def enabled(self) -> bool:
         return self.settings.voice_enabled
 
+    def _tts_label(self) -> str:
+        engine = (self.settings.tts_engine or "kokoro").lower()
+        if engine == "piper":
+            return f"piper:{self.settings.tts_model_path}"
+        return f"{engine}:{self.settings.tts_voice}"
+
     def status(self) -> dict[str, str | bool]:
         return {
             "enabled": self.enabled,
             "stt": self.settings.stt_model if self.enabled else "disabled",
-            "tts": self.settings.tts_model_path if self.enabled else "disabled",
+            "tts": self._tts_label() if self.enabled else "disabled",
         }
 
     def _require_enabled(self) -> None:
@@ -65,11 +76,7 @@ class VoiceRuntime:
 
     async def synthesize(self, text: str) -> bytes:
         self._require_enabled()
-        if not self.settings.tts_model_path:
-            raise LocalVoiceError("Falta configurar JARVIS_TTS_MODEL_PATH.")
         if self._tts is None:
-            self._tts = PiperTTS(
-                self.settings.tts_model_path,
-                use_cuda=self.settings.tts_use_cuda,
-            )
+            # La fábrica valida el motor y su configuración (lanza LocalVoiceError).
+            self._tts = build_tts(self.settings)
         return await self._tts.synthesize(prepare_speech_text(text))
