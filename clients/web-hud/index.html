@@ -725,12 +725,14 @@
     if (activeReply) finishStreamReply();
     activeReplyText = "";
     streamTokenIndex = 0;
+    beginStreamSpeech();
     activeReply = addLine("JARVIS", "", "jarvis streaming");
   }
   function appendStreamDelta(delta) {
     if (!delta) return;
     if (!activeReply) startStreamReply();
     activeReplyText += delta;
+    appendStreamSpeech(delta);
     if (!firstDeltaSeen && requestStartedAt) {
       firstDeltaSeen = true;
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · PRIMER TEXTO`;
@@ -757,7 +759,7 @@
       }
       activeReply = null;
     }
-    if (spokenText) speak(spokenText);
+    if (spokenText) finishStreamSpeech(spokenText);
     activeReplyText = "";
     if (requestStartedAt) {
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · TOTAL`;
@@ -877,6 +879,12 @@
   let recorderChunks = [];
   let recorderTimer = null;
   let currentAudio = null;
+  let stopCurrentAudio = null;
+  let speechSession = 0;
+  let speechQueue = [];
+  let speechQueueRunning = false;
+  let streamSpeechBuffer = "";
+  let streamSpeechSource = "";
 
   function gatewayHttpBase() {
     try {
@@ -931,52 +939,151 @@
       .trim();
   }
 
-  function speakInBrowser(text) {
-    if (!canSpeak) { rVoice.textContent = "ERROR"; return; }
-    speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "es-MX";
-    utterance.rate = 0.96;
-    utterance.pitch = 0.82;
-    const voice = selectSpanishVoice();
-    if (voice) utterance.voice = voice;
-    utterance.onstart = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
-    utterance.onend = () => { rVoice.textContent = "LISTA"; setState("idle"); };
-    utterance.onerror = () => { rVoice.textContent = "ERROR"; };
-    speechSynthesis.speak(utterance);
+  function speakInBrowser(text, cancelExisting = true) {
+    return new Promise((resolve) => {
+      if (!canSpeak) { rVoice.textContent = "ERROR"; resolve(); return; }
+      if (cancelExisting) speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "es-MX";
+      utterance.rate = 0.96;
+      utterance.pitch = 0.82;
+      const voice = selectSpanishVoice();
+      if (voice) utterance.voice = voice;
+      utterance.onstart = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      utterance.onend = () => { rVoice.textContent = "LISTA"; resolve(); };
+      utterance.onerror = () => { rVoice.textContent = "ERROR"; resolve(); };
+      speechSynthesis.speak(utterance);
+    });
   }
 
-  async function speak(text) {
-    const spokenText = prepareSpeechText(text);
-    if (!voiceEnabled || !spokenText) return;
-    if (!serverVoiceAvailable) { speakInBrowser(spokenText); return; }
-    rVoice.textContent = "SINTETIZANDO";
-    try {
-      const response = await fetch(`${gatewayHttpBase()}/voice/synthesize`, {
+  function cancelSpeechQueue() {
+    speechSession += 1;
+    speechQueue = [];
+    streamSpeechBuffer = "";
+    streamSpeechSource = "";
+    if (canSpeak) speechSynthesis.cancel();
+    if (stopCurrentAudio) stopCurrentAudio();
+  }
+
+  async function requestSpeechAudio(text, session) {
+    const response = await fetch(`${gatewayHttpBase()}/voice/synthesize`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Jarvis-Key": tokenInput.value,
         },
-        body: JSON.stringify({ text: spokenText }),
+        body: JSON.stringify({ text }),
       });
-      if (!response.ok) throw new Error(`TTS ${response.status}`);
-      const audioUrl = URL.createObjectURL(await response.blob());
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-      if (!voiceEnabled) { URL.revokeObjectURL(audioUrl); return; }
+    if (!response.ok) throw new Error(`TTS ${response.status}`);
+    const audioUrl = URL.createObjectURL(await response.blob());
+    if (session !== speechSession || !voiceEnabled) {
+      URL.revokeObjectURL(audioUrl);
+      return null;
+    }
+    return audioUrl;
+  }
+
+  function playAudioUrl(audioUrl, session) {
+    return new Promise((resolve, reject) => {
+      if (!audioUrl || session !== speechSession || !voiceEnabled) { resolve(); return; }
+      let settled = false;
+      const finish = (error = null) => {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(audioUrl);
+        currentAudio = null;
+        stopCurrentAudio = null;
+        if (error) reject(error); else resolve();
+      };
       currentAudio = new Audio(audioUrl);
+      stopCurrentAudio = () => { currentAudio?.pause(); finish(); };
       currentAudio.onplay = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
-      currentAudio.onended = () => {
-        URL.revokeObjectURL(audioUrl); currentAudio = null;
-        rVoice.textContent = "LOCAL"; setState("idle");
-      };
-      currentAudio.onerror = () => {
-        URL.revokeObjectURL(audioUrl); currentAudio = null; speakInBrowser(spokenText);
-      };
-      await currentAudio.play();
+      currentAudio.onended = () => finish();
+      currentAudio.onerror = () => finish(new Error("audio"));
+      currentAudio.play().catch((error) => finish(error));
+    });
+  }
+
+  async function runSpeechQueue() {
+    if (speechQueueRunning) return;
+    speechQueueRunning = true;
+    while (speechQueue.length) {
+      const item = speechQueue.shift();
+      if (item.session !== speechSession || !voiceEnabled) continue;
+      try {
+        const audioUrl = await item.audio;
+        await playAudioUrl(audioUrl, item.session);
+      } catch {
+        serverVoiceAvailable = false;
+        await speakInBrowser(item.text, false);
+      }
+    }
+    speechQueueRunning = false;
+    if (voiceEnabled) rVoice.textContent = serverVoiceAvailable ? "LOCAL" : "NAVEGADOR";
+    setState("idle");
+  }
+
+  function enqueueSpeech(text) {
+    const spokenText = prepareSpeechText(text);
+    if (!voiceEnabled || !spokenText) return;
+    if (!serverVoiceAvailable) { speakInBrowser(spokenText, false); return; }
+    const session = speechSession;
+    rVoice.textContent = "SINTETIZANDO";
+    // La descarga comienza ahora; la cola solo controla el orden de reproducción.
+    speechQueue.push({ session, text: spokenText, audio: requestSpeechAudio(spokenText, session) });
+    runSpeechQueue();
+  }
+
+  function flushStreamSpeech(force = false) {
+    if (!serverVoiceAvailable) return;
+    while (streamSpeechBuffer.trim()) {
+      const sentence = streamSpeechBuffer.match(/^[\s\S]*?[.!?](?:["'»”)]?)(?:\s|$)/);
+      let cut = sentence?.[0].length || 0;
+      if (!cut && streamSpeechBuffer.length >= 180) {
+        cut = streamSpeechBuffer.lastIndexOf(" ", 180);
+        if (cut < 100) cut = 180;
+      }
+      if (!cut && force) cut = streamSpeechBuffer.length;
+      if (!cut) break;
+      enqueueSpeech(streamSpeechBuffer.slice(0, cut));
+      streamSpeechBuffer = streamSpeechBuffer.slice(cut);
+    }
+  }
+
+  function beginStreamSpeech() {
+    cancelSpeechQueue();
+    streamSpeechBuffer = "";
+    streamSpeechSource = "";
+  }
+
+  function appendStreamSpeech(delta) {
+    streamSpeechSource += delta;
+    streamSpeechBuffer += delta;
+    flushStreamSpeech(false);
+  }
+
+  function finishStreamSpeech(finalText) {
+    if (!voiceEnabled) return;
+    if (!serverVoiceAvailable) { speak(finalText); return; }
+    if (finalText !== streamSpeechSource) {
+      // Si el mensaje final corrigió el stream, prioriza la versión autoritativa.
+      cancelSpeechQueue();
+      streamSpeechBuffer = finalText;
+    }
+    flushStreamSpeech(true);
+  }
+
+  async function speak(text) {
+    const spokenText = prepareSpeechText(text);
+    if (!voiceEnabled || !spokenText) return;
+    cancelSpeechQueue();
+    if (!serverVoiceAvailable) { await speakInBrowser(spokenText); return; }
+    enqueueSpeech(spokenText);
+    try {
+      await runSpeechQueue();
     } catch {
       serverVoiceAvailable = false;
-      speakInBrowser(spokenText);
+      await speakInBrowser(spokenText);
     }
   }
 
@@ -997,7 +1104,7 @@
     rVoice.textContent = voiceEnabled ? "LISTA" : "SILENCIO";
     if (!voiceEnabled) {
       if (canSpeak) speechSynthesis.cancel();
-      if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+      if (stopCurrentAudio) stopCurrentAudio();
     }
   });
 
