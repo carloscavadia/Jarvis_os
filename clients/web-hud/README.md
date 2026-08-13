@@ -49,6 +49,8 @@ hacer una pausa y continuar. En ese segundo caso, la detección de actividad de 
 envía la pregunta después de 1,25 segundos de silencio. El micrófono se suspende mientras
 JARVIS habla para evitar que se active con su propia voz. El botón **●** queda como control
 de recuperación para conceder o reintentar el permiso si el navegador bloquea la escucha.
+Al reconocer la frase de activación reproduce un tono ascendente corto tipo “bluuup” antes
+de abrir la pregunta; el tono respeta el control de silencio **◖**.
 
 Si el gateway tiene voz local activa, Whisper transcribe la grabación y Kokoro reproduce la
 respuesta con `em_alex`. El botón **◖** activa o silencia la salida de voz. Durante el

@@ -1338,6 +1338,35 @@
     return match ? match[1].trim() : null;
   }
 
+  async function playWakeChime() {
+    if (!voiceEnabled) return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      if (!audioContext) audioContext = new AudioContextClass();
+      await audioContext.resume();
+      const now = audioContext.currentTime;
+      const gain = audioContext.createGain();
+      const low = audioContext.createOscillator();
+      const high = audioContext.createOscillator();
+      low.type = "sine"; high.type = "triangle";
+      low.frequency.setValueAtTime(260, now);
+      low.frequency.exponentialRampToValueAtTime(610, now + 0.32);
+      high.frequency.setValueAtTime(420, now + 0.05);
+      high.frequency.exponentialRampToValueAtTime(920, now + 0.30);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.035);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+      low.connect(gain); high.connect(gain); gain.connect(audioContext.destination);
+      low.start(now); high.start(now + 0.05);
+      low.stop(now + 0.43); high.stop(now + 0.40);
+      voiceEnergy = Math.max(voiceEnergy, 0.72);
+      await new Promise((resolve) => setTimeout(resolve, 440));
+    } catch {
+      // La activación sigue funcionando aunque el navegador bloquee el tono.
+    }
+  }
+
   function stopWakeListening() {
     clearTimeout(wakeRestartTimer); wakeRestartTimer = null;
     wakeListening = false;
@@ -1366,7 +1395,7 @@
       setMicActive(true, "HEY JARVIS");
       setState("idle");
     };
-    wakeRecognition.onresult = (event) => {
+    wakeRecognition.onresult = async (event) => {
       let heard = "";
       let finalResult = false;
       for (let i = 0; i < event.results.length; i++) {
@@ -1379,9 +1408,10 @@
       if (!finalResult) return;
       firePulse();
       stopWakeListening();
+      setMicActive(false, "ACTIVADO");
+      await playWakeChime();
       if (command) {
         messageInput.value = command;
-        setMicActive(false, "ACTIVADO");
         document.getElementById("form").requestSubmit();
       } else if (serverVoiceAvailable && canRecord) {
         startServerRecording({ automatic: true });
