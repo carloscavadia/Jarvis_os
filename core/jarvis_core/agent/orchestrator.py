@@ -126,7 +126,8 @@ class Orchestrator:
             results: list[dict[str, Any]] = []
             for call in response.tool_calls:
                 tools_used.append(call.name)
-                logger.info("Ejecutando herramienta %s con %s", call.name, call.input)
+                # Los argumentos pueden contener correos, mensajes o secretos operativos.
+                logger.info("Ejecutando herramienta %s", call.name)
                 if on_tool_event is not None:
                     await on_tool_event("proposed", call.name, call.input, None)
 

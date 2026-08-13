@@ -12,6 +12,7 @@ from jarvis_core.config import Settings
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
+from jarvis_core.tools.builtin.connectors import register_connector_tools
 from jarvis_core.tools.builtin.emotion_tool import SetEmotionTool
 from jarvis_core.tools.builtin.filesystem import (
     WorkspaceGuard,
@@ -91,4 +92,19 @@ def build_default_registry(
         )
     if settings.hud_workspace_enabled:
         registry.register(ShowInWorkspaceTool())
+    if (
+        settings.connectors_enabled
+        and settings.n8n_webhook_url
+        and settings.n8n_webhook_token
+    ):
+        register_connector_tools(
+            registry,
+            webhook_url=settings.n8n_webhook_url,
+            token=settings.n8n_webhook_token,
+            read_actions=settings.n8n_read_actions,
+            write_actions=settings.n8n_write_actions,
+            timeout=settings.connector_timeout_seconds,
+            max_payload_bytes=settings.connector_max_payload_bytes,
+            max_response_bytes=settings.connector_max_response_bytes,
+        )
     return registry

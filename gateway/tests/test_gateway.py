@@ -59,6 +59,20 @@ class FakeVoiceRuntime:
         return b"RIFF-fake-wave"
 
 
+class FakeNotifier:
+    def __init__(self) -> None:
+        self.events = []
+
+    async def broadcast(self, text, source="jarvis", **extra):
+        self.events.append((text, source, extra))
+
+    def add_ws(self, ws):
+        pass
+
+    def remove_ws(self, ws):
+        pass
+
+
 async def _fake_get(session_id: str) -> FakeOrchestrator:
     return FakeOrchestrator()
 
@@ -79,6 +93,19 @@ def test_tool_arguments_hide_content_and_unknown_sensitive_fields():
     assert gateway_module._public_approval_arguments(
         {"url": "https://example.com/noticia?token=secreto#parte"}
     ) == {"url": "https://example.com/noticia"}
+    assert gateway_module._public_approval_arguments(
+        {
+            "action": "gmail.send",
+            "payload": {"to": "jefe@example.com", "body": "privado"},
+        }
+    ) == {
+        "action": "gmail.send",
+        "payload_bytes": 45,
+        "payload_preview": {"to": "jefe@example.com", "body": "privado"},
+    }
+    assert gateway_module._redact_connector_payload(
+        {"to": "jefe@example.com", "api_key": "secreta"}
+    ) == {"to": "jefe@example.com", "api_key": "[oculto]"}
 
 
 def test_workspace_presentation_exposes_only_the_visual_payload():
@@ -204,66 +231,147 @@ def test_gateway_health_auth_chat_and_websocket(monkeypatch):
             }
             assert websocket.receive_json() == {"type": "state", "state": "idle"}
 
-        monkeypatch.setattr(gateway_module.sessions, "get", _approval_get)
-        with client.websocket_connect(
-            "/ws/approval-hub?token=ci-test-key"
-        ) as websocket:
-            assert websocket.receive_json() == {"type": "state", "state": "idle"}
-            websocket.send_text("instala requests")
-            assert websocket.receive_json() == {"type": "state", "state": "listening"}
-            assert websocket.receive_json() == {"type": "state", "state": "thinking"}
-            proposed = websocket.receive_json()
-            assert proposed == {
-                "type": "tool_event",
-                "phase": "proposed",
-                "tool": "install_package",
-                "arguments": {"manager": "pip", "package": "requests"},
-            }
-            approval = websocket.receive_json()
-            assert approval["type"] == "approval_required"
-            assert approval["tool"] == "install_package"
-            assert approval["arguments"] == {
-                "manager": "pip",
-                "package": "requests",
-            }
-            websocket.send_json(
+
+def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):
+    fake_notifier = FakeNotifier()
+    connector_token = "c" * 32
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "n8n_webhook_token", connector_token)
+    identity_hash = gateway_module.hashlib.sha256(b"whatsapp:+15551234567").hexdigest()
+    monkeypatch.setattr(gateway_module.settings, "connector_chat_enabled", True)
+    monkeypatch.setattr(
+        gateway_module.settings, "connector_allowed_user_hashes", [identity_hash]
+    )
+    monkeypatch.setattr(gateway_module.sessions, "get", _fake_get)
+    monkeypatch.setattr(gateway_module, "notifier", fake_notifier)
+
+    with TestClient(gateway_module.app) as client:
+        unauthorized = client.post(
+            "/connectors/chat",
+            json={
+                "connector": "whatsapp",
+                "external_user": "+15551234567",
+                "message": "hola",
+            },
+        )
+        assert unauthorized.status_code == 401
+
+        headers = {"X-Jarvis-Connector-Token": connector_token}
+        response = client.post(
+            "/connectors/chat",
+            headers=headers,
+            json={
+                "connector": "whatsapp",
+                "external_user": "+15551234567",
+                "message": "hola",
+            },
+        )
+        assert response.status_code == 200
+        assert (
+            response.json()["reply"] == "eco:[Mensaje recibido mediante whatsapp]\nhola"
+        )
+        assert response.json()["session_id"].startswith("connector-")
+        assert "+15551234567" not in response.json()["session_id"]
+
+        event = client.post(
+            "/connectors/events",
+            headers=headers,
+            json={
+                "connector": "gmail",
+                "event": "new_message",
+                "title": "Correo nuevo",
+                "text": "Llegó un correo importante.",
+            },
+        )
+        assert event.json() == {"status": "accepted"}
+        assert fake_notifier.events == [
+            (
+                "Llegó un correo importante.",
+                "connector:gmail",
                 {
-                    "type": "approval",
-                    "approval_id": approval["approval_id"],
-                    "approved": True,
-                }
+                    "connector": "gmail",
+                    "event": "new_message",
+                    "title": "Correo nuevo",
+                },
             )
-            resolved = websocket.receive_json()
-            assert resolved == {
-                "type": "approval_resolved",
+        ]
+
+
+def test_gateway_websocket_approval(monkeypatch):
+    monkeypatch.setattr(gateway_module.sessions, "get", _approval_get)
+    with (
+        TestClient(gateway_module.app) as client,
+        client.websocket_connect("/ws/approval-hub?token=ci-test-key") as websocket,
+    ):
+        assert websocket.receive_json() == {"type": "state", "state": "idle"}
+        websocket.send_text("instala requests")
+        assert websocket.receive_json() == {"type": "state", "state": "listening"}
+        assert websocket.receive_json() == {"type": "state", "state": "thinking"}
+        proposed = websocket.receive_json()
+        assert proposed == {
+            "type": "tool_event",
+            "phase": "proposed",
+            "tool": "install_package",
+            "arguments": {"manager": "pip", "package": "requests"},
+        }
+        approval = websocket.receive_json()
+        assert approval["type"] == "approval_required"
+        assert approval["tool"] == "install_package"
+        assert approval["arguments"] == {
+            "manager": "pip",
+            "package": "requests",
+        }
+        websocket.send_json(
+            {
+                "type": "approval",
                 "approval_id": approval["approval_id"],
                 "approved": True,
-                "reason": "user",
             }
-            assert websocket.receive_json() == {
-                "type": "tool_event",
-                "phase": "running",
-                "tool": "install_package",
-                "arguments": {"manager": "pip", "package": "requests"},
-            }
-            assert websocket.receive_json() == {
-                "type": "tool_event",
-                "phase": "completed",
-                "tool": "install_package",
-                "arguments": {"manager": "pip", "package": "requests"},
-                "output": "Successfully installed requests",
-                "is_error": False,
-            }
-            assert websocket.receive_json() == {"type": "state", "state": "speaking"}
-            assert websocket.receive_json() == {"type": "reply_start"}
-            assert websocket.receive_json() == {
-                "type": "reply_delta",
-                "delta": "Instalación autorizada.",
-            }
-            assert websocket.receive_json() == {"type": "emotion", "emotion": "focused"}
-            assert websocket.receive_json() == {
-                "type": "reply",
-                "reply": "Instalación autorizada.",
-                "tools_used": [],
-            }
-            assert websocket.receive_json() == {"type": "state", "state": "idle"}
+        )
+        resolved = websocket.receive_json()
+        assert resolved == {
+            "type": "approval_resolved",
+            "approval_id": approval["approval_id"],
+            "approved": True,
+            "reason": "user",
+        }
+        assert websocket.receive_json() == {
+            "type": "tool_event",
+            "phase": "running",
+            "tool": "install_package",
+            "arguments": {"manager": "pip", "package": "requests"},
+        }
+        assert websocket.receive_json() == {
+            "type": "tool_event",
+            "phase": "completed",
+            "tool": "install_package",
+            "arguments": {"manager": "pip", "package": "requests"},
+            "output": "Successfully installed requests",
+            "is_error": False,
+        }
+        assert websocket.receive_json() == {"type": "state", "state": "speaking"}
+        assert websocket.receive_json() == {"type": "reply_start"}
+        assert websocket.receive_json() == {
+            "type": "reply_delta",
+            "delta": "Instalación autorizada.",
+        }
+        assert websocket.receive_json() == {"type": "emotion", "emotion": "focused"}
+        assert websocket.receive_json() == {
+            "type": "reply",
+            "reply": "Instalación autorizada.",
+            "tools_used": [],
+        }
+        assert websocket.receive_json() == {"type": "state", "state": "idle"}
+
+
+def test_ready_rejects_incomplete_connector_configuration(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "n8n_webhook_url", "")
+    monkeypatch.setattr(gateway_module.settings, "n8n_webhook_token", "short")
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/ready")
+        assert response.status_code == 503
+        missing = response.json()["detail"]["missing_or_invalid"]
+        assert "n8n_webhook_url" in missing
+        assert "n8n_webhook_token" in missing

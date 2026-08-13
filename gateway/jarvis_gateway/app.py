@@ -7,6 +7,7 @@ captura de entrada; el núcleo sigue siendo la única fuente de inteligencia y e
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -31,6 +32,7 @@ from jarvis_core.config import Settings
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
+from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.voice import LocalVoiceError
 from pydantic import BaseModel, Field
 
@@ -59,6 +61,15 @@ def _valid_api_key(candidate: str | None) -> bool:
     )
 
 
+def _valid_connector_key(candidate: str | None) -> bool:
+    return bool(
+        settings.connectors_enabled
+        and len(settings.n8n_webhook_token) >= 32
+        and candidate
+        and hmac.compare_digest(candidate, settings.n8n_webhook_token)
+    )
+
+
 def _approval_summary(name: str, arguments: dict[str, object]) -> str:
     if name == "install_package":
         return f"Instalar el paquete {arguments.get('package')} con {arguments.get('manager')}."
@@ -70,6 +81,8 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
         )
     if name == "run_python_file":
         return f"Ejecutar el script Python {arguments.get('path')}."
+    if name == "run_connector_action":
+        return f"Ejecutar la acción externa {arguments.get('action')} mediante n8n."
     return f"Ejecutar la herramienta sensible {name}."
 
 
@@ -94,6 +107,7 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "repeat_seconds",
         "task_id",
         "emotion",
+        "action",
     }
     public = {key: value for key, value in arguments.items() if key in visible_keys}
     if isinstance(public.get("url"), str):
@@ -104,7 +118,48 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
     if "content" in arguments:
         content = str(arguments["content"])
         public["content_bytes"] = len(content.encode("utf-8"))
+    if "payload" in arguments:
+        try:
+            payload = json.dumps(arguments["payload"], ensure_ascii=False)
+        except (TypeError, ValueError):
+            payload = ""
+        public["payload_bytes"] = len(payload.encode("utf-8"))
+        public["payload_preview"] = _redact_connector_payload(arguments["payload"])
     return public
+
+
+def _redact_connector_payload(value: object, depth: int = 0) -> object:
+    """Ofrece contexto de aprobación y oculta campos típicos de credenciales."""
+    if depth > 4:
+        return "[límite de profundidad]"
+    if isinstance(value, dict):
+        redacted: dict[str, object] = {}
+        for index, (key, item) in enumerate(value.items()):
+            if index >= 20:
+                redacted["…"] = "[campos adicionales omitidos]"
+                break
+            normalized = str(key).lower().replace("-", "_")
+            if any(
+                secret in normalized
+                for secret in (
+                    "token",
+                    "password",
+                    "secret",
+                    "api_key",
+                    "authorization",
+                )
+            ):
+                redacted[str(key)] = "[oculto]"
+            else:
+                redacted[str(key)] = _redact_connector_payload(item, depth + 1)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_connector_payload(item, depth + 1) for item in value[:20]]
+    if isinstance(value, str):
+        return value[:500] + ("…" if len(value) > 500 else "")
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    return str(value)[:500]
 
 
 def _workspace_presentation(
@@ -159,6 +214,18 @@ async def require_api_key(
     """Autentica clientes REST sin registrar ni devolver el secreto."""
     if not _valid_api_key(x_jarvis_key):
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+
+
+async def require_connector_key(
+    x_connector_key: str | None = Header(
+        default=None, alias="X-Jarvis-Connector-Token"
+    ),
+) -> None:
+    """Autentica n8n sin concederle la clave maestra del gateway."""
+    if not _valid_connector_key(x_connector_key):
+        raise HTTPException(
+            status_code=401, detail="Credenciales de conector inválidas."
+        )
 
 
 async def _on_task_fire(task: Task) -> None:
@@ -228,6 +295,19 @@ class SpeechRequest(BaseModel):
     text: str = Field(min_length=1, max_length=settings.voice_max_text_chars)
 
 
+class ConnectorChatRequest(BaseModel):
+    connector: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9_-]+$")
+    external_user: str = Field(min_length=1, max_length=256)
+    message: str = Field(min_length=1, max_length=settings.gateway_max_message_chars)
+
+
+class ConnectorEventRequest(BaseModel):
+    connector: str = Field(min_length=1, max_length=32, pattern=r"^[a-z0-9_-]+$")
+    event: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_.:-]+$")
+    text: str = Field(min_length=1, max_length=settings.gateway_max_message_chars)
+    title: str = Field(default="", max_length=120)
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {
@@ -236,6 +316,7 @@ async def health() -> dict[str, str]:
         "provider": settings.llm_provider,
         "scheduler": "on" if settings.scheduler_enabled else "off",
         "voice": "on" if settings.voice_enabled else "off",
+        "connectors": "on" if settings.connectors_enabled else "off",
     }
 
 
@@ -254,6 +335,16 @@ async def ready() -> dict[str, str]:
             errors.append("openai_model")
     else:
         errors.append("llm_provider")
+    if settings.connectors_enabled:
+        if not settings.n8n_webhook_url:
+            errors.append("n8n_webhook_url")
+        else:
+            try:
+                validate_connector_url(settings.n8n_webhook_url)
+            except ValueError:
+                errors.append("n8n_webhook_url")
+        if len(settings.n8n_webhook_token) < 32:
+            errors.append("n8n_webhook_token")
 
     if errors:
         raise HTTPException(
@@ -275,6 +366,48 @@ async def chat(req: ChatRequest) -> ChatResponse:
         tools_used=reply.tools_used,
         session_id=req.session_id,
     )
+
+
+@app.post(
+    "/connectors/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_connector_key)],
+)
+async def connector_chat(req: ConnectorChatRequest) -> ChatResponse:
+    """Procesa una conversación externa sin exponer su identificador como sesión."""
+    identity = f"{req.connector}:{req.external_user}".encode()
+    identity_hash = hashlib.sha256(identity).hexdigest()
+    if (
+        not settings.connector_chat_enabled
+        or identity_hash not in settings.connector_allowed_user_hashes
+    ):
+        raise HTTPException(status_code=403, detail="Usuario externo no autorizado.")
+    session_id = f"connector-{identity_hash[:24]}"
+    try:
+        orchestrator = await sessions.get(session_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    reply = await orchestrator.send(
+        f"[Mensaje recibido mediante {req.connector}]\n{req.message}"
+    )
+    return ChatResponse(
+        reply=reply.text,
+        tools_used=reply.tools_used,
+        session_id=session_id,
+    )
+
+
+@app.post("/connectors/events", dependencies=[Depends(require_connector_key)])
+async def connector_event(req: ConnectorEventRequest) -> dict[str, str]:
+    """Difunde al HUD un evento validado que llega desde n8n."""
+    await notifier.broadcast(
+        req.text,
+        source=f"connector:{req.connector}",
+        connector=req.connector,
+        event=req.event,
+        title=req.title,
+    )
+    return {"status": "accepted"}
 
 
 @app.get("/voice/status", dependencies=[Depends(require_api_key)])

@@ -9,6 +9,12 @@ from jarvis_core.llm.base import LLMResponse, ToolCall
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import Tool, ToolRegistry, ToolResult
+from jarvis_core.tools.builtin.connectors import (
+    ListConnectorsTool,
+    QueryConnectorTool,
+    RunConnectorActionTool,
+    validate_connector_url,
+)
 from jarvis_core.tools.builtin.filesystem import (
     CreateDirectoryTool,
     CreateFileTool,
@@ -49,6 +55,40 @@ async def test_show_in_workspace_validates_presentation():
     assert "Diagnóstico" in result.content
     assert (await tool.run(title="", content="dato")).is_error
     assert (await tool.run(title="Dato", content="x", format="html")).is_error
+
+
+class FakeConnectorClient:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def invoke(self, action, payload):
+        self.calls.append((action, payload))
+        return ToolResult(content="conector listo")
+
+
+async def test_connector_tools_enforce_declared_actions_and_confirmation():
+    client = FakeConnectorClient()
+    query = QueryConnectorTool(client, ["gmail.search"])
+    write = RunConnectorActionTool(client, ["gmail.send"])
+    listing = await ListConnectorsTool(["gmail.search"], ["gmail.send"]).run()
+
+    assert "gmail.search" in listing.content
+    assert not (
+        await query.run(action="gmail.search", payload={"q": "JARVIS"})
+    ).is_error
+    assert (await query.run(action="gmail.send", payload={})).is_error
+    assert write.requires_confirmation
+    assert client.calls == [("gmail.search", {"q": "JARVIS"})]
+
+
+def test_connector_url_is_admin_configured_but_sanitized():
+    assert validate_connector_url("http://192.168.68.100:5678/webhook/jarvis") == (
+        "http://192.168.68.100:5678/webhook/jarvis"
+    )
+    with pytest.raises(ValueError, match="credenciales"):
+        validate_connector_url("https://user:secret@example.com/hook")
+    with pytest.raises(ValueError, match="query"):
+        validate_connector_url("https://example.com/hook?token=secret")
 
 
 async def test_shell_allowlist_blocks_unknown_command():
@@ -328,6 +368,11 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
                 python_execution_enabled=True,
                 internet_access_enabled=True,
                 hud_workspace_enabled=True,
+                connectors_enabled=True,
+                n8n_webhook_url="https://n8n.example.com/webhook/jarvis",
+                n8n_webhook_token="test-connector-token",
+                n8n_read_actions=["gmail.search"],
+                n8n_write_actions=["gmail.send"],
             ),
             memory,
         )
@@ -342,6 +387,9 @@ async def test_registry_enables_agent_tools_from_settings(tmp_path):
             "search_web",
             "fetch_web_page",
             "show_in_workspace",
+            "list_connectors",
+            "query_connector",
+            "run_connector_action",
         }.issubset(registry.names())
     finally:
         memory.close()

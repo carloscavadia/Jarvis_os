@@ -127,6 +127,16 @@ class Settings:
     web_max_download_bytes: int = 1024 * 1024
     brave_search_api_key: str = ""
     hud_workspace_enabled: bool = False
+    connectors_enabled: bool = False
+    connector_chat_enabled: bool = False
+    connector_allowed_user_hashes: list[str] = field(default_factory=list)
+    n8n_webhook_url: str = ""
+    n8n_webhook_token: str = ""
+    n8n_read_actions: list[str] = field(default_factory=list)
+    n8n_write_actions: list[str] = field(default_factory=list)
+    connector_timeout_seconds: float = 20.0
+    connector_max_payload_bytes: int = 64 * 1024
+    connector_max_response_bytes: int = 256 * 1024
     approval_timeout_seconds: float = 120.0
 
     @classmethod
@@ -230,6 +240,38 @@ class Settings:
             ),
             brave_search_api_key=os.environ.get("JARVIS_BRAVE_SEARCH_API_KEY", ""),
             hud_workspace_enabled=_get_bool("JARVIS_HUD_WORKSPACE_ENABLED", False),
+            connectors_enabled=_get_bool("JARVIS_CONNECTORS_ENABLED", False),
+            connector_chat_enabled=_get_bool("JARVIS_CONNECTOR_CHAT_ENABLED", False),
+            connector_allowed_user_hashes=_get_list(
+                "JARVIS_CONNECTOR_ALLOWED_USER_HASHES", []
+            ),
+            n8n_webhook_url=os.environ.get("JARVIS_N8N_WEBHOOK_URL", ""),
+            n8n_webhook_token=os.environ.get("JARVIS_N8N_WEBHOOK_TOKEN", ""),
+            n8n_read_actions=_get_list("JARVIS_N8N_READ_ACTIONS", []),
+            n8n_write_actions=_get_list("JARVIS_N8N_WRITE_ACTIONS", []),
+            connector_timeout_seconds=max(
+                3.0,
+                min(
+                    120.0,
+                    float(os.environ.get("JARVIS_CONNECTOR_TIMEOUT_SECONDS", "20")),
+                ),
+            ),
+            connector_max_payload_bytes=max(
+                1024,
+                min(
+                    1024 * 1024,
+                    int(os.environ.get("JARVIS_CONNECTOR_MAX_PAYLOAD_BYTES", "65536")),
+                ),
+            ),
+            connector_max_response_bytes=max(
+                1024,
+                min(
+                    2 * 1024 * 1024,
+                    int(
+                        os.environ.get("JARVIS_CONNECTOR_MAX_RESPONSE_BYTES", "262144")
+                    ),
+                ),
+            ),
             approval_timeout_seconds=max(
                 15.0,
                 float(os.environ.get("JARVIS_APPROVAL_TIMEOUT_SECONDS", "120")),
@@ -291,6 +333,14 @@ class Settings:
                 "Úsala cuando el usuario pida mostrar código, datos, tablas o resultados en el "
                 "espacio de trabajo, y también por iniciativa propia cuando mejore claramente "
                 "la comprensión. No la uses para respuestas conversacionales breves."
+            )
+        if self.connectors_enabled and self.n8n_webhook_url:
+            base += (
+                "\n\nDispones de conectores externos mediante n8n. Usa list_connectors "
+                "para descubrir las acciones exactas. Usa query_connector solo para lecturas "
+                "y run_connector_action para cambios como enviar correos, mensajes o crear "
+                "eventos; el sistema solicitará aprobación humana para esos cambios. Nunca "
+                "inventes que una acción se completó si el conector devolvió un error."
             )
         if self.persona_extra:
             base += f"\n\nReglas adicionales de la casa:\n{self.persona_extra}"

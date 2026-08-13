@@ -326,10 +326,12 @@
     run_python_file: "EJECUTAR PYTHON", system_info: "CONSULTAR SISTEMA",
     search_web: "BUSCAR EN INTERNET", fetch_web_page: "LEER FUENTE WEB",
     show_in_workspace: "PRESENTAR EN WORKSPACE",
+    list_connectors: "LISTAR CONECTORES", query_connector: "CONSULTAR CONECTOR",
+    run_connector_action: "EJECUTAR EN CONECTOR",
   };
   function safeToolMeta(args = {}) {
     const visible = {};
-    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes", "query", "count", "url", "format", "language", "keep_open"]) {
+    for (const key of ["path", "mode", "manager", "package", "arguments", "content_bytes", "payload_bytes", "payload_preview", "query", "count", "url", "action", "format", "language", "keep_open"]) {
       if (args[key] !== undefined) visible[key] = args[key];
     }
     return Object.keys(visible).length ? JSON.stringify(visible) : "sin parámetros visibles";

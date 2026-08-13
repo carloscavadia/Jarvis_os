@@ -87,6 +87,11 @@ redactan en el idioma configurado, manteniendo nombres propios y URLs originales
 presentar contenido separado del chat. El HUD mantiene esas presentaciones abiertas hasta
 que el usuario las cierre.
 
+Los conectores de Gmail, Outlook, WhatsApp y otros sistemas se integran mediante n8n. Las
+credenciales permanecen en n8n, las consultas se limitan a una lista declarada y toda acción
+de escritura pide aprobación en el HUD. Consulta [`docs/connectors.md`](../docs/connectors.md)
+para crear el webhook y habilitar las variables `JARVIS_N8N_*`.
+
 Prueba desde otro equipo de la red:
 
 ```bash
