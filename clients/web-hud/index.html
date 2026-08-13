@@ -301,7 +301,9 @@
   let col = { ...EMOTIONS.neutral };            // color interpolado
   let curTurb = STATES.idle.turb, curSpin = STATES.idle.spin,
       curExpand = 0, curChaos = STATES.idle.chaos;
-  let amp = 0, speakClock = 0;                   // amplitud de "voz" al hablar
+  let amp = 0, speakClock = 0;                   // amplitud visual suavizada
+  let voiceEnergy = 0, voiceActive = false;      // energía medida del audio real
+  let voiceAnalyser = null, voiceWaveform = null;
   const pulses = [];                            // flares de ejecución
 
   function setState(next) {
@@ -315,6 +317,19 @@
     rEmotion.textContent = EMO_LABEL[next];
   }
   function firePulse() { pulses.push({ r: 0, life: 1 }); }
+
+  function measuredVoiceEnergy() {
+    if (!voiceAnalyser || !voiceWaveform || !voiceActive) return null;
+    voiceAnalyser.getByteTimeDomainData(voiceWaveform);
+    let sum = 0;
+    for (let i = 0; i < voiceWaveform.length; i++) {
+      const sample = (voiceWaveform[i] - 128) / 128;
+      sum += sample * sample;
+    }
+    const rms = Math.sqrt(sum / voiceWaveform.length);
+    // Puerta de ruido y curva perceptual: conserva respiraciones sin exagerar picos.
+    return Math.min(1, Math.max(0, (rms - 0.012) * 7.2));
+  }
 
   let currentToolCard = null;
   let currentToolKey = "";
@@ -577,10 +592,20 @@
     curChaos = lerp(curChaos, S.chaos, 0.05);
     refreshDot();
 
-    if (stateName === "speaking") {
+    const measured = measuredVoiceEnergy();
+    if (measured !== null) {
+      voiceEnergy = lerp(voiceEnergy, measured, measured > voiceEnergy ? 0.48 : 0.16);
+      amp = lerp(amp, voiceEnergy, voiceEnergy > amp ? 0.54 : 0.14);
+    } else if (voiceActive) {
+      // El sintetizador nativo del navegador no expone su señal: usa pulsos de palabra.
       speakClock += 0.42;
-      amp = lerp(amp, 0.5 + 0.5 * Math.abs(Math.sin(speakClock) * Math.sin(speakClock * 0.37 + 1)), 0.3);
-    } else amp = lerp(amp, 0, 0.08);
+      const fallback = Math.max(voiceEnergy, 0.24 + 0.22 * Math.abs(Math.sin(speakClock)));
+      voiceEnergy = lerp(voiceEnergy, 0, 0.12);
+      amp = lerp(amp, fallback, 0.28);
+    } else {
+      voiceEnergy = lerp(voiceEnergy, 0, 0.18);
+      amp = lerp(amp, 0, 0.10);
+    }
 
     rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
 
@@ -885,6 +910,26 @@
   let speechQueueRunning = false;
   let streamSpeechBuffer = "";
   let streamSpeechSource = "";
+  let audioContext = null;
+
+  function connectVoiceVisualizer(audio) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      if (!audioContext) audioContext = new AudioContextClass();
+      const source = audioContext.createMediaElementSource(audio);
+      voiceAnalyser = audioContext.createAnalyser();
+      voiceAnalyser.fftSize = reduceMotion ? 256 : 512;
+      voiceAnalyser.smoothingTimeConstant = 0.58;
+      voiceWaveform = new Uint8Array(voiceAnalyser.fftSize);
+      source.connect(voiceAnalyser);
+      voiceAnalyser.connect(audioContext.destination);
+      audioContext.resume().catch(() => {});
+    } catch {
+      voiceAnalyser = null;
+      voiceWaveform = null;
+    }
+  }
 
   function gatewayHttpBase() {
     try {
@@ -949,9 +994,10 @@
       utterance.pitch = 0.82;
       const voice = selectSpanishVoice();
       if (voice) utterance.voice = voice;
-      utterance.onstart = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
-      utterance.onend = () => { rVoice.textContent = "LISTA"; resolve(); };
-      utterance.onerror = () => { rVoice.textContent = "ERROR"; resolve(); };
+      utterance.onstart = () => { voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
+      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; resolve(); };
+      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; resolve(); };
       speechSynthesis.speak(utterance);
     });
   }
@@ -963,6 +1009,9 @@
     streamSpeechSource = "";
     if (canSpeak) speechSynthesis.cancel();
     if (stopCurrentAudio) stopCurrentAudio();
+    voiceActive = false;
+    voiceAnalyser = null;
+    voiceWaveform = null;
   }
 
   async function requestSpeechAudio(text, session) {
@@ -993,11 +1042,15 @@
         URL.revokeObjectURL(audioUrl);
         currentAudio = null;
         stopCurrentAudio = null;
+        voiceActive = false;
+        voiceAnalyser = null;
+        voiceWaveform = null;
         if (error) reject(error); else resolve();
       };
       currentAudio = new Audio(audioUrl);
+      connectVoiceVisualizer(currentAudio);
       stopCurrentAudio = () => { currentAudio?.pause(); finish(); };
-      currentAudio.onplay = () => { rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      currentAudio.onplay = () => { voiceActive = true; rVoice.textContent = "HABLANDO"; setState("speaking"); };
       currentAudio.onended = () => finish();
       currentAudio.onerror = () => finish(new Error("audio"));
       currentAudio.play().catch((error) => finish(error));

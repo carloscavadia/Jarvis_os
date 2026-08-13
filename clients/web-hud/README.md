@@ -44,6 +44,8 @@ a los 15 segundos). Si el gateway tiene voz local activa, Whisper transcribe la 
 y Kokoro reproduce la respuesta con `em_alex`. El botón **◖** activa o silencia la salida
 de voz. Durante el streaming, el HUD envía cada frase terminada a Kokoro de forma
 anticipada y reproduce la cola en orden, reduciendo la espera entre texto y audio.
+Mientras se reproduce Kokoro, Web Audio mide la amplitud real de la voz y sincroniza con
+ella el núcleo, el halo, la expansión y la turbulencia de las partículas.
 
 Si el servicio local no está disponible, el HUD usa el reconocimiento y la síntesis del
 navegador. Chrome ofrece la mejor compatibilidad para ese fallback. El HUD debe servirse
