@@ -82,11 +82,11 @@ class ConnectorRuntime:
         except urllib.error.HTTPError as exc:
             # El cuerpo del error suele decir exactamente qué falta; descartarlo
             # dejaba al agente adivinando a ciegas ante un 400.
-            detail = ""
             try:
-                detail = exc.read(512).decode("utf-8", errors="replace").strip()
-            except Exception:
-                pass
+                detail = exc.read(512).decode("utf-8", errors="replace")
+            except OSError:
+                # Sin cuerpo legible seguimos informando el código, que ya orienta.
+                detail = ""
             detail = " ".join(detail.split())[:300]
             return ToolResult(
                 f"El conector respondió HTTP {exc.code}."
