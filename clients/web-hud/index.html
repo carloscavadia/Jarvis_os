@@ -728,9 +728,10 @@
   let pendingApproval = null;
   function setBusy(next) {
     busy = next;
+    if (next) stopWakeListening();
     messageInput.disabled = next;
     messageInput.placeholder = next ? "JARVIS está respondiendo…" : "Habla con JARVIS…";
-    if (!next) messageInput.focus();
+    if (!next) { messageInput.focus(); scheduleWakeListening(); }
   }
   function sendApprovalDecision(approved) {
     if (!pendingApproval || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -903,6 +904,12 @@
   let recorderStream = null;
   let recorderChunks = [];
   let recorderTimer = null;
+  let recorderVadFrame = null;
+  let recorderAudioContext = null;
+  let handsFreeEnabled = false;
+  let wakeListening = false;
+  let wakeRestartTimer = null;
+  let wakeRecognition = null;
   let currentAudio = null;
   let stopCurrentAudio = null;
   let speechSession = 0;
@@ -994,10 +1001,10 @@
       utterance.pitch = 0.82;
       const voice = selectSpanishVoice();
       if (voice) utterance.voice = voice;
-      utterance.onstart = () => { voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      utterance.onstart = () => { stopWakeListening(); voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
       utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
-      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; resolve(); };
-      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; resolve(); };
+      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; scheduleWakeListening(); resolve(); };
+      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; scheduleWakeListening(); resolve(); };
       speechSynthesis.speak(utterance);
     });
   }
@@ -1050,7 +1057,7 @@
       currentAudio = new Audio(audioUrl);
       connectVoiceVisualizer(currentAudio);
       stopCurrentAudio = () => { currentAudio?.pause(); finish(); };
-      currentAudio.onplay = () => { voiceActive = true; rVoice.textContent = "HABLANDO"; setState("speaking"); };
+      currentAudio.onplay = () => { stopWakeListening(); voiceActive = true; rVoice.textContent = "HABLANDO"; setState("speaking"); };
       currentAudio.onended = () => finish();
       currentAudio.onerror = () => finish(new Error("audio"));
       currentAudio.play().catch((error) => finish(error));
@@ -1074,6 +1081,7 @@
     speechQueueRunning = false;
     if (voiceEnabled) rVoice.textContent = serverVoiceAvailable ? "LOCAL" : "NAVEGADOR";
     setState("idle");
+    scheduleWakeListening();
   }
 
   function enqueueSpeech(text) {
@@ -1164,7 +1172,9 @@
   function setMicActive(active, status) {
     micButton.classList.toggle("active", active);
     micButton.setAttribute("aria-pressed", String(active));
-    messageInput.placeholder = active ? "Escuchando… pulsa otra vez para enviar" : "Habla con JARVIS…";
+    messageInput.placeholder = active
+      ? (wakeListening ? "Di «Hey Jarvis»…" : "Escuchando tu pregunta…")
+      : "Habla con JARVIS…";
     if (status) rVoice.textContent = status;
     if (active) setState("listening");
   }
@@ -1196,10 +1206,133 @@
       setBusy(false);
       rVoice.textContent = "ERROR";
       addLine("SISTEMA", "No pude transcribir el audio: " + error.message, "system");
+      scheduleWakeListening();
     }
   }
 
-  async function startServerRecording() {
+  function normalizeWakeText(text) {
+    return text.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function wakeCommand(text) {
+    const match = normalizeWakeText(text).match(/(?:^|\s)(?:hey|oye|ei)\s+jarvis\b[\s,.:;!?-]*(.*)$/i);
+    return match ? match[1].trim() : null;
+  }
+
+  function stopWakeListening() {
+    clearTimeout(wakeRestartTimer); wakeRestartTimer = null;
+    wakeListening = false;
+    if (wakeRecognition) {
+      wakeRecognition.onend = null;
+      wakeRecognition.onerror = null;
+      try { wakeRecognition.abort(); } catch {}
+    }
+    wakeRecognition = null;
+  }
+
+  function scheduleWakeListening(delay = 450) {
+    clearTimeout(wakeRestartTimer);
+    if (!handsFreeEnabled || busy || voiceActive || speechQueueRunning || recorder?.state === "recording") return;
+    wakeRestartTimer = setTimeout(startWakeListening, delay);
+  }
+
+  function startWakeListening() {
+    if (!handsFreeEnabled || !SpeechRecognition || busy || voiceActive || wakeListening) return;
+    wakeRecognition = new SpeechRecognition();
+    wakeRecognition.lang = "es-MX";
+    wakeRecognition.interimResults = true;
+    wakeRecognition.continuous = true;
+    wakeRecognition.onstart = () => {
+      wakeListening = true;
+      setMicActive(true, "HEY JARVIS");
+      setState("idle");
+    };
+    wakeRecognition.onresult = (event) => {
+      let heard = "";
+      let finalResult = false;
+      for (let i = Math.max(0, event.resultIndex - 1); i < event.results.length; i++) {
+        heard += " " + event.results[i][0].transcript;
+        finalResult ||= event.results[i].isFinal;
+      }
+      const command = wakeCommand(heard);
+      if (command === null) return;
+      // La palabra sola activa de inmediato; una pregunta inline espera texto final.
+      if (command && !finalResult) return;
+      firePulse();
+      stopWakeListening();
+      if (command) {
+        messageInput.value = command;
+        setMicActive(false, "ACTIVADO");
+        document.getElementById("form").requestSubmit();
+      } else if (serverVoiceAvailable && canRecord) {
+        startServerRecording({ automatic: true });
+      } else {
+        recognition?.start();
+      }
+    };
+    wakeRecognition.onend = () => {
+      wakeListening = false;
+      wakeRecognition = null;
+      scheduleWakeListening(350);
+    };
+    wakeRecognition.onerror = (event) => {
+      wakeListening = false;
+      wakeRecognition = null;
+      if (!["no-speech", "aborted"].includes(event.error)) {
+        rVoice.textContent = "ERROR DE MICRÓFONO";
+      }
+      scheduleWakeListening(event.error === "not-allowed" ? 10000 : 800);
+    };
+    try { wakeRecognition.start(); } catch { scheduleWakeListening(1000); }
+  }
+
+  function stopRecorderVad() {
+    if (recorderVadFrame) cancelAnimationFrame(recorderVadFrame);
+    recorderVadFrame = null;
+    recorderAudioContext?.close().catch(() => {});
+    recorderAudioContext = null;
+  }
+
+  function monitorQuestionSilence(stream) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    recorderAudioContext = new AudioContextClass();
+    const source = recorderAudioContext.createMediaStreamSource(stream);
+    const analyser = recorderAudioContext.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.35;
+    source.connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    const startedAt = performance.now();
+    let speechStarted = false;
+    let lastVoiceAt = startedAt;
+    const detect = () => {
+      if (recorder?.state !== "recording") return;
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (const value of samples) {
+        const sample = (value - 128) / 128;
+        sum += sample * sample;
+      }
+      const rms = Math.sqrt(sum / samples.length);
+      const now = performance.now();
+      if (rms > 0.028) {
+        speechStarted = true;
+        lastVoiceAt = now;
+        rVoice.textContent = "ESCUCHANDO";
+      }
+      // Da tiempo a empezar y cierra la pregunta tras 1.25 s de silencio natural.
+      if ((speechStarted && now - lastVoiceAt > 1250) || (!speechStarted && now - startedAt > 6500)) {
+        recorder.stop();
+        return;
+      }
+      recorderVadFrame = requestAnimationFrame(detect);
+    };
+    recorderVadFrame = requestAnimationFrame(detect);
+  }
+
+  async function startServerRecording({ automatic = false } = {}) {
+    stopWakeListening();
     try {
       recorderStream = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -1210,17 +1343,20 @@
       recorder.ondataavailable = (event) => { if (event.data.size) recorderChunks.push(event.data); };
       recorder.onstop = () => {
         clearTimeout(recorderTimer); recorderTimer = null;
+        stopRecorderVad();
         recorderStream?.getTracks().forEach((track) => track.stop()); recorderStream = null;
         const blob = new Blob(recorderChunks, { type: recorder.mimeType || mimeType || "audio/webm" });
         recorder = null; recorderChunks = []; setMicActive(false, "TRANSCRIBIENDO");
         if (blob.size) sendRecordedAudio(blob);
       };
       recorder.start(250);
-      setMicActive(true, "GRABANDO");
-      recorderTimer = setTimeout(() => { if (recorder?.state === "recording") recorder.stop(); }, 15000);
+      setMicActive(true, automatic ? "ESCUCHANDO" : "GRABANDO");
+      if (automatic) monitorQuestionSilence(recorderStream);
+      recorderTimer = setTimeout(() => { if (recorder?.state === "recording") recorder.stop(); }, 20000);
     } catch (error) {
       setMicActive(false, "ERROR");
       addLine("SISTEMA", "No pude acceder al micrófono: " + error.message, "system");
+      scheduleWakeListening();
     }
   }
 
@@ -1254,10 +1390,20 @@
 
   micButton.addEventListener("click", () => {
     if (recorder?.state === "recording") { recorder.stop(); return; }
-    if (recognition && micButton.classList.contains("active")) { recognition.stop(); return; }
+    if (handsFreeEnabled) {
+      handsFreeEnabled = false;
+      stopWakeListening();
+      setMicActive(false, serverVoiceAvailable ? "LOCAL" : "NAVEGADOR");
+      micButton.title = "Activar escucha «Hey Jarvis»";
+      return;
+    }
     if (busy) return;
-    if (serverVoiceAvailable && canRecord) startServerRecording();
-    else if (recognition) recognition.start();
+    if (SpeechRecognition) {
+      handsFreeEnabled = true;
+      micButton.title = "Desactivar escucha «Hey Jarvis»";
+      startWakeListening();
+      addLine("SISTEMA", "Modo manos libres activo. Di «Hey Jarvis» y formula tu pregunta.", "system");
+    } else if (serverVoiceAvailable && canRecord) startServerRecording();
     else addLine("SISTEMA", "Este navegador no permite capturar voz.", "system");
   });
 

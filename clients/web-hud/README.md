@@ -39,10 +39,15 @@ que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). Ta
 
 ### Voz y micrófono
 
-El botón **●** graba audio; vuelve a pulsarlo para enviar (también se detiene automáticamente
-a los 15 segundos). Si el gateway tiene voz local activa, Whisper transcribe la grabación
-y Kokoro reproduce la respuesta con `em_alex`. El botón **◖** activa o silencia la salida
-de voz. Durante el streaming, el HUD envía cada frase terminada a Kokoro de forma
+El botón **●** activa el modo manos libres después de conceder permiso al micrófono. El HUD
+espera «Hey Jarvis»; puedes decir la pregunta en la misma frase o hacer una pausa y
+continuar. En ese segundo caso, la detección de actividad de voz cierra y envía la pregunta
+después de 1,25 segundos de silencio. El micrófono se suspende mientras JARVIS habla para
+evitar que se active con su propia voz. Pulsa **●** otra vez para apagar el modo manos libres.
+
+Si el gateway tiene voz local activa, Whisper transcribe la grabación y Kokoro reproduce la
+respuesta con `em_alex`. El botón **◖** activa o silencia la salida de voz. Durante el
+streaming, el HUD envía cada frase terminada a Kokoro de forma
 anticipada y reproduce la cola en orden, reduciendo la espera entre texto y audio.
 Mientras se reproduce Kokoro, Web Audio mide la amplitud real de la voz y sincroniza con
 ella el núcleo, el halo, la expansión y la turbulencia de las partículas.
