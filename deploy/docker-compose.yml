@@ -41,6 +41,15 @@ services:
       JARVIS_TTS_VOICE: "${JARVIS_TTS_VOICE:-em_alex}"
       JARVIS_TTS_LANG_CODE: "${JARVIS_TTS_LANG_CODE:-e}"
       JARVIS_TTS_SPEED: "${JARVIS_TTS_SPEED:-1.0}"
+      # Palabra de activación local. El modelo viene en la imagen; no descarga nada.
+      JARVIS_WAKEWORD_ENABLED: "${JARVIS_WAKEWORD_ENABLED:-true}"
+      JARVIS_WAKEWORD_THRESHOLD: "${JARVIS_WAKEWORD_THRESHOLD:-0.5}"
+      JARVIS_WAKEWORD_VAD_THRESHOLD: "${JARVIS_WAKEWORD_VAD_THRESHOLD:-0}"
+      JARVIS_WAKEWORD_MAX_STREAMS: "${JARVIS_WAKEWORD_MAX_STREAMS:-8}"
+      # Conversación Realtime: desactivada mientras no se valide contra la API real.
+      JARVIS_REALTIME_CONVERSATION_ENABLED: "${JARVIS_REALTIME_CONVERSATION_ENABLED:-false}"
+      JARVIS_REALTIME_IDLE_SECONDS: "${JARVIS_REALTIME_IDLE_SECONDS:-90}"
+      JARVIS_REALTIME_MAX_SESSIONS: "${JARVIS_REALTIME_MAX_SESSIONS:-2}"
       XDG_CACHE_HOME: /app/data/cache
       HF_HOME: /app/data/huggingface
       JARVIS_GATEWAY_CORS_ORIGINS: "${JARVIS_GATEWAY_CORS_ORIGINS:-http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:5173,http://localhost:5173}"
