@@ -48,6 +48,7 @@ class RealtimeConversation:
         on_audio: AudioSink,
         on_event: EventSink,
         confirm: Confirmer | None = None,
+        on_usage: Callable[[dict[str, int]], Awaitable[None]] | None = None,
         client: Any = None,
     ) -> None:
         self.settings = settings
@@ -55,6 +56,7 @@ class RealtimeConversation:
         self._on_audio = on_audio
         self._on_event = on_event
         self._confirm = confirm
+        self._on_usage = on_usage
         self._client = client
         self._connection: Any = None
         self._manager: Any = None
@@ -201,6 +203,11 @@ class RealtimeConversation:
         elif kind == "response.done":
             self._record_usage(event)
             await self._on_event({"type": "state", "state": "idle"})
+            # Cada respuesta es el único punto donde el gasto se conoce de verdad.
+            # Comprobarlo solo al abrir la sesión dejaría que una conversación
+            # larga se saltara el techo entera.
+            if self._on_usage is not None:
+                await self._on_usage(dict(self.usage))
         elif kind == "error":
             message = getattr(getattr(event, "error", None), "message", "desconocido")
             logger.error("Error de Realtime: %s", message)

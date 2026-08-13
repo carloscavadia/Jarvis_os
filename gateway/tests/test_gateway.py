@@ -672,12 +672,15 @@ class FakeConversation:
 
     instances: ClassVar[list["FakeConversation"]] = []
 
-    def __init__(self, settings, registry, *, on_audio, on_event, confirm=None):
+    def __init__(
+        self, settings, registry, *, on_audio, on_event, confirm=None, on_usage=None
+    ):
         self.settings = settings
         self.registry = registry
         self.on_audio = on_audio
         self.on_event = on_event
         self.confirm = confirm
+        self.on_usage = on_usage
         self.audio: list[bytes] = []
         self.cancels = 0
         self.closed = False
@@ -816,3 +819,49 @@ def test_realtime_voice_relays_cancel_and_ignores_junk(monkeypatch):
 
     conversation = FakeConversation.instances[-1]
     assert conversation.cancels == 1
+
+
+class BudgetConversation(FakeConversation):
+    """Reporta un consumo enorme en la primera respuesta de la conversación."""
+
+    async def pump(self):
+        await self.on_event({"type": "state", "state": "speaking"})
+        if self.on_usage is not None:
+            await self.on_usage(
+                {"output_tokens": 5_000_000, "output_audio_tokens": 5_000_000}
+            )
+        await asyncio.Event().wait()
+
+
+def test_realtime_voice_stops_when_the_daily_budget_is_spent(monkeypatch):
+    _enable_realtime(monkeypatch)
+    monkeypatch.setattr(gateway_module, "RealtimeConversation", BudgetConversation)
+    monkeypatch.setattr(gateway_module.settings, "realtime_daily_budget_usd", 0.05)
+    monkeypatch.setattr(gateway_module.realtime_voice, "spend_today", lambda: 0.0)
+    monkeypatch.setattr(gateway_module.realtime_voice, "record_usage", lambda usage: None)
+
+    with (
+        TestClient(gateway_module.app) as client,
+        client.websocket_connect("/ws/voice/hud?token=ci-test-key") as socket,
+    ):
+        socket.receive_json()  # voice_ready
+        assert socket.receive_json() == {"type": "state", "state": "speaking"}
+        # El bucle corta en cuanto llega el siguiente fragmento de audio.
+        socket.send_bytes(b"audio")
+        with pytest.raises(WebSocketDisconnect):
+            while True:
+                message = socket.receive_json()
+                # El gasto nunca se comunica al cliente.
+                assert "usd" not in json.dumps(message).lower()
+
+    assert FakeConversation.instances[-1].closed
+
+
+def test_voice_status_never_reports_spending(monkeypatch):
+    monkeypatch.setattr(gateway_module, "voice_runtime", FakeVoiceRuntime())
+    with TestClient(gateway_module.app) as client:
+        status = client.get(
+            "/voice/status", headers={"X-Jarvis-Key": "ci-test-key"}
+        ).json()
+    assert "usd" not in json.dumps(status).lower()
+    assert "spend" not in json.dumps(status).lower()

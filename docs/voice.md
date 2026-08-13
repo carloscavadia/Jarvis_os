@@ -33,6 +33,21 @@ más que escuchándote**. De ahí salen las tres decisiones del diseño:
 
 Con uso doméstico normal (unos 40 turnos al día) sale en torno a **5 $/mes**.
 
+### Techo de gasto
+
+`JARVIS_REALTIME_DAILY_BUDGET_USD` (1 $ por defecto) corta el día cuando se alcanza.
+Se comprueba **después de cada respuesta**, no solo al abrir la sesión: contar
+sesiones no mide dinero, y una conversación larga se saltaría entera un límite que
+solo mirase al principio.
+
+Al alcanzarlo la conversación termina y JARVIS **sigue funcionando** con Whisper y
+Kokoro en local. El corte queda en el registro del gateway; no aparece en pantalla.
+
+Las tarifas viven en `.env` (`JARVIS_REALTIME_PRICE_*`) y no en el código, para que
+puedas actualizarlas cuando cambien sin tocar nada. El cálculo descuenta los tokens
+cacheados de los de entrada — OpenAI los informa **dentro**, y tarificarlos aparte
+multiplicaría la cuenta por más de treinta justo en las conversaciones largas.
+
 ## Conversación Realtime
 
 Con `JARVIS_REALTIME_CONVERSATION_ENABLED=true`, tras «Hey JARVIS» el dispositivo

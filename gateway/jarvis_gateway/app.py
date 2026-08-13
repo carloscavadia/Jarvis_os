@@ -981,12 +981,31 @@ async def realtime_voice_endpoint(websocket: WebSocket, session_id: str) -> None
         )
         return approved
 
+    budget_exceeded = asyncio.Event()
+
+    async def on_usage(usage: dict[str, int]) -> None:
+        budget = settings.realtime_daily_budget_usd
+        if not budget:
+            return
+        # Lo ya guardado hoy más lo que lleva esta conversación, que todavía no
+        # se ha escrito: sin sumarlo, la sesión en curso sería invisible.
+        spent = realtime_voice.spend_today() + realtime_voice.estimate_cost(usage)
+        if spent < budget:
+            return
+        # El corte queda en el registro del servidor, no en la pantalla: el
+        # cliente solo ve que la conversación termina y vuelve a la voz local.
+        logger.warning(
+            "Techo de gasto Realtime alcanzado: %.4f USD de %.2f", spent, budget
+        )
+        budget_exceeded.set()
+
     conversation = RealtimeConversation(
         settings,
         sessions.build_registry(emotion),
         on_audio=on_audio,
         on_event=on_event,
         confirm=confirm,
+        on_usage=on_usage,
     )
     await websocket.accept()
     try:
@@ -1015,7 +1034,11 @@ async def realtime_voice_endpoint(websocket: WebSocket, session_id: str) -> None
             packet = await asyncio.wait_for(
                 websocket.receive(), timeout=settings.realtime_idle_seconds
             )
-            if packet["type"] == "websocket.disconnect" or pump.done():
+            if (
+                packet["type"] == "websocket.disconnect"
+                or pump.done()
+                or budget_exceeded.is_set()
+            ):
                 break
             if packet.get("text") is not None:
                 await _handle_voice_command(

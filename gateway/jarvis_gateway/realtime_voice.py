@@ -121,9 +121,39 @@ class RealtimeVoiceBroker:
                 ),
             )
 
+    def estimate_cost(self, usage: dict[str, int]) -> float:
+        """Coste en USD de un consumo, con las tarifas configuradas.
+
+        OpenAI informa los tokens cacheados **dentro** de los de entrada, así que
+        hay que separarlos antes de tarificar: cobrarlos dos veces inflaría la
+        cuenta unas 30 veces en una conversación larga, que es justo cuando la
+        caché más pesa.
+        """
+        audio_in = max(0, usage.get("input_audio_tokens", 0))
+        cached = min(max(0, usage.get("cached_tokens", 0)), audio_in)
+        fresh_audio_in = audio_in - cached
+        audio_out = max(0, usage.get("output_audio_tokens", 0))
+        # Lo que no es audio dentro de entrada/salida se tarifa como texto.
+        text_in = max(0, usage.get("input_tokens", 0) - audio_in)
+        text_out = max(0, usage.get("output_tokens", 0) - audio_out)
+        million = 1_000_000
+        return (
+            fresh_audio_in * self.settings.realtime_price_audio_input
+            + cached * self.settings.realtime_price_audio_cached
+            + audio_out * self.settings.realtime_price_audio_output
+            + text_in * self.settings.realtime_price_text_input
+            + text_out * self.settings.realtime_price_text_output
+        ) / million
+
+    def spend_today(self) -> float:
+        return self.estimate_cost(self.usage_today())
+
     def budget_available(self) -> bool:
         limit = self.settings.openai_realtime_daily_sessions
-        return not limit or self.sessions_today() < limit
+        if limit and self.sessions_today() >= limit:
+            return False
+        budget = self.settings.realtime_daily_budget_usd
+        return not budget or self.spend_today() < budget
 
     def status(self) -> dict[str, object]:
         return {
@@ -139,7 +169,6 @@ class RealtimeVoiceBroker:
                 else "local_text_only"
             ),
             "conversation": self.settings.realtime_conversation_enabled and self.enabled,
-            "usage_today": self.usage_today(),
         }
 
     async def create_client_secret(self) -> dict[str, object]:

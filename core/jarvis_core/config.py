@@ -95,6 +95,18 @@ class Settings:
     realtime_idle_seconds: float = 90.0
     realtime_max_sessions: int = 2
 
+    # Techo de gasto diario en USD. Contar sesiones no mide dinero: una sesión
+    # larga cuesta muchas cortas. 0 desactiva el límite.
+    realtime_daily_budget_usd: float = 1.0
+    # Precios por millón de tokens de gpt-realtime-2.1-mini (USD). Son
+    # configurables a propósito: las tarifas cambian y un número escondido en el
+    # código se queda obsoleto sin que nadie se entere.
+    realtime_price_audio_input: float = 10.0
+    realtime_price_audio_cached: float = 0.30
+    realtime_price_audio_output: float = 20.0
+    realtime_price_text_input: float = 0.60
+    realtime_price_text_output: float = 2.40
+
     max_tokens: int = 16000
 
     # --- Personalidad ---
@@ -300,6 +312,24 @@ class Settings:
             ),
             realtime_max_sessions=max(
                 1, int(os.environ.get("JARVIS_REALTIME_MAX_SESSIONS", "2"))
+            ),
+            realtime_daily_budget_usd=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_DAILY_BUDGET_USD", "1.0"))
+            ),
+            realtime_price_audio_input=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_PRICE_AUDIO_IN", "10.0"))
+            ),
+            realtime_price_audio_cached=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_PRICE_AUDIO_CACHED", "0.30"))
+            ),
+            realtime_price_audio_output=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_PRICE_AUDIO_OUT", "20.0"))
+            ),
+            realtime_price_text_input=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_PRICE_TEXT_IN", "0.60"))
+            ),
+            realtime_price_text_output=max(
+                0.0, float(os.environ.get("JARVIS_REALTIME_PRICE_TEXT_OUT", "2.40"))
             ),
             max_tokens=int(os.environ.get("JARVIS_MAX_TOKENS", "16000")),
             persona_name=os.environ.get("JARVIS_PERSONA_NAME", "JARVIS"),
