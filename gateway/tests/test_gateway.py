@@ -4,6 +4,7 @@ import json
 
 from fastapi.testclient import TestClient
 from jarvis_core.agent.orchestrator import AgentReply
+from jarvis_core.connectors.events import ProactiveEventStore
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.tools.base import ToolResult
@@ -280,8 +281,11 @@ def test_goal_supervisor_recovers_and_controls_blocked_goal(monkeypatch, tmp_pat
         store.close()
 
 
-def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):
+def test_connector_ingress_uses_separate_auth_and_private_sessions(
+    monkeypatch, tmp_path
+):
     fake_notifier = FakeNotifier()
+    event_store = ProactiveEventStore(str(tmp_path / "events.db"))
     connector_token = "c" * 32
     monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
     monkeypatch.setattr(gateway_module.settings, "n8n_webhook_token", connector_token)
@@ -291,6 +295,7 @@ def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):
         gateway_module.settings, "connector_allowed_user_hashes", [identity_hash]
     )
     monkeypatch.setattr(gateway_module.sessions, "get", _fake_get)
+    monkeypatch.setattr(gateway_module.sessions, "proactive_events", event_store)
     monkeypatch.setattr(gateway_module, "notifier", fake_notifier)
 
     with TestClient(gateway_module.app) as client:
@@ -331,7 +336,7 @@ def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):
                 "text": "Llegó un correo importante.",
             },
         )
-        assert event.json() == {"status": "accepted"}
+        assert event.json() == {"status": "accepted", "event_id": 1}
         assert fake_notifier.events == [
             (
                 "Llegó un correo importante.",
@@ -340,9 +345,79 @@ def test_connector_ingress_uses_separate_auth_and_private_sessions(monkeypatch):
                     "connector": "gmail",
                     "event": "new_message",
                     "title": "Correo nuevo",
+                    "severity": "info",
+                    "policy": "notify",
+                    "status": "accepted",
+                    "event_id": 1,
+                    "action": "",
+                    "payload": {},
+                    "goal": None,
                 },
             )
         ]
+    event_store.close()
+
+
+def test_proactive_write_action_requires_and_respects_denial(monkeypatch, tmp_path):
+    connector_store = ConnectorStore(
+        str(tmp_path / "connectors.db"), "master-key-" * 4
+    )
+    connector_store.upsert(
+        "home",
+        "home_assistant",
+        {
+            "url": "http://home.local:8123",
+            "services": ["lights"],
+            "read_actions": ["homeassistant.state"],
+            "write_actions": ["homeassistant.service"],
+        },
+        {"token": "secret-token"},
+    )
+    event_store = ProactiveEventStore(str(tmp_path / "events.db"))
+    fake_notifier = FakeNotifier()
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    monkeypatch.setattr(gateway_module.settings, "n8n_webhook_token", "c" * 32)
+    monkeypatch.setattr(gateway_module.sessions, "connector_store", connector_store)
+    monkeypatch.setattr(gateway_module.sessions, "proactive_events", event_store)
+    monkeypatch.setattr(gateway_module, "notifier", fake_notifier)
+
+    with TestClient(gateway_module.app) as client:
+        incoming = client.post(
+            "/connectors/events",
+            headers={"X-Jarvis-Connector-Token": "c" * 32},
+            json={
+                "connector": "home",
+                "event": "presence.detected",
+                "title": "Llegada",
+                "text": "Se detectó presencia.",
+                "action": "homeassistant.service",
+                "payload": {
+                    "domain": "light",
+                    "service": "turn_on",
+                    "api_key": "no-exponer",
+                },
+            },
+        )
+        assert incoming.status_code == 200
+        assert incoming.json() == {"status": "pending_approval", "event_id": 1}
+
+        pending = client.get(
+            "/proactive/events", headers={"X-Jarvis-Key": "ci-test-key"}
+        ).json()[0]
+        assert pending["status"] == "pending_approval"
+        assert pending["payload"]["api_key"] == "[oculto]"
+
+        denied = client.post(
+            "/proactive/events/1/decision",
+            headers={"X-Jarvis-Key": "ci-test-key"},
+            json={"approved": False},
+        )
+        assert denied.status_code == 200
+        assert denied.json()["status"] == "denied"
+        assert event_store.get(1)["status"] == "denied"
+
+    event_store.close()
+    connector_store.close()
 
 
 def test_gateway_websocket_approval(monkeypatch):

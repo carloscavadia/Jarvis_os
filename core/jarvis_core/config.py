@@ -133,6 +133,7 @@ class Settings:
     hud_workspace_enabled: bool = False
     connectors_enabled: bool = False
     connector_db_path: str = "data/jarvis_connectors.db"
+    proactive_events_db_path: str = "data/jarvis_proactive_events.db"
     connector_master_key: str = ""
     connector_chat_enabled: bool = False
     connector_allowed_user_hashes: list[str] = field(default_factory=list)
@@ -252,6 +253,9 @@ class Settings:
             connectors_enabled=_get_bool("JARVIS_CONNECTORS_ENABLED", False),
             connector_db_path=os.environ.get(
                 "JARVIS_CONNECTOR_DB", "data/jarvis_connectors.db"
+            ),
+            proactive_events_db_path=os.environ.get(
+                "JARVIS_PROACTIVE_EVENTS_DB", "data/jarvis_proactive_events.db"
             ),
             connector_master_key=os.environ.get("JARVIS_CONNECTOR_MASTER_KEY", ""),
             connector_chat_enabled=_get_bool("JARVIS_CONNECTOR_CHAT_ENABLED", False),

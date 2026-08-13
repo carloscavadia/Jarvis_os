@@ -495,6 +495,22 @@
     } catch {}
   }
 
+  async function loadPendingProactive() {
+    try {
+      const events = await connectorRequest("/proactive/events?limit=20", { headers: connectorApiHeaders() });
+      const pending = events.find(event => event.status === "pending_approval");
+      if (!pending) return;
+      pendingProactive = { ...pending, event_id: pending.id };
+      showToolEvent({
+        phase: "awaiting", tool: `proactive:${pending.action}`,
+        arguments: { connector: pending.connector, action: pending.action, payload: pending.payload },
+      });
+      approvalActions.hidden = false;
+      approvalApprove.disabled = false; approvalDeny.disabled = false;
+      setEmotion("alert");
+    } catch {}
+  }
+
   async function controlCurrentGoal(action) {
     if (!currentGoal?.goal_id) return;
     if (action === "cancel" && !confirm(`¿Cancelar el objetivo ${currentGoal.title}?`)) return;
@@ -839,6 +855,7 @@
   let firstDeltaSeen = false;
   let busy = false;
   let pendingApproval = null;
+  let pendingProactive = null;
   function setBusy(next) {
     busy = next;
     if (next) stopWakeListening();
@@ -846,7 +863,29 @@
     messageInput.placeholder = next ? "JARVIS está respondiendo…" : "Habla con JARVIS…";
     if (!next) { messageInput.focus(); scheduleWakeListening(); }
   }
-  function sendApprovalDecision(approved) {
+  async function sendApprovalDecision(approved) {
+    if (pendingProactive) {
+      approvalApprove.disabled = true; approvalDeny.disabled = true;
+      const event = pendingProactive;
+      try {
+        const resolved = await connectorRequest(`/proactive/events/${event.event_id}/decision`, {
+          method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ approved }),
+        });
+        showToolEvent({
+          phase: resolved.status === "denied" ? "denied" : "completed",
+          tool: `proactive:${resolved.action}`,
+          arguments: { connector: resolved.connector, action: resolved.action },
+          output: resolved.result,
+          is_error: resolved.status === "failed",
+        });
+        addLine("SISTEMA", approved ? "Acción proactiva resuelta." : "Acción proactiva denegada.", "system");
+      } catch (error) {
+        addLine("SISTEMA", `No pude resolver la acción: ${error.message}`, "system");
+      } finally {
+        pendingProactive = null; approvalActions.hidden = true; setBusy(false);
+      }
+      return;
+    }
     if (!pendingApproval || !ws || ws.readyState !== WebSocket.OPEN) return;
     approvalApprove.disabled = true; approvalDeny.disabled = true;
     if (currentToolCard?._status) currentToolCard._status.textContent = "ENVIANDO DECISIÓN";
@@ -924,6 +963,7 @@
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       refreshVoiceStatus();
       loadCurrentGoal();
+      loadPendingProactive();
       scheduleWakeListening(100);
     };
     ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); finishStreamReply(); setBusy(false); ws = null; };
@@ -938,7 +978,21 @@
       else if (m.type === "reply_delta") appendStreamDelta(m.delta);
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
       else if (m.type === "error") { finishStreamReply(); addLine("SISTEMA", m.error || "Error del servidor.", "system"); setEmotion("concern"); }
-      else if (m.type === "proactive") { addLine("JARVIS", "⚡ " + m.text, "jarvis"); speak(m.text); firePulse(); }
+      else if (m.type === "proactive") {
+        addLine("JARVIS", "⚡ " + m.text, "jarvis"); speak(m.text); firePulse();
+        if (m.goal) showGoalProgress(m.goal);
+        if (m.status === "pending_approval") {
+          pendingProactive = m;
+          showToolEvent({
+            phase: "awaiting", tool: `proactive:${m.action}`,
+            arguments: { connector: m.connector, action: m.action, payload: m.payload },
+          });
+          approvalActions.hidden = false;
+          approvalApprove.disabled = false; approvalDeny.disabled = false;
+          setBusy(false); setState("idle"); setEmotion("alert");
+          messageInput.placeholder = "Esperando tu decisión…";
+        }
+      }
       else if (m.type === "approval_required") {
         pendingApproval = m;
         showToolEvent({ phase: "awaiting", tool: m.tool, arguments: m.arguments });

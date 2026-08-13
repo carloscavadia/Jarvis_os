@@ -12,6 +12,7 @@ import asyncio
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
+from jarvis_core.connectors.events import ProactiveEventStore
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
@@ -29,6 +30,7 @@ class SessionManager:
         self.memory = MemoryStore(settings.memory_db_path)
         self.tasks = TaskStore(settings.tasks_db_path)
         self.goals = GoalStore(settings.goals_db_path)
+        self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
         self._sessions: dict[str, Orchestrator] = {}
         self.connector_store = (
             ConnectorStore(settings.connector_db_path, settings.connector_master_key)
@@ -69,5 +71,6 @@ class SessionManager:
         self.memory.close()
         self.tasks.close()
         self.goals.close()
+        self.proactive_events.close()
         if self.connector_store is not None:
             self.connector_store.close()

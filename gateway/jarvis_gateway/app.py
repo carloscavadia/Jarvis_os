@@ -166,6 +166,12 @@ def _redact_connector_payload(value: object, depth: int = 0) -> object:
     return str(value)[:500]
 
 
+def _public_proactive_event(event: dict[str, object]) -> dict[str, object]:
+    public = dict(event)
+    public["payload"] = _redact_connector_payload(event.get("payload", {}))
+    return public
+
+
 def _workspace_presentation(
     name: str, arguments: dict[str, object]
 ) -> dict[str, object] | None:
@@ -290,7 +296,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.gateway_cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Jarvis-Key"],
 )
 
@@ -329,6 +335,16 @@ class ConnectorEventRequest(BaseModel):
     event: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_.:-]+$")
     text: str = Field(min_length=1, max_length=settings.gateway_max_message_chars)
     title: str = Field(default="", max_length=120)
+    severity: str = Field(default="info", pattern=r"^(info|warning|critical)$")
+    policy: str = Field(
+        default="auto", pattern=r"^(auto|notify|create_goal|request_action)$"
+    )
+    action: str = Field(default="", max_length=128, pattern=r"^[a-zA-Z0-9_.:-]*$")
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class ProactiveDecisionRequest(BaseModel):
+    approved: bool
 
 
 class ConnectorModuleRequest(BaseModel):
@@ -529,16 +545,157 @@ async def connector_chat(req: ConnectorChatRequest) -> ChatResponse:
 
 
 @app.post("/connectors/events", dependencies=[Depends(require_connector_key)])
-async def connector_event(req: ConnectorEventRequest) -> dict[str, str]:
-    """Difunde al HUD un evento validado que llega desde n8n."""
+async def connector_event(req: ConnectorEventRequest) -> dict[str, object]:
+    """Clasifica, audita y difunde un evento autenticado de un conector."""
+    policy = req.policy
+    if policy == "auto":
+        if req.action:
+            policy = "request_action"
+        elif req.severity == "critical":
+            policy = "create_goal"
+        else:
+            policy = "notify"
+    if policy == "request_action" and not req.action:
+        raise HTTPException(status_code=422, detail="request_action requiere action.")
+    if policy == "request_action":
+        store = _require_connector_store()
+        record = store.get(req.connector)
+        if (
+            record is None
+            or not record.enabled
+            or req.action not in record.config.get("write_actions", [])
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="La acción solicitada no está permitida para este módulo.",
+            )
+
+    status = "pending_approval" if policy == "request_action" else "accepted"
+    event_id = sessions.proactive_events.create(
+        connector=req.connector,
+        event_type=req.event,
+        title=req.title,
+        text=req.text,
+        severity=req.severity,
+        policy=policy,
+        status=status,
+        action=req.action,
+        payload=req.payload,
+    )
+    goal = None
+    final_status = status
+    if policy == "create_goal":
+        try:
+            goal_id = sessions.goals.create(
+                req.title or f"Atender evento {req.event}",
+                req.text,
+                [
+                    {"title": "Evaluar el evento", "verification": "Causa verificada"},
+                    {"title": "Resolver o escalar", "verification": "Resultado confirmado"},
+                ],
+            )
+            created_goal = sessions.goals.get(goal_id)
+            assert created_goal is not None
+            goal = json.loads(sessions.goals.serialize(created_goal))
+            sessions.proactive_events.transition(
+                event_id,
+                from_status="accepted",
+                to_status="goal_created",
+                result=f"Objetivo #{goal_id}",
+            )
+            final_status = "goal_created"
+        except ValueError as exc:
+            sessions.proactive_events.transition(
+                event_id,
+                from_status="accepted",
+                to_status="blocked",
+                result=str(exc),
+            )
+            final_status = "blocked"
+
     await notifier.broadcast(
         req.text,
         source=f"connector:{req.connector}",
         connector=req.connector,
         event=req.event,
         title=req.title,
+        severity=req.severity,
+        policy=policy,
+        status=final_status,
+        event_id=event_id,
+        action=req.action,
+        payload=_redact_connector_payload(req.payload),
+        goal=goal,
     )
-    return {"status": "accepted"}
+    return {"status": final_status, "event_id": event_id}
+
+
+@app.get("/proactive/events", dependencies=[Depends(require_api_key)])
+async def proactive_events(limit: int = 50) -> list[dict[str, object]]:
+    return [
+        _public_proactive_event(event)
+        for event in sessions.proactive_events.list_recent(limit)
+    ]
+
+
+@app.post(
+    "/proactive/events/{event_id}/decision", dependencies=[Depends(require_api_key)]
+)
+async def decide_proactive_event(
+    event_id: int, req: ProactiveDecisionRequest
+) -> dict[str, object]:
+    event = sessions.proactive_events.get(event_id)
+    if event is None or event["status"] != "pending_approval":
+        raise HTTPException(status_code=409, detail="El evento no existe o ya fue resuelto.")
+    if not req.approved:
+        resolved = sessions.proactive_events.transition(
+            event_id,
+            from_status="pending_approval",
+            to_status="denied",
+            result="Acción denegada por el usuario.",
+        )
+        await notifier.broadcast(
+            "Acción proactiva denegada.",
+            source="proactive",
+            event_id=event_id,
+            status="denied",
+            action=event["action"],
+        )
+        return _public_proactive_event(resolved)
+
+    sessions.proactive_events.transition(
+        event_id, from_status="pending_approval", to_status="running"
+    )
+    runtime = ConnectorRuntime(
+        _require_connector_store(),
+        timeout=settings.connector_timeout_seconds,
+        max_payload_bytes=settings.connector_max_payload_bytes,
+        max_response_bytes=settings.connector_max_response_bytes,
+    )
+    try:
+        result = await runtime.invoke(
+            str(event["connector"]),
+            str(event["action"]),
+            event["payload"],
+            write=True,
+        )
+    except Exception:
+        logger.exception("Falló la acción proactiva #%s", event_id)
+        result = ToolResult("La acción externa falló de forma inesperada.", is_error=True)
+    resolved = sessions.proactive_events.transition(
+        event_id,
+        from_status="running",
+        to_status="failed" if result.is_error else "completed",
+        result=result.content,
+    )
+    await notifier.broadcast(
+        result.content,
+        source="proactive",
+        event_id=event_id,
+        status=resolved["status"],
+        action=event["action"],
+    )
+    return _public_proactive_event(resolved)
 
 
 @app.get("/voice/status", dependencies=[Depends(require_api_key)])

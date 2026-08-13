@@ -11,6 +11,7 @@ Antes de usarlo, activa el registro en `/opt/jarvis_os/.env`:
 ```dotenv
 JARVIS_CONNECTORS_ENABLED=true
 JARVIS_CONNECTOR_MASTER_KEY=CLAVE_ALEATORIA_DE_64_HEX
+JARVIS_PROACTIVE_EVENTS_DB=/app/data/jarvis_proactive_events.db
 ```
 
 Genera la clave con `openssl rand -hex 32`. No la cambies mientras existan módulos, porque
@@ -126,7 +127,41 @@ n8n usa la cabecera `X-Jarvis-Connector-Token` y uno de estos endpoints.
 ```
 
 La respuesta contiene `reply`. La conversación externa permanece apagada hasta habilitar
-`JARVIS_CONNECTOR_CHAT_ENABLED` y autorizar el hash SHA-256 de cada identidad
+`JARVIS_CONNECTOR_CHAT_ENABLED` y autorizar el hash SHA-256 de cada identidad.
+
+## Eventos proactivos
+
+n8n o Home Assistant pueden enviar eventos autenticados a
+`POST /connectors/events` usando `X-Jarvis-Connector-Token`. JARVIS aplica una
+política determinista y registra la decisión:
+
+- `notify`: informa en el HUD sin ejecutar acciones.
+- `create_goal`: crea un objetivo verificable; en modo `auto` se usa para severidad
+  `critical`.
+- `request_action`: solicita aprobación física en el HUD antes de invocar una acción
+  incluida en `write_actions` del módulo.
+
+Ejemplo de acción que siempre requiere aprobación:
+
+```json
+{
+  "connector": "home",
+  "event": "presence.detected",
+  "title": "Llegada detectada",
+  "text": "¿Enciendo las luces de entrada?",
+  "severity": "info",
+  "policy": "request_action",
+  "action": "homeassistant.service",
+  "payload": {
+    "domain": "light",
+    "service": "turn_on",
+    "service_data": {"entity_id": "light.entrada"}
+  }
+}
+```
+
+El historial autenticado está disponible en `GET /proactive/events`. Las acciones
+pendientes reaparecen en el HUD después de una recarga o reconexión.
 `conector:usuario`. El identificador externo se convierte en ese hash antes de usarlo como
 sesión. Las acciones sensibles pedidas desde un canal externo se bloquean porque ese canal
 no puede aprobarlas físicamente.
