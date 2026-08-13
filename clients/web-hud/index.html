@@ -234,7 +234,7 @@
       <span class="prompt">&rsaquo;</span>
       <input id="input" placeholder="Habla con JARVIS…" aria-label="Mensaje" />
       <button class="voice-btn" id="voice-toggle" type="button" aria-label="Activar o silenciar voz" title="Voz de JARVIS">◖</button>
-      <button class="voice-btn" id="mic" type="button" aria-label="Hablar con JARVIS" title="Hablar con JARVIS">●</button>
+      <button class="voice-btn" id="mic" type="button" aria-label="Reintentar escucha Hey Jarvis" title="Reintentar escucha Hey Jarvis">●</button>
     </form>
   </div>
 
@@ -810,8 +810,9 @@
       rLink.textContent = "EN LÍNEA";
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       refreshVoiceStatus();
+      scheduleWakeListening(100);
     };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; finishStreamReply(); setBusy(false); ws = null; };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; stopWakeListening(); finishStreamReply(); setBusy(false); ws = null; };
     ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -906,7 +907,6 @@
   let recorderTimer = null;
   let recorderVadFrame = null;
   let recorderAudioContext = null;
-  let handsFreeEnabled = false;
   let wakeListening = false;
   let wakeRestartTimer = null;
   let wakeRecognition = null;
@@ -1215,7 +1215,8 @@
   }
 
   function wakeCommand(text) {
-    const match = normalizeWakeText(text).match(/(?:^|\s)(?:hey|oye|ei)\s+jarvis\b[\s,.:;!?-]*(.*)$/i);
+    // Web Speech suele representar "Hey" como "ey/ei" y "Jarvis" como "Yarvis".
+    const match = normalizeWakeText(text).match(/(?:^|\s)(?:hey|ey|ei|oye)\s+(?:jarvis|yarvis)\b[\s,.:;!?-]*(.*)$/i);
     return match ? match[1].trim() : null;
   }
 
@@ -1232,12 +1233,12 @@
 
   function scheduleWakeListening(delay = 450) {
     clearTimeout(wakeRestartTimer);
-    if (!handsFreeEnabled || busy || voiceActive || speechQueueRunning || recorder?.state === "recording") return;
+    if (!SpeechRecognition || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || recorder?.state === "recording") return;
     wakeRestartTimer = setTimeout(startWakeListening, delay);
   }
 
   function startWakeListening() {
-    if (!handsFreeEnabled || !SpeechRecognition || busy || voiceActive || wakeListening) return;
+    if (!SpeechRecognition || busy || voiceActive || wakeListening) return;
     wakeRecognition = new SpeechRecognition();
     wakeRecognition.lang = "es-MX";
     wakeRecognition.interimResults = true;
@@ -1250,14 +1251,14 @@
     wakeRecognition.onresult = (event) => {
       let heard = "";
       let finalResult = false;
-      for (let i = Math.max(0, event.resultIndex - 1); i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         heard += " " + event.results[i][0].transcript;
         finalResult ||= event.results[i].isFinal;
       }
       const command = wakeCommand(heard);
       if (command === null) return;
-      // La palabra sola activa de inmediato; una pregunta inline espera texto final.
-      if (command && !finalResult) return;
+      // Espera el resultado final para no perder una pregunta dicha en la misma frase.
+      if (!finalResult) return;
       firePulse();
       stopWakeListening();
       if (command) {
@@ -1279,7 +1280,8 @@
       wakeListening = false;
       wakeRecognition = null;
       if (!["no-speech", "aborted"].includes(event.error)) {
-        rVoice.textContent = "ERROR DE MICRÓFONO";
+        rVoice.textContent = event.error === "not-allowed" ? "PERMISO MICRÓFONO" : "ERROR DE MICRÓFONO";
+        micButton.classList.add("permission-needed");
       }
       scheduleWakeListening(event.error === "not-allowed" ? 10000 : 800);
     };
@@ -1390,19 +1392,12 @@
 
   micButton.addEventListener("click", () => {
     if (recorder?.state === "recording") { recorder.stop(); return; }
-    if (handsFreeEnabled) {
-      handsFreeEnabled = false;
-      stopWakeListening();
-      setMicActive(false, serverVoiceAvailable ? "LOCAL" : "NAVEGADOR");
-      micButton.title = "Activar escucha «Hey Jarvis»";
-      return;
-    }
     if (busy) return;
     if (SpeechRecognition) {
-      handsFreeEnabled = true;
-      micButton.title = "Desactivar escucha «Hey Jarvis»";
+      micButton.classList.remove("permission-needed");
+      stopWakeListening();
       startWakeListening();
-      addLine("SISTEMA", "Modo manos libres activo. Di «Hey Jarvis» y formula tu pregunta.", "system");
+      addLine("SISTEMA", "Escucha de «Hey Jarvis» reiniciada.", "system");
     } else if (serverVoiceAvailable && canRecord) startServerRecording();
     else addLine("SISTEMA", "Este navegador no permite capturar voz.", "system");
   });

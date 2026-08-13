@@ -39,11 +39,12 @@ que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). Ta
 
 ### Voz y micrófono
 
-El botón **●** activa el modo manos libres después de conceder permiso al micrófono. El HUD
-espera «Hey Jarvis»; puedes decir la pregunta en la misma frase o hacer una pausa y
-continuar. En ese segundo caso, la detección de actividad de voz cierra y envía la pregunta
-después de 1,25 segundos de silencio. El micrófono se suspende mientras JARVIS habla para
-evitar que se active con su propia voz. Pulsa **●** otra vez para apagar el modo manos libres.
+Al conectarse, el HUD mantiene una escucha pasiva de la frase «Hey Jarvis». Ignora todo lo
+demás y solo abre una interacción al oírla. Puedes decir la pregunta en la misma frase o
+hacer una pausa y continuar. En ese segundo caso, la detección de actividad de voz cierra y
+envía la pregunta después de 1,25 segundos de silencio. El micrófono se suspende mientras
+JARVIS habla para evitar que se active con su propia voz. El botón **●** queda como control
+de recuperación para conceder o reintentar el permiso si el navegador bloquea la escucha.
 
 Si el gateway tiene voz local activa, Whisper transcribe la grabación y Kokoro reproduce la
 respuesta con `em_alex`. El botón **◖** activa o silencia la salida de voz. Durante el
