@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import logging
+import mimetypes
 import re
 import secrets
 import urllib.request
@@ -39,6 +40,7 @@ from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
+from jarvis_core.tools.builtin.filesystem import WorkspaceGuard
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
@@ -968,6 +970,139 @@ async def music_cover(cover_id: str, token: str = "", size: int = 256):
     return await _proxy_media(
         "getCoverArt", {"id": cover_id, "size": str(max(32, min(size, 1024)))}
     )
+
+
+class WorkspaceCreateRequest(BaseModel):
+    path: str
+    is_dir: bool = False
+    content: str | None = None
+
+
+def _get_workspace_guard() -> WorkspaceGuard:
+    return WorkspaceGuard(settings.workspace_root, settings.max_file_bytes)
+
+
+@app.get("/workspace/tree", dependencies=[Depends(require_api_key)])
+async def workspace_tree(path: str = "."):
+    guard = _get_workspace_guard()
+    try:
+        resolved = guard.resolve(path, allow_root=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="La ruta solicitada no existe.")
+    if not resolved.is_dir():
+        raise HTTPException(status_code=400, detail="La ruta no es un directorio.")
+
+    items = []
+    try:
+        entries = sorted(resolved.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+        for entry in entries:
+            rel = guard.display(entry)
+            is_dir = entry.is_dir()
+            size = 0 if is_dir else (entry.stat().st_size if entry.is_file() else 0)
+            ext = entry.suffix.lower() if not is_dir else ""
+            mime, _ = mimetypes.guess_type(entry.name)
+            mod_time = entry.stat().st_mtime if entry.exists() else 0
+            items.append({
+                "name": entry.name,
+                "path": rel,
+                "is_dir": is_dir,
+                "size": size,
+                "extension": ext,
+                "mime": mime or ("directory" if is_dir else "application/octet-stream"),
+                "mod_time": mod_time,
+            })
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Error leyendo directorio: {exc}")
+    return {"path": guard.display(resolved), "items": items}
+
+
+@app.get("/workspace/file/content", dependencies=[Depends(require_api_key)])
+async def workspace_file_content(path: str):
+    guard = _get_workspace_guard()
+    try:
+        resolved = guard.resolve(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="El archivo no existe.")
+    size = resolved.stat().st_size
+    if size > settings.max_file_bytes:
+        raise HTTPException(status_code=400, detail="El archivo supera el tamaño máximo permitido.")
+    try:
+        content = resolved.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="El archivo no es de texto UTF-8 plano.")
+    mime, _ = mimetypes.guess_type(resolved.name)
+    return {
+        "path": guard.display(resolved),
+        "name": resolved.name,
+        "content": content,
+        "size": size,
+        "extension": resolved.suffix.lower(),
+        "mime": mime or "text/plain",
+    }
+
+
+@app.get("/workspace/file/raw")
+async def workspace_file_raw(path: str, token: str = ""):
+    if not _valid_api_key(token):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+    guard = _get_workspace_guard()
+    try:
+        resolved = guard.resolve(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="El archivo no existe.")
+    size = resolved.stat().st_size
+    if size > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archivo multimedia demasiado grande.")
+    mime, _ = mimetypes.guess_type(resolved.name)
+    try:
+        data = resolved.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    return Response(content=data, media_type=mime or "application/octet-stream")
+
+
+@app.post("/workspace/file/create", dependencies=[Depends(require_api_key)])
+async def workspace_file_create(req: WorkspaceCreateRequest):
+    guard = _get_workspace_guard()
+    try:
+        resolved = guard.resolve(req.path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if req.is_dir:
+        resolved.mkdir(parents=True, exist_ok=True)
+        return {"status": "ok", "message": f"Carpeta creada: {guard.display(resolved)}"}
+    else:
+        if resolved.exists():
+            raise HTTPException(status_code=400, detail="El archivo ya existe.")
+        content = req.content or ""
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(content, encoding="utf-8")
+        return {"status": "ok", "message": f"Archivo creado: {guard.display(resolved)}"}
+
+
+@app.delete("/workspace/file/delete", dependencies=[Depends(require_api_key)])
+async def workspace_file_delete(path: str):
+    guard = _get_workspace_guard()
+    try:
+        resolved = guard.resolve(path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not resolved.exists():
+        raise HTTPException(status_code=404, detail="La ruta no existe.")
+    try:
+        if resolved.is_dir():
+            resolved.rmdir()
+        else:
+            resolved.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"No se pudo eliminar: {exc}")
+    return {"status": "ok", "message": f"Eliminado: {guard.display(resolved)}"}
 
 
 @app.websocket("/ws/wake/{device_id}")

@@ -322,6 +322,127 @@
     .console { width: calc(100vw - 32px); bottom: 20px; }
     .action-trace, .action-trace.presentation-mode { top: 18px; right: 18px; width: calc(100vw - 36px); max-height: 62vh; }
     .action-trace.maximized { inset: 14px; width: auto; max-height: none; } }
+
+  /* ── Pizarrón y Explorador Holográfico de Archivos ── */
+  .explorer-panel {
+    display: none; position: fixed; z-index: 7;
+    top: 50px; left: 50%; transform: translateX(-50%);
+    width: min(980px, calc(100vw - 48px)); height: min(720px, calc(100vh - 120px));
+    border: 1px solid var(--hairline-2); border-radius: 14px;
+    background: linear-gradient(150deg, rgba(3, 10, 18, 0.95), rgba(6, 18, 30, 0.90));
+    backdrop-filter: blur(20px) saturate(130%);
+    box-shadow: 0 24px 90px rgba(0,0,0,0.68), 0 0 50px rgba(53,230,255,0.1);
+    overflow: hidden; flex-direction: column;
+    transform-origin: center top;
+  }
+  .explorer-panel.active {
+    display: flex;
+    animation: hologram-project-in .38s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes hologram-project-in {
+    from { opacity: 0; transform: translate(-50%, -15px) scale(0.92); filter: blur(6px) brightness(1.8); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); filter: blur(0) brightness(1); }
+  }
+  .explorer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid var(--hairline);
+    background: rgba(4, 12, 21, 0.88); font-family: var(--mono);
+  }
+  .explorer-title-area { display: flex; align-items: center; gap: 10px; }
+  .explorer-badge {
+    font-size: 8px; letter-spacing: 0.2em; color: var(--core);
+    padding: 2px 6px; border: 1px solid var(--hairline-2); border-radius: 4px;
+    background: rgba(53, 230, 255, 0.08);
+  }
+  .explorer-head-title { font-size: 11px; letter-spacing: 0.16em; color: var(--core-bright); }
+  .explorer-tools { display: flex; align-items: center; gap: 6px; }
+  .explorer-btn {
+    height: 26px; padding: 0 8px; border: 1px solid var(--hairline); border-radius: 6px;
+    background: rgba(9, 22, 32, 0.6); color: var(--muted); cursor: pointer;
+    font: 11px var(--mono); transition: .16s ease;
+  }
+  .explorer-btn:hover, .explorer-btn.active { color: var(--core-bright); border-color: var(--core); box-shadow: 0 0 12px rgba(53,230,255,0.18); }
+  
+  .explorer-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 8px 16px; border-bottom: 1px solid var(--hairline);
+    background: rgba(6, 16, 26, 0.5); font-family: var(--mono); font-size: 10px;
+  }
+  .explorer-breadcrumbs { display: flex; align-items: center; gap: 6px; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .explorer-breadcrumbs .crumb {
+    color: var(--core); cursor: pointer; padding: 2px 6px; border-radius: 4px;
+    transition: background .15s; white-space: nowrap;
+  }
+  .explorer-breadcrumbs .crumb:hover { background: rgba(53,230,255,0.12); color: var(--core-bright); }
+  .explorer-breadcrumbs .sep { color: var(--muted); }
+  .explorer-search input {
+    background: rgba(0, 4, 9, 0.6); border: 1px solid var(--hairline); border-radius: 6px;
+    padding: 5px 9px; color: var(--text); font: 10px var(--mono); width: 220px; outline: none;
+  }
+  .explorer-search input:focus { border-color: var(--core); box-shadow: 0 0 10px rgba(53,230,255,0.15); }
+
+  .explorer-body { display: flex; flex: 1; min-height: 0; }
+  .explorer-main { flex: 1; overflow-y: auto; padding: 14px; scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
+  .explorer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .explorer-grid.list-mode { display: flex; flex-direction: column; gap: 5px; }
+  
+  .file-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 12px 8px; border: 1px solid var(--hairline); border-radius: 9px;
+    background: rgba(8, 20, 31, 0.45); cursor: pointer; text-align: center;
+    transition: transform .18s, border-color .18s, background .18s, box-shadow .18s;
+    user-select: none;
+  }
+  .file-card:hover {
+    transform: translateY(-2px); border-color: var(--core);
+    background: rgba(14, 34, 50, 0.65); box-shadow: 0 0 16px rgba(53,230,255,0.12);
+  }
+  .file-card.selected {
+    border-color: var(--core-bright); background: rgba(20, 45, 65, 0.85);
+    box-shadow: 0 0 20px rgba(53,230,255,0.25);
+  }
+  .file-card .icon { font-size: 26px; margin-bottom: 6px; line-height: 1; }
+  .file-card .name {
+    font-family: var(--mono); font-size: 10.5px; color: var(--text);
+    width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .file-card .sub { font-family: var(--mono); font-size: 8.5px; color: var(--muted); margin-top: 3px; }
+
+  .explorer-grid.list-mode .file-card {
+    flex-direction: row; justify-content: flex-start; text-align: left; padding: 7px 12px; gap: 12px;
+  }
+  .explorer-grid.list-mode .file-card .icon { font-size: 18px; margin-bottom: 0; }
+  .explorer-grid.list-mode .file-card .name { flex: 1; }
+
+  .explorer-preview {
+    width: 320px; border-left: 1px solid var(--hairline); background: rgba(2, 7, 13, 0.65);
+    display: flex; flex-direction: column; padding: 14px; overflow-y: auto;
+  }
+  .preview-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--muted); font: 10px var(--mono); text-align: center; }
+  .preview-empty .preview-icon { font-size: 42px; opacity: 0.4; margin-bottom: 10px; }
+  
+  .preview-content { display: flex; flex-direction: column; height: 100%; gap: 10px; }
+  .preview-content.hidden { display: none; }
+  .preview-head { border-bottom: 1px solid var(--hairline); padding-bottom: 8px; }
+  .preview-name { font-family: var(--mono); font-size: 12px; color: var(--core-bright); font-weight: 500; word-break: break-all; }
+  .preview-meta { font-family: var(--mono); font-size: 9px; color: var(--muted); margin-top: 4px; display: block; }
+  
+  .preview-body-box {
+    flex: 1; min-height: 140px; overflow: auto; border: 1px solid var(--hairline); border-radius: 7px;
+    background: rgba(0, 4, 9, 0.82); padding: 8px; color: var(--text); font-family: var(--mono); font-size: 10px;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
+  }
+  .preview-body-box img { max-width: 100%; border-radius: 4px; object-fit: contain; }
+  .preview-body-box audio { width: 100%; margin-top: 10px; }
+  .preview-body-box pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+  
+  .preview-actions { display: flex; flex-direction: column; gap: 6px; }
+  .preview-actions button {
+    padding: 8px; border: 1px solid var(--hairline-2); border-radius: 7px;
+    background: rgba(12,29,40,0.8); color: var(--text); cursor: pointer; font: 9px var(--mono); letter-spacing: 0.08em; transition: .15s ease;
+  }
+  .preview-actions button.primary { color: #baffdf; border-color: rgba(96,236,168,0.45); background: rgba(15,40,35,0.7); }
+  .preview-actions button:hover { transform: translateY(-1px); box-shadow: 0 0 14px rgba(53,230,255,0.14); }
 </style>
 </head>
 <body>
@@ -363,6 +484,7 @@
     <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
     <button id="ws-connect">Conectar</button>
     <button id="connector-open">Conectores</button>
+    <button id="explorer-open">Archivos 📂</button>
   </div>
 
   <!-- Configuración local opcional (config.js, no versionado). Si no existe, el
@@ -401,6 +523,53 @@
         <div class="connector-section-title"><span>ACTIVIDAD RECIENTE</span><span>02</span></div>
         <div class="event-list" id="connector-events"></div>
       </section>
+    </div>
+  </section>
+
+  <section class="explorer-panel" id="explorer-panel" aria-label="Explorador de archivos de JARVIS">
+    <div class="explorer-head">
+      <div class="explorer-title-area">
+        <span class="explorer-badge">PIZARRÓN HOLOGRÁFICO</span>
+        <span class="explorer-head-title" id="explorer-head-title">ARCHIVOS DEL SERVIDOR</span>
+      </div>
+      <div class="explorer-tools">
+        <button class="explorer-btn active" id="explorer-view-grid" type="button" title="Vista en cuadrícula">⊞</button>
+        <button class="explorer-btn" id="explorer-view-list" type="button" title="Vista en lista">≡</button>
+        <button class="explorer-btn" id="explorer-refresh" type="button" title="Actualizar">↻</button>
+        <button class="action-close" id="explorer-close" type="button" aria-label="Cerrar explorador">×</button>
+      </div>
+    </div>
+    
+    <div class="explorer-toolbar">
+      <div class="explorer-breadcrumbs" id="explorer-breadcrumbs">
+        <span class="crumb" data-path=".">root</span>
+      </div>
+      <div class="explorer-search">
+        <input id="explorer-filter-input" placeholder="Filtrar archivos..." />
+      </div>
+    </div>
+
+    <div class="explorer-body">
+      <div class="explorer-main">
+        <div class="explorer-grid" id="explorer-grid"></div>
+      </div>
+      <div class="explorer-preview" id="explorer-preview">
+        <div class="preview-empty" id="preview-empty">
+          <div class="preview-icon">📂</div>
+          <p>Selecciona un archivo para inspeccionarlo</p>
+        </div>
+        <div class="preview-content hidden" id="preview-content">
+          <div class="preview-head">
+            <span class="preview-name" id="preview-name">archivo.txt</span>
+            <span class="preview-meta" id="preview-meta">0 KB · TXT</span>
+          </div>
+          <div class="preview-body-box" id="preview-body-box"></div>
+          <div class="preview-actions">
+            <button class="primary" id="explorer-ask-jarvis" type="button">ANALIZAR CON JARVIS ⚡</button>
+            <button id="explorer-open-board" type="button">ABRIR EN PIZARRÓN 🗁</button>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -508,6 +677,24 @@
   const goalProgress = document.getElementById("goal-progress");
   const goalSteps = document.getElementById("goal-steps");
   let currentGoal = null;
+
+  // ── Explorador Holográfico ──
+  const explorerPanel = document.getElementById("explorer-panel");
+  const explorerGrid = document.getElementById("explorer-grid");
+  const explorerBreadcrumbs = document.getElementById("explorer-breadcrumbs");
+  const explorerFilterInput = document.getElementById("explorer-filter-input");
+  const previewEmpty = document.getElementById("preview-empty");
+  const previewContent = document.getElementById("preview-content");
+  const previewName = document.getElementById("preview-name");
+  const previewMeta = document.getElementById("preview-meta");
+  const previewBodyBox = document.getElementById("preview-body-box");
+  const explorerAskJarvis = document.getElementById("explorer-ask-jarvis");
+  const explorerOpenBoard = document.getElementById("explorer-open-board");
+  let currentExplorerPath = ".";
+  let currentExplorerItems = [];
+  let selectedFileItem = null;
+  let selectedFileTextContent = "";
+  let explorerViewMode = "grid";
 
   let W = 0, H = 0, DPR = 1;
   function resize() {
@@ -695,6 +882,11 @@
       workspaceCloseTimer = setTimeout(() => closeWorkspace(), 18000);
     }
     if (event.goal) showGoalProgress(event.goal);
+
+    if (event.phase === "completed" && ["list_directory", "read_file", "create_file", "update_file", "create_directory"].includes(event.tool)) {
+      const targetPath = event.arguments?.path || currentExplorerPath;
+      openExplorer(targetPath);
+    }
   }
 
   function showGoalProgress(goal) {
@@ -1040,6 +1232,11 @@
       const p = P[i];
       ctx.globalAlpha = Math.min(0.86, p.bri * p._f * 0.92);
       ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.42, p._s * 0.42), 0, TAU); ctx.fill();
+    }
+
+    // ── haz de proyección holográfico para el explorador ──
+    if (explorerPanel && explorerPanel.classList.contains("active")) {
+      drawHologramProjection(cx, cy, explorerPanel.getBoundingClientRect(), rgbCol, t);
     }
 
     // ── flares de ejecución (elipses inclinadas) ──
@@ -1637,6 +1834,264 @@
       await refreshConnectorModules();
       await testConnector(body.name);
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+  });
+
+  // ── Hologram projection drawing ──
+  function drawHologramProjection(cx, cy, panelRect, rgbCol, t) {
+    if (!panelRect || panelRect.width === 0) return;
+    const px = panelRect.left + panelRect.width / 2;
+    const py = panelRect.top;
+    const pLeft = panelRect.left;
+    const pRight = panelRect.right;
+    
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    
+    // Beam cone fill
+    const grad = ctx.createLinearGradient(cx, cy, px, py);
+    grad.addColorStop(0, `rgba(${rgbCol}, 0.26)`);
+    grad.addColorStop(0.65, `rgba(${rgbCol}, 0.08)`);
+    grad.addColorStop(1, `rgba(${rgbCol}, 0.01)`);
+    
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(pLeft, py);
+    ctx.lineTo(pRight, py);
+    ctx.closePath();
+    ctx.fill();
+
+    // Laser rays
+    ctx.lineWidth = 1.2;
+    const rays = [pLeft, pLeft + panelRect.width * 0.25, px, pLeft + panelRect.width * 0.75, pRight];
+    for (let i = 0; i < rays.length; i++) {
+      const rx = rays[i];
+      const flick = 0.6 + 0.4 * Math.sin(t * 12 + i * 1.5);
+      ctx.globalAlpha = 0.35 * flick;
+      ctx.strokeStyle = `rgb(${rgbCol})`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      const midX = (cx + rx) / 2 + Math.sin(t * 4 + i) * 6;
+      const midY = (cy + py) / 2;
+      ctx.quadraticCurveTo(midX, midY, rx, py);
+      ctx.stroke();
+    }
+
+    // Energy rings traveling from core to panel
+    const ringCount = 3;
+    for (let r = 0; r < ringCount; r++) {
+      const progress = ((t * 0.8 + r / ringCount) % 1);
+      const rx = cx + (px - cx) * progress;
+      const ry = cy + (py - cy) * progress;
+      const w = progress * (panelRect.width * 0.6);
+      const h = progress * 14;
+      ctx.globalAlpha = (1 - progress) * 0.45;
+      ctx.strokeStyle = `rgb(${rgbCol})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, Math.max(2, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    
+    ctx.restore();
+  }
+
+  // ── Lógica del Explorador Holográfico ──
+  function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  }
+
+  function getFileIcon(item) {
+    if (item.is_dir) return "📁";
+    const ext = (item.extension || "").toLowerCase();
+    if ([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"].includes(ext)) return "🖼️";
+    if ([".mp3", ".wav", ".ogg", ".flac", ".m4a"].includes(ext)) return "🎵";
+    if ([".py", ".js", ".json", ".html", ".css", ".cpp", ".h", ".sh", ".ts", ".rs"].includes(ext)) return "💻";
+    if ([".md", ".txt", ".pdf", ".doc", ".docx", ".rtf"].includes(ext)) return "📄";
+    if ([".zip", ".tar", ".gz", ".7z", ".rar"].includes(ext)) return "📦";
+    return "📄";
+  }
+
+  async function openExplorer(path = ".") {
+    explorerPanel.classList.add("active");
+    await loadExplorerFiles(path);
+  }
+
+  function closeExplorer() {
+    explorerPanel.classList.remove("active");
+  }
+
+  async function loadExplorerFiles(path = ".") {
+    try {
+      const data = await connectorRequest(`/workspace/tree?path=${encodeURIComponent(path)}`, { headers: connectorApiHeaders() });
+      currentExplorerPath = data.path;
+      currentExplorerItems = data.items || [];
+      renderExplorerBreadcrumbs(data.path);
+      renderExplorerGrid(currentExplorerItems);
+      resetFilePreview();
+    } catch (error) {
+      explorerGrid.replaceChildren();
+      const errEl = document.createElement("div");
+      errEl.className = "preview-empty";
+      errEl.textContent = `ERROR · ${error.message}`;
+      explorerGrid.appendChild(errEl);
+    }
+  }
+
+  function renderExplorerBreadcrumbs(relPath) {
+    explorerBreadcrumbs.replaceChildren();
+    const rootCrumb = document.createElement("span");
+    rootCrumb.className = "crumb";
+    rootCrumb.textContent = "root";
+    rootCrumb.onclick = () => loadExplorerFiles(".");
+    explorerBreadcrumbs.appendChild(rootCrumb);
+
+    if (relPath === "." || !relPath) return;
+
+    const parts = relPath.split("/").filter(Boolean);
+    let accum = "";
+    for (const part of parts) {
+      accum = accum ? `${accum}/${part}` : part;
+      const target = accum;
+      const sep = document.createElement("span");
+      sep.className = "sep";
+      sep.textContent = "/";
+      const crumb = document.createElement("span");
+      crumb.className = "crumb";
+      crumb.textContent = part;
+      crumb.onclick = () => loadExplorerFiles(target);
+      explorerBreadcrumbs.append(sep, crumb);
+    }
+  }
+
+  function renderExplorerGrid(items) {
+    explorerGrid.replaceChildren();
+    const filterText = (explorerFilterInput.value || "").toLowerCase().trim();
+    const filtered = items.filter(item => item.name.toLowerCase().includes(filterText));
+
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "preview-empty";
+      empty.textContent = filterText ? "SIN COINCIDENCIAS" : "CARPETA VACÍA";
+      explorerGrid.appendChild(empty);
+      return;
+    }
+
+    for (const item of filtered) {
+      const card = document.createElement("div");
+      card.className = `file-card${selectedFileItem?.path === item.path ? " selected" : ""}`;
+      const icon = document.createElement("div");
+      icon.className = "icon";
+      icon.textContent = getFileIcon(item);
+      const name = document.createElement("div");
+      name.className = "name";
+      name.textContent = item.name;
+      const sub = document.createElement("div");
+      sub.className = "sub";
+      sub.textContent = item.is_dir ? "CARPETA" : formatBytes(item.size);
+
+      card.append(icon, name, sub);
+      card.onclick = () => {
+        if (item.is_dir) {
+          loadExplorerFiles(item.path);
+        } else {
+          document.querySelectorAll(".file-card").forEach(c => c.classList.remove("selected"));
+          card.classList.add("selected");
+          selectFileItem(item);
+        }
+      };
+      explorerGrid.appendChild(card);
+    }
+  }
+
+  function resetFilePreview() {
+    selectedFileItem = null;
+    selectedFileTextContent = "";
+    previewEmpty.classList.remove("hidden");
+    previewContent.classList.add("hidden");
+  }
+
+  async function selectFileItem(item) {
+    selectedFileItem = item;
+    selectedFileTextContent = "";
+    previewEmpty.classList.add("hidden");
+    previewContent.classList.remove("hidden");
+    previewName.textContent = item.name;
+    previewMeta.textContent = `${formatBytes(item.size)} · ${item.extension.toUpperCase() || "ARCHIVO"}`;
+    previewBodyBox.replaceChildren();
+
+    const ext = (item.extension || "").toLowerCase();
+    const isImage = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"].includes(ext);
+    const isAudio = [".mp3", ".wav", ".ogg", ".flac", ".m4a"].includes(ext);
+
+    if (isImage) {
+      const rawUrl = `${gatewayHttpBase()}/workspace/file/raw?path=${encodeURIComponent(item.path)}&token=${encodeURIComponent(hubKey())}`;
+      const img = document.createElement("img");
+      img.src = rawUrl;
+      img.alt = item.name;
+      previewBodyBox.appendChild(img);
+    } else if (isAudio) {
+      const rawUrl = `${gatewayHttpBase()}/workspace/file/raw?path=${encodeURIComponent(item.path)}&token=${encodeURIComponent(hubKey())}`;
+      const audio = document.createElement("audio");
+      audio.controls = true;
+      audio.src = rawUrl;
+      previewBodyBox.appendChild(audio);
+    } else {
+      previewBodyBox.textContent = "Cargando contenido...";
+      try {
+        const data = await connectorRequest(`/workspace/file/content?path=${encodeURIComponent(item.path)}`, { headers: connectorApiHeaders() });
+        selectedFileTextContent = data.content || "";
+        const fmt = presentationFormat(selectedFileTextContent, item.extension.replace(".", ""));
+        previewBodyBox.replaceChildren();
+        if (["markdown", "table"].includes(fmt)) {
+          renderStructuredText(previewBodyBox, selectedFileTextContent);
+        } else {
+          const pre = document.createElement("pre");
+          pre.textContent = selectedFileTextContent;
+          previewBodyBox.appendChild(pre);
+        }
+      } catch (error) {
+        previewBodyBox.textContent = `No se pudo leer como texto plano (${error.message}).`;
+      }
+    }
+  }
+
+  document.getElementById("explorer-open").addEventListener("click", () => openExplorer(currentExplorerPath));
+  document.getElementById("explorer-close").addEventListener("click", closeExplorer);
+  document.getElementById("explorer-refresh").addEventListener("click", () => loadExplorerFiles(currentExplorerPath));
+  document.getElementById("explorer-view-grid").addEventListener("click", () => {
+    explorerViewMode = "grid";
+    document.getElementById("explorer-view-grid").classList.add("active");
+    document.getElementById("explorer-view-list").classList.remove("active");
+    explorerGrid.classList.remove("list-mode");
+  });
+  document.getElementById("explorer-view-list").addEventListener("click", () => {
+    explorerViewMode = "list";
+    document.getElementById("explorer-view-list").classList.add("active");
+    document.getElementById("explorer-view-grid").classList.remove("active");
+    explorerGrid.classList.add("list-mode");
+  });
+  explorerFilterInput.addEventListener("input", () => renderExplorerGrid(currentExplorerItems));
+
+  explorerAskJarvis.addEventListener("click", () => {
+    if (!selectedFileItem) return;
+    closeExplorer();
+    messageInput.value = `JARVIS, analiza el archivo '${selectedFileItem.path}' y dime un resumen.`;
+    document.getElementById("form").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+  });
+
+  explorerOpenBoard.addEventListener("click", () => {
+    if (!selectedFileItem) return;
+    showOnBoard({
+      title: selectedFileItem.name,
+      content: selectedFileTextContent || `[Archivo ${selectedFileItem.name} (${formatBytes(selectedFileItem.size)})]`,
+      format: presentationFormat(selectedFileTextContent, selectedFileItem.extension.replace(".", "")),
+      keepOpen: true,
+    });
   });
 
   // ── Voz: wake/STT local + OpenAI Realtime bajo demanda + Kokoro fallback ──
