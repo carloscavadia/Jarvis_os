@@ -354,36 +354,70 @@
 
   @media (max-width: 1120px) { .console { width: min(720px, 72vw); min-width: 0; } }
 
-  .controls {
-    position: fixed; left: 24px; bottom: 30px;
-    display: flex; flex-direction: column; gap: 5px; width: 175px;
-    background: rgba(4,11,20,.80); border: 1px solid var(--hairline);
-    border-radius: 10px; padding: 9px 10px;
-    backdrop-filter: blur(14px); z-index: 6;
-    transition: border-color .3s ease, box-shadow .3s ease;
+  /* ── HUD Dock — 3 botones esquina inferior izquierda ── */
+  .hud-dock {
+    position: fixed; left: 24px; bottom: 28px;
+    display: flex; flex-direction: column; gap: 6px;
+    z-index: 7; align-items: flex-start;
+  }
+  .dock-btn {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 12px; border-radius: 8px;
+    border: 1px solid var(--hairline);
+    background: rgba(4,11,20,.82);
+    backdrop-filter: blur(14px);
+    color: var(--muted); font: 9px var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    cursor: pointer; transition: color .15s, border-color .18s, box-shadow .18s, background .15s;
+    white-space: nowrap;
+  }
+  .dock-btn:hover { color: var(--core-bright); border-color: var(--hairline-2);
+    box-shadow: 0 0 16px rgba(53,230,255,.12); background: rgba(8,20,32,.9); }
+  .dock-btn .dock-icon { font-size: 11px; flex: none; }
+  /* Indicador de estado en el botón ENLACE */
+  .dock-btn .conn-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--muted); flex: none; transition: background .3s, box-shadow .3s;
+  }
+  .hud-dock.connected .dock-btn.link-btn { border-color: rgba(96,236,168,.35); color: #60eca8; }
+  .hud-dock.connected .conn-dot { background: #60eca8; box-shadow: 0 0 7px rgba(96,236,168,.7); }
+  .hud-dock.connecting .dock-btn.link-btn { border-color: rgba(53,230,255,.35); color: var(--core); }
+  .hud-dock.connecting .conn-dot { background: var(--core); animation: dot-pulse 1s ease infinite; }
+
+  /* Mini-modal de conexión */
+  .conn-modal {
+    position: fixed; left: 24px; bottom: 86px;
+    width: 210px;
+    background: rgba(4,12,21,.96); border: 1px solid var(--hairline-2);
+    border-radius: 10px; padding: 12px;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 16px 55px rgba(0,0,0,.65), 0 0 20px rgba(53,230,255,.06);
     font-family: var(--mono);
+    z-index: 8;
+    display: none;
+    animation: conn-modal-in .18s cubic-bezier(.16,1,.3,1);
   }
-  .controls.connected {
-    border-color: rgba(96,236,168,.4);
-    box-shadow: 0 0 18px rgba(96,236,168,.07);
+  .conn-modal.open { display: flex; flex-direction: column; gap: 7px; }
+  @keyframes conn-modal-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
-  .conn-status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
-  .conn-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--muted); flex: none;
-    transition: background .3s, box-shadow .3s;
+  .conn-modal-title { font-size: 8px; letter-spacing: .18em; color: var(--muted); margin-bottom: 2px; }
+  .conn-modal input {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--hairline);
+    border-radius: 6px; background: rgba(8,20,30,.85);
+    color: var(--text); font: 11px var(--mono); outline: none;
+    transition: border-color .15s;
   }
-  .controls.connected .conn-dot { background: #60eca8; box-shadow: 0 0 8px rgba(96,236,168,.7); }
-  .controls.connecting .conn-dot { background: var(--core); box-shadow: 0 0 8px rgba(53,230,255,.5); animation: dot-pulse 1s ease infinite; }
-  .conn-status-label { font: 8px var(--mono); letter-spacing: .16em; color: var(--muted); }
-  .controls.connected .conn-status-label { color: #60eca8; }
-  .controls.connecting .conn-status-label { color: var(--core); }
-  @keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-  .controls-row { display: flex; gap: 5px; }
-  .controls-row button { flex: 1; }
-  /* Ocultar campo de URL por defecto; solo mostrar en modo avanzado */
-  #ws-url-input { display: none; }
-  .controls.show-url #ws-url-input { display: block; }
+  .conn-modal input:focus { border-color: rgba(53,230,255,.5); }
+  .conn-modal button {
+    padding: 7px; border: 1px solid var(--hairline-2); border-radius: 6px;
+    background: rgba(12,29,40,.85); color: var(--text); cursor: pointer;
+    font: 9px var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    transition: .15s ease;
+  }
+  .conn-modal button:hover { color: var(--core); border-color: rgba(53,230,255,.4);
+    box-shadow: 0 0 14px rgba(53,230,255,.1); }
+
   /* Demo banner */
   .demo-banner {
     position: fixed; top: 0; left: 50%; transform: translateX(-50%);
@@ -400,15 +434,6 @@
     background: rgba(255,120,30,.12); color: rgba(255,180,96,.9); cursor: pointer;
     font: 8px var(--mono); letter-spacing: .1em; transition: .15s ease; }
   .demo-banner button:hover { background: rgba(255,120,30,.28); color: #ffd0a0; }
-  .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
-  .controls button, .controls input {
-    font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
-    color: var(--muted); background: rgba(9,18,28,0.5); border: 1px solid var(--hairline);
-    border-radius: 7px; padding: 6px 8px; cursor: pointer; transition: color .15s, border-color .15s, box-shadow .15s; }
-  .controls input { text-transform: none; width: 100%; color: var(--text); cursor: text; }
-  .controls button:hover { color: var(--core); border-color: var(--hairline-2); box-shadow: 0 0 12px rgba(53,230,255,0.15); }
-  .controls button:focus-visible, .controls input:focus-visible { outline: 2px solid var(--core); outline-offset: 2px; }
-  .controls .cap { font-family: var(--mono); font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
   .connector-panel { display: none; position: fixed; z-index: 8; inset: 50% auto auto 50%;
     transform: translate(-50%,-50%); width: min(880px, calc(100vw - 36px)); max-height: 88vh;
     overflow: auto; padding: 18px; border: 1px solid var(--hairline-2); border-radius: 13px;
@@ -711,24 +736,53 @@
   }
   .tasks-add-btn:hover { border-color: var(--core); background: rgba(53,230,255,0.15); color: #fff; }
   
+  /* ── Tarjetas de tareas enriquecidas ── */
   .tasks-list {
-    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px;
     scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
   }
   .task-item {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    padding: 7px 9px; border: 1px solid var(--hairline); border-radius: 7px;
-    background: rgba(8, 20, 31, 0.4); font-size: 9.5px; transition: .15s ease;
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid var(--hairline); border-radius: 8px;
+    background: rgba(7, 18, 28, 0.5); font-family: var(--mono);
+    overflow: hidden; transition: border-color .15s, background .15s;
+    position: relative;
   }
-  .task-item:hover { border-color: var(--hairline-2); background: rgba(12, 28, 42, 0.6); }
-  .task-item .task-info { min-width: 0; flex: 1; }
-  .task-item .task-t-title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .task-item .task-t-meta { color: var(--muted); font-size: 8px; margin-top: 2px; }
-  .task-item .task-del {
-    color: var(--muted); cursor: pointer; border: 0; background: transparent; font-size: 12px; padding: 0 3px;
+  .task-item:hover { border-color: var(--hairline-2); background: rgba(10, 24, 38, 0.65); }
+  /* Barra lateral de color según tipo */
+  .task-bar { width: 3px; flex: none; background: rgba(53,230,255,.5); }
+  .task-item.recurring  .task-bar { background: #8496ff; }
+  .task-item.overdue    .task-bar { background: #ff8060; }
+  .task-item.scheduled  .task-bar { background: #60eca8; }
+  .task-body { flex: 1; padding: 7px 8px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .task-head-row { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .task-badge {
+    font-size: 6px; letter-spacing: .12em; padding: 1px 4px; border-radius: 3px;
+    flex: none; border: 1px solid; color: var(--core);
+    border-color: rgba(53,230,255,.35); background: rgba(53,230,255,.08);
   }
-  .task-item .task-del:hover { color: #ffb460; }
-  .tasks-empty { color: var(--muted); font-size: 9px; text-align: center; margin: auto; }
+  .task-item.recurring  .task-badge { color: #8496ff; border-color: rgba(132,150,255,.35); background: rgba(132,150,255,.08); }
+  .task-item.overdue    .task-badge { color: #ff8060; border-color: rgba(255,128,96,.35); background: rgba(255,128,96,.08); }
+  .task-t-title { font-size: 9.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .task-time-row { display: flex; align-items: center; gap: 8px; }
+  .task-countdown { font-size: 9px; color: var(--core); letter-spacing: .06em; font-weight: 600; }
+  .task-item.overdue .task-countdown { color: #ff8060; }
+  .task-interval { font-size: 8px; color: var(--muted); }
+  .task-prompt {
+    font-size: 8px; color: var(--muted); line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; opacity: .75;
+  }
+  .task-del {
+    align-self: flex-start; margin: 6px 6px 0 0;
+    color: var(--muted); border: 0; background: transparent; font-size: 13px;
+    cursor: pointer; padding: 0 2px; flex: none; transition: color .12s;
+  }
+  .task-del:hover { color: #ffb460; }
+  .tasks-empty { color: var(--muted); font-size: 8px; text-align: center; margin: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .tasks-empty-icon { font-size: 18px; opacity: .25; }
+
 
   /* ── Quick Launcher Bar ── */
   .quick-launcher { display: flex; gap: 6px; margin-top: auto; }
@@ -835,35 +889,36 @@
       </div>
       <div class="tasks-list" id="tasks-list"></div>
     </div>
-    
-    <!-- Barra de Accesos Rápidos -->
-    <div class="quick-launcher">
-      <button id="quick-explorer" type="button" title="Abrir Explorador de Archivos">📂 ARCHIVOS</button>
-      <button id="quick-connectors" type="button" title="Abrir Centro de Conectores">⚡ CONECTORES</button>
-    </div>
   </aside>
 
   <!-- Contenedor de Notificaciones Toasts HUD -->
   <div class="toast-container" id="hud-toast-container" aria-live="polite"></div>
 
-  <!-- Controles de conexión -->
-  <div class="controls" id="controls">
-    <div class="conn-status-row">
-      <span class="conn-dot" id="conn-dot"></span>
-      <span class="conn-status-label" id="conn-status-label">SIN CONEXIÓN · DEMO</span>
-    </div>
+  <!-- Mini-modal de conexión (oculto por defecto) -->
+  <div class="conn-modal" id="conn-modal">
+    <div class="conn-modal-title">ENLACE · GATEWAY</div>
     <input id="ws-token" type="password" placeholder="API Key" autocomplete="current-password" />
     <input id="ws-url-input" type="text" placeholder="ws://host:8080/ws/hub-test" autocomplete="off" title="URL del servidor" />
     <button id="ws-connect">CONECTAR</button>
-    <div class="controls-row">
-      <button id="connector-open">⚡</button>
-      <button id="explorer-open">📂</button>
-    </div>
+  </div>
+
+  <!-- Dock de 3 botones — esquina inferior izquierda -->
+  <div class="hud-dock" id="hud-dock">
+    <button class="dock-btn link-btn" id="dock-link" type="button" title="Conexión al gateway" aria-expanded="false">
+      <span class="conn-dot" id="conn-dot"></span>
+      <span class="conn-status-label" id="conn-status-label">ENLACE</span>
+    </button>
+    <button class="dock-btn" id="connector-open" type="button" title="Conectores">
+      <span class="dock-icon">&#9889;</span> CONECTORES
+    </button>
+    <button class="dock-btn" id="explorer-open" type="button" title="Explorador de archivos">
+      <span class="dock-icon">&#128193;</span> ARCHIVOS
+    </button>
   </div>
 
   <!-- Banner modo DEMO -->
   <div class="demo-banner" id="demo-banner">
-    <span class="demo-dot"></span> MODO DEMO — Sin conexión al servidor
+    <span class="demo-dot"></span> DEMO &mdash; Sin servidor
     <button id="demo-banner-connect" type="button">Conectar →</button>
   </div>
 
@@ -2087,7 +2142,8 @@
   const FIXED_WS_URL = CONFIG.wsUrl || defaultWsUrl();
   const tokenInput = document.getElementById("ws-token");
   const wsUrlInput = document.getElementById("ws-url-input");
-  const controlsPanel = document.getElementById("controls");
+  const hudDock = document.getElementById("hud-dock");
+  const connModal = document.getElementById("conn-modal");
   const demoBanner = document.getElementById("demo-banner");
   const connStatusLabel = document.getElementById("conn-status-label");
   const HUB_KEY_STORAGE = "jarvis.hubKey";
@@ -2104,19 +2160,21 @@
     return (wsUrlInput && wsUrlInput.value.trim()) || FIXED_WS_URL;
   }
 
-  function setConnStatus(state) { // state: 'disconnected' | 'connecting' | 'connected'
-    if (!controlsPanel) return;
-    controlsPanel.classList.remove("connected", "connecting");
+  function setConnStatus(state) {
+    if (!hudDock) return;
+    hudDock.classList.remove("connected", "connecting");
     const label = connStatusLabel;
     if (state === "connected") {
-      controlsPanel.classList.add("connected");
+      hudDock.classList.add("connected");
       if (label) label.textContent = "EN LÍNEA";
       if (demoBanner) demoBanner.classList.add("hidden");
+      // Cerrar el modal al conectar exitosamente
+      if (connModal) connModal.classList.remove("open");
     } else if (state === "connecting") {
-      controlsPanel.classList.add("connecting");
+      hudDock.classList.add("connecting");
       if (label) label.textContent = "CONECTANDO…";
     } else {
-      if (label) label.textContent = "SIN CONEXIÓN";
+      if (label) label.textContent = "ENLACE";
       if (demoBanner) demoBanner.classList.remove("hidden");
     }
   }
@@ -2788,39 +2846,69 @@
     if (!activeTasks.length) {
       const empty = document.createElement("div");
       empty.className = "tasks-empty";
-      empty.textContent = "SIN TAREAS PENDIENTES";
+      empty.innerHTML = '<span class="tasks-empty-icon">✔</span>SIN TAREAS PENDIENTES';
       tasksList.appendChild(empty);
       return;
     }
 
+    // Ordenar por next_run ascendente
+    activeTasks.sort((a, b) => (a.next_run || 0) - (b.next_run || 0));
+
     for (const task of activeTasks) {
       const item = document.createElement("div");
       item.className = "task-item";
-      
-      const info = document.createElement("div");
-      info.className = "task-info";
-      const title = document.createElement("div");
-      title.className = "task-t-title";
-      title.textContent = task.title;
-      
-      const meta = document.createElement("div");
-      meta.className = "task-t-meta";
-      const dueStr = formatTaskTime(task.next_run);
-      meta.textContent = task.kind === "recurring" ? `🔄 Recurrente · ${dueStr}` : `⏰ Programada · ${dueStr}`;
-      
-      info.append(title, meta);
-      
+      item.dataset.taskId = task.id;
+
+      // Barra de estado lateral
+      const bar = document.createElement("div"); bar.className = "task-bar";
+      const isOverdue = task.next_run && (task.next_run < Date.now() / 1000);
+      const isRecurring = task.kind === "recurring";
+      item.classList.add(isOverdue ? "overdue" : isRecurring ? "recurring" : "scheduled");
+
+      const body = document.createElement("div"); body.className = "task-body";
+
+      // Cabecera: tipo + título
+      const head = document.createElement("div"); head.className = "task-head-row";
+      const badge = document.createElement("span"); badge.className = "task-badge";
+      badge.textContent = isRecurring ? "RECURRENTE" : "PROGRAMADA";
+      const titleEl = document.createElement("div"); titleEl.className = "task-t-title";
+      titleEl.textContent = task.title;
+      head.append(badge, titleEl);
+
+      // Tiempo con countdown en tiempo real
+      const timeRow = document.createElement("div"); timeRow.className = "task-time-row";
+      const timeEl = document.createElement("span"); timeEl.className = "task-countdown";
+      timeEl.dataset.nextRun = task.next_run || 0;
+      timeEl.textContent = formatTaskTime(task.next_run);
+      if (task.interval_seconds) {
+        const interval = document.createElement("span"); interval.className = "task-interval";
+        interval.textContent = `↻ ${formatInterval(task.interval_seconds)}`;
+        timeRow.append(timeEl, interval);
+      } else {
+        timeRow.append(timeEl);
+      }
+
+      // Plan/prompt (hasta 2 líneas)
+      const promptEl = document.createElement("div"); promptEl.className = "task-prompt";
+      promptEl.textContent = task.prompt || "";
+
+      body.append(head, timeRow, promptEl);
+
       const delBtn = document.createElement("button");
-      delBtn.className = "task-del";
-      delBtn.textContent = "×";
-      delBtn.title = "Cancelar tarea";
-      delBtn.onclick = async (e) => {
-        e.stopPropagation();
-        await deleteTask(task.id);
-      };
-      
-      item.append(info, delBtn);
+      delBtn.className = "task-del"; delBtn.textContent = "×"; delBtn.title = "Cancelar";
+      delBtn.onclick = async (e) => { e.stopPropagation(); await deleteTask(task.id); };
+
+      item.append(bar, body, delBtn);
       tasksList.appendChild(item);
+    }
+
+    // Actualizar countdowns cada 30s
+    if (!window._taskCountdownInterval) {
+      window._taskCountdownInterval = setInterval(() => {
+        document.querySelectorAll(".task-countdown").forEach(el => {
+          el.textContent = formatTaskTime(parseFloat(el.dataset.nextRun));
+        });
+      }, 30000);
     }
   }
 
@@ -2828,11 +2916,23 @@
     if (!timestamp) return "Pendiente";
     const now = Date.now() / 1000;
     const diff = timestamp - now;
-    if (diff < 0) return "Vencida";
-    if (diff < 3600) return `En ${Math.ceil(diff / 60)} min`;
-    if (diff < 86400) return `En ${Math.ceil(diff / 3600)} h`;
+    if (diff < -60) return "VENCIDA";
+    if (diff < 0) return "AHORA";
+    if (diff < 60) return `${Math.round(diff)}s`;
+    if (diff < 3600) return `${Math.ceil(diff / 60)} min`;
+    if (diff < 86400) {
+      const h = Math.floor(diff / 3600); const m = Math.ceil((diff % 3600) / 60);
+      return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    const days = Math.floor(diff / 86400);
     const d = new Date(timestamp * 1000);
-    return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    return `${days}d · ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function formatInterval(seconds) {
+    if (seconds < 3600) return `c/${Math.round(seconds/60)}min`;
+    if (seconds < 86400) return `c/${Math.round(seconds/3600)}h`;
+    return `c/${Math.round(seconds/86400)}d`;
   }
 
   async function deleteTask(taskId) {
@@ -2862,8 +2962,28 @@
   const quickExplorer = document.getElementById("quick-explorer");
   const quickConnectors = document.getElementById("quick-connectors");
 
-  if (quickExplorer) quickExplorer.onclick = () => openExplorer();
-  if (quickConnectors) quickConnectors.onclick = () => { connectorPanel.classList.add("active"); refreshConnectorModules(); };
+  // ── Dock ENLACE: abrir/cerrar mini-modal de conexión ──
+  const dockLinkBtn = document.getElementById("dock-link");
+  if (dockLinkBtn && connModal) {
+    dockLinkBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = connModal.classList.toggle("open");
+      dockLinkBtn.setAttribute("aria-expanded", String(isOpen));
+      if (isOpen) tokenInput?.focus();
+    });
+    // Cerrar al hacer click fuera
+    document.addEventListener("click", (e) => {
+      if (connModal.classList.contains("open") &&
+          !connModal.contains(e.target) && e.target !== dockLinkBtn) {
+        connModal.classList.remove("open");
+        dockLinkBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+  // Botón CONECTAR del banner DEMO abre el modal
+  document.getElementById("demo-banner-connect")?.addEventListener("click", () => {
+    if (connModal) { connModal.classList.add("open"); tokenInput?.focus(); }
+  });
 
   // ── Toggle expansión del calendario ──
   const calWidget = document.getElementById("cal-widget");
