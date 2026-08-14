@@ -206,6 +206,12 @@ class Settings:
     navidrome_password: str = ""
     navidrome_timeout_seconds: float = 20.0
 
+    # --- Proxmox VE Telemetría ---
+    proxmox_url: str = "https://192.168.68.201:8006"
+    proxmox_token_id: str = ""
+    proxmox_token_secret: str = ""
+    proxmox_verify_ssl: bool = False
+
     connector_timeout_seconds: float = 20.0
     connector_max_payload_bytes: int = 64 * 1024
     connector_max_response_bytes: int = 256 * 1024
@@ -480,6 +486,10 @@ class Settings:
                 3.0,
                 min(120.0, float(os.environ.get("JARVIS_NAVIDROME_TIMEOUT", "20"))),
             ),
+            proxmox_url=os.environ.get("JARVIS_PROXMOX_URL", "https://192.168.68.201:8006").rstrip("/"),
+            proxmox_token_id=os.environ.get("JARVIS_PROXMOX_TOKEN_ID", "").strip(),
+            proxmox_token_secret=os.environ.get("JARVIS_PROXMOX_TOKEN_SECRET", "").strip(),
+            proxmox_verify_ssl=_get_bool("JARVIS_PROXMOX_VERIFY_SSL", False),
             connector_timeout_seconds=max(
                 3.0,
                 min(

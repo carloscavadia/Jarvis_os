@@ -852,6 +852,47 @@
   .config-modal-body input:focus { border-color: var(--core); }
   .config-modal-actions { display: flex; gap: 8px; margin-top: 10px; }
   .config-modal-actions button { flex: 1; padding: 8px; border: 1px solid var(--hairline-2); border-radius: 7px; background: rgba(12,29,40,0.8); color: var(--text); cursor: pointer; font: 9px var(--mono); letter-spacing: .08em; }
+
+  /* ── Mini-Bar Proxmox VE ── */
+  .proxmox-bar {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 14px;
+    padding: 5px 14px; border: 1px solid var(--hairline-2);
+    border-radius: 20px; background: rgba(4, 12, 21, 0.78);
+    backdrop-filter: blur(16px) saturate(120%);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.55), 0 0 15px rgba(53,230,255,0.06);
+    font-family: var(--mono); z-index: 5; pointer-events: auto;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .proxmox-bar:hover {
+    border-color: rgba(53,230,255,0.4);
+    box-shadow: 0 8px 35px rgba(0,0,0,0.6), 0 0 22px rgba(53,230,255,0.12);
+  }
+  .pve-head { display: flex; align-items: center; gap: 6px; }
+  .pve-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); flex: none; transition: background .3s, box-shadow .3s;
+  }
+  .proxmox-bar.online .pve-dot { background: #60eca8; box-shadow: 0 0 8px rgba(96,236,168,.8); }
+  .proxmox-bar.offline .pve-dot { background: #ff6060; box-shadow: 0 0 8px rgba(255,96,96,.8); }
+  .pve-title { font-size: 8.5px; letter-spacing: 0.18em; color: var(--core-bright); font-weight: bold; }
+  .pve-metrics { display: flex; align-items: center; gap: 12px; }
+  .pve-metric { display: flex; align-items: center; gap: 5px; font-size: 8px; }
+  .pve-metric .lbl { color: var(--muted); letter-spacing: .08em; }
+  .pve-metric .val { color: var(--text); min-width: 26px; font-size: 8px; }
+  .pve-track {
+    width: 42px; height: 4px; border-radius: 2px;
+    background: rgba(10,25,38,0.7); overflow: hidden; border: 1px solid var(--hairline);
+  }
+  .pve-fill {
+    height: 100%; width: 0%; background: var(--core);
+    border-radius: 2px; transition: width .4s ease-out, background .3s;
+  }
+  .pve-fill.ram { background: #8496ff; }
+  .pve-fill.disk { background: #60eca8; }
+  .pve-fill.high { background: #ff8060 !important; }
+  .pve-nodes { font-size: 7.5px; letter-spacing: .12em; color: var(--muted); border-left: 1px solid var(--hairline); padding-left: 10px; }
+  @media (max-width: 900px) { .proxmox-bar { display: none; } }
 </style>
 </head>
 <body>
@@ -861,6 +902,32 @@
     <span class="bracket bl"></span><span class="bracket br"></span>
   </div>
   <div class="brand">J.A.R.V.I.S</div>
+
+  <!-- Mini-Bar Proxmox VE -->
+  <div class="proxmox-bar" id="proxmox-bar" title="Monitoreo Proxmox VE · https://192.168.68.201:8006">
+    <div class="pve-head">
+      <span class="pve-dot" id="pve-dot"></span>
+      <span class="pve-title">PROXMOX VE</span>
+    </div>
+    <div class="pve-metrics">
+      <div class="pve-metric" title="Uso de CPU">
+        <span class="lbl">CPU</span>
+        <div class="pve-track"><div class="pve-fill" id="pve-cpu-fill" style="width: 0%;"></div></div>
+        <span class="val" id="pve-cpu-val">0%</span>
+      </div>
+      <div class="pve-metric" title="Uso de RAM">
+        <span class="lbl">RAM</span>
+        <div class="pve-track"><div class="pve-fill ram" id="pve-ram-fill" style="width: 0%;"></div></div>
+        <span class="val" id="pve-ram-val">0%</span>
+      </div>
+      <div class="pve-metric" title="Uso de Disco">
+        <span class="lbl">DISCO</span>
+        <div class="pve-track"><div class="pve-fill disk" id="pve-disk-fill" style="width: 0%;"></div></div>
+        <span class="val" id="pve-disk-val">0%</span>
+      </div>
+    </div>
+    <div class="pve-nodes" id="pve-nodes-label">192.168.68.201</div>
+  </div>
 
   <div class="readout">
     <div><span class="dot" id="dot"></span>ESTADO · <span class="state" id="r-state">REPOSO</span></div>
@@ -2008,14 +2075,20 @@
       rememberHubKey(token);
       setConnStatus("connected");
       addLine("SISTEMA", "Conectado a " + target.host, "system");
-      // Cargar tareas ahora que tenemos conexión y clave válida
+      // Cargar tareas y telemetría de Proxmox ahora que tenemos conexión
       fetchTasks();
-      // Polling automático de tareas cada 20s
+      fetchProxmoxStatus();
+      // Polling de tareas (20s) y Proxmox (10s)
       if (window._taskPoll) clearInterval(window._taskPoll);
       window._taskPoll = setInterval(() => {
         if (ws && ws.readyState === WebSocket.OPEN) fetchTasks();
         else clearInterval(window._taskPoll);
       }, 20000);
+      if (window._proxmoxPoll) clearInterval(window._proxmoxPoll);
+      window._proxmoxPoll = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) fetchProxmoxStatus();
+        else clearInterval(window._proxmoxPoll);
+      }, 10000);
       // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
       // si el detector local está disponible; encadenarlo evita una carrera en la
       // que el HUD se rinde antes de recibir la respuesta.
@@ -2027,6 +2100,7 @@
       rLink.textContent = "DESCONECTADO";
       setConnStatus("disconnected");
       clearInterval(window._taskPoll);
+      clearInterval(window._proxmoxPoll);
       teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null;
     };
     ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
@@ -2969,6 +3043,40 @@
       messageInput.value = `JARVIS, recuérdame: ${promptText}`;
       document.getElementById("form").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
     };
+  }
+
+  async function fetchProxmoxStatus() {
+    const proxmoxBar = document.getElementById("proxmox-bar");
+    if (!proxmoxBar) return;
+    try {
+      const data = await connectorRequest("/proxmox/status", { headers: connectorApiHeaders() });
+      const cpuFill = document.getElementById("pve-cpu-fill");
+      const cpuVal = document.getElementById("pve-cpu-val");
+      const ramFill = document.getElementById("pve-ram-fill");
+      const ramVal = document.getElementById("pve-ram-val");
+      const diskFill = document.getElementById("pve-disk-fill");
+      const diskVal = document.getElementById("pve-disk-val");
+      const nodesLabel = document.getElementById("pve-nodes-label");
+
+      if (data.online) {
+        proxmoxBar.classList.remove("offline");
+        proxmoxBar.classList.add("online");
+        if (cpuFill) { cpuFill.style.width = `${Math.min(100, data.cpu_pct)}%`; cpuFill.classList.toggle("high", data.cpu_pct > 85); }
+        if (cpuVal) cpuVal.textContent = `${data.cpu_pct}%`;
+        if (ramFill) { ramFill.style.width = `${Math.min(100, data.ram_pct)}%`; ramFill.classList.toggle("high", data.ram_pct > 85); }
+        if (ramVal) ramVal.textContent = `${data.ram_pct}%`;
+        if (diskFill) { diskFill.style.width = `${Math.min(100, data.disk_pct)}%`; diskFill.classList.toggle("high", data.disk_pct > 90); }
+        if (diskVal) diskVal.textContent = `${data.disk_pct}%`;
+        if (nodesLabel) nodesLabel.textContent = data.authenticated ? `ONLINE · ${data.online_nodes} NODO` : `192.168.68.201 · ONLINE`;
+      } else {
+        proxmoxBar.classList.remove("online");
+        proxmoxBar.classList.add("offline");
+        if (nodesLabel) nodesLabel.textContent = "192.168.68.201 · OFFLINE";
+      }
+    } catch {
+      proxmoxBar.classList.remove("online");
+      proxmoxBar.classList.add("offline");
+    }
   }
 
   // Initial loads — sin clave todavía, solo el calendario
