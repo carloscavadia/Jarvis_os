@@ -2096,17 +2096,31 @@
       try {
         const data = await connectorRequest(`/workspace/file/content?path=${encodeURIComponent(item.path)}`, { headers: connectorApiHeaders() });
         selectedFileTextContent = data.content || "";
-        const fmt = presentationFormat(selectedFileTextContent, item.extension.replace(".", ""));
         previewBodyBox.replaceChildren();
-        if (["markdown", "table"].includes(fmt)) {
-          renderStructuredText(previewBodyBox, selectedFileTextContent);
+        if (data.is_binary) {
+          const rawUrl = `${gatewayHttpBase()}/workspace/file/raw?path=${encodeURIComponent(item.path)}&token=${encodeURIComponent(hubKey())}`;
+          const binBox = document.createElement("div");
+          binBox.style.cssText = "display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px; text-align:center; gap:8px;";
+          const icon = [".docx", ".doc"].includes(ext) ? "📄" : [".pdf"].includes(ext) ? "📕" : [".zip", ".tar", ".gz"].includes(ext) ? "📦" : "📁";
+          binBox.innerHTML = `
+            <div style="font-size:32px;">${icon}</div>
+            <div style="color:var(--core-bright); font-weight:500;">${item.name}</div>
+            <div style="color:var(--muted); font-size:9px;">Documento Binario · ${formatBytes(item.size)}</div>
+            <a href="${rawUrl}" target="_blank" download="${item.name}" style="margin-top:8px; color:var(--core); border:1px solid var(--hairline-2); padding:6px 12px; border-radius:6px; text-decoration:none; font-size:10px; background:rgba(53,230,255,0.08);">DESCARGAR / ABRIR ⤓</a>
+          `;
+          previewBodyBox.appendChild(binBox);
         } else {
-          const pre = document.createElement("pre");
-          pre.textContent = selectedFileTextContent;
-          previewBodyBox.appendChild(pre);
+          const fmt = presentationFormat(selectedFileTextContent, item.extension.replace(".", ""));
+          if (["markdown", "table"].includes(fmt)) {
+            renderStructuredText(previewBodyBox, selectedFileTextContent);
+          } else {
+            const pre = document.createElement("pre");
+            pre.textContent = selectedFileTextContent;
+            previewBodyBox.appendChild(pre);
+          }
         }
       } catch (error) {
-        previewBodyBox.textContent = `No se pudo leer como texto plano (${error.message}).`;
+        previewBodyBox.textContent = `No se pudo leer el archivo (${error.message}).`;
       }
     }
   }

@@ -986,37 +986,81 @@ def _get_workspace_guard() -> WorkspaceGuard:
 async def workspace_tree(path: str = "."):
     guard = _get_workspace_guard()
     raw = (path or ".").strip()
-    if raw.lower() in {"~", "/", "home", "home directory", "root", "workspace"}:
-        raw = "."
+    
+    resolved = None
     try:
-        resolved = guard.resolve(raw, allow_root=True)
+        candidate = guard.resolve(raw, allow_root=True)
+        if candidate.exists() and candidate.is_dir():
+            resolved = candidate
     except ValueError:
-        resolved = guard.resolve(".", allow_root=True)
+        pass
 
-    if not resolved.exists() or not resolved.is_dir():
+    if resolved is None:
         resolved = guard.resolve(".", allow_root=True)
 
     items = []
     try:
-        entries = sorted(resolved.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-        for entry in entries:
+        raw_entries = list(resolved.iterdir())
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Error leyendo directorio: {exc}")
+
+    def safe_sort_key(item: Path) -> tuple[bool, str]:
+        is_directory = False
+        try:
+            is_directory = item.is_dir()
+        except OSError:
+            pass
+        return (not is_directory, item.name.lower())
+
+    entries = sorted(raw_entries, key=safe_sort_key)
+
+    for entry in entries:
+        try:
+            is_dir = False
+            is_symlink = False
+            size = 0
+            mod_time = 0
+            
+            try:
+                is_symlink = entry.is_symlink()
+            except OSError:
+                pass
+
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                pass
+
+            if not is_dir and not is_symlink:
+                try:
+                    if entry.is_file():
+                        size = entry.stat().st_size
+                except OSError:
+                    pass
+
+            try:
+                mod_time = entry.stat().st_mtime
+            except OSError:
+                pass
+
             rel = guard.display(entry)
-            is_dir = entry.is_dir()
-            size = 0 if is_dir else (entry.stat().st_size if entry.is_file() else 0)
             ext = entry.suffix.lower() if not is_dir else ""
             mime, _ = mimetypes.guess_type(entry.name)
-            mod_time = entry.stat().st_mtime if entry.exists() else 0
+
             items.append({
                 "name": entry.name,
                 "path": rel,
                 "is_dir": is_dir,
+                "is_symlink": is_symlink,
                 "size": size,
                 "extension": ext,
                 "mime": mime or ("directory" if is_dir else "application/octet-stream"),
                 "mod_time": mod_time,
             })
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Error leyendo directorio: {exc}")
+        except Exception as item_err:
+            logger.warning("Error leyendo item %s en workspace: %s", entry.name, item_err)
+            continue
+
     return {"path": guard.display(resolved), "items": items}
 
 
@@ -1032,19 +1076,44 @@ async def workspace_file_content(path: str):
     size = resolved.stat().st_size
     if size > settings.max_file_bytes:
         raise HTTPException(status_code=400, detail="El archivo supera el tamaño máximo permitido.")
-    try:
-        content = resolved.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="El archivo no es de texto UTF-8 plano.")
+    
     mime, _ = mimetypes.guess_type(resolved.name)
-    return {
-        "path": guard.display(resolved),
-        "name": resolved.name,
-        "content": content,
-        "size": size,
-        "extension": resolved.suffix.lower(),
-        "mime": mime or "text/plain",
-    }
+    ext = resolved.suffix.lower()
+    
+    is_binary_ext = ext in {".docx", ".doc", ".pdf", ".zip", ".tar", ".gz", ".7z", ".xlsx", ".pptx", ".exe", ".bin", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
+    
+    if is_binary_ext:
+        return {
+            "path": guard.display(resolved),
+            "name": resolved.name,
+            "content": f"[Documento/Archivo {resolved.name} ({size} bytes)]",
+            "size": size,
+            "extension": ext,
+            "mime": mime or "application/octet-stream",
+            "is_binary": True,
+        }
+
+    try:
+        content = resolved.read_text(encoding="utf-8", errors="replace")
+        return {
+            "path": guard.display(resolved),
+            "name": resolved.name,
+            "content": content,
+            "size": size,
+            "extension": ext,
+            "mime": mime or "text/plain",
+            "is_binary": False,
+        }
+    except Exception as exc:
+        return {
+            "path": guard.display(resolved),
+            "name": resolved.name,
+            "content": f"[Error leyendo archivo: {exc}]",
+            "size": size,
+            "extension": ext,
+            "mime": mime or "application/octet-stream",
+            "is_binary": True,
+        }
 
 
 @app.get("/workspace/file/raw")
