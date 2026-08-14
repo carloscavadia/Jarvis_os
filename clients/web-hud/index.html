@@ -2101,6 +2101,7 @@
 
   document.getElementById("form").addEventListener("submit", (e) => {
     e.preventDefault();
+    cancelSpeechQueue(); // Cancelar voz previa al enviar nuevo mensaje del usuario (barge-in)
     const text = messageInput.value.trim();
     if (!text || (busy && !pendingApproval)) return;
     if (pendingApproval) {
@@ -3132,7 +3133,7 @@
       .trim();
   }
 
-  function speakInBrowser(text, cancelExisting = true) {
+  function speakInBrowser(text, cancelExisting = false) {
     return new Promise((resolve) => {
       if (!canSpeak) { rVoice.textContent = "ERROR"; resolve(); return; }
       if (cancelExisting) speechSynthesis.cancel();
@@ -3433,12 +3434,12 @@
     flushStreamSpeech(true);
   }
 
-  async function speak(text) {
+  async function speak(text, cancelExisting = false) {
     const spokenText = prepareSpeechText(text);
     if (!voiceEnabled || !spokenText) return;
-    cancelSpeechQueue();
+    if (cancelExisting) cancelSpeechQueue();
     if (!realtimeVoiceAvailable && !serverVoiceAvailable) {
-      await speakInBrowser(spokenText);
+      await speakInBrowser(spokenText, cancelExisting);
       startConversationFollowUp();
       return;
     }
@@ -3447,7 +3448,7 @@
       await runSpeechQueue();
     } catch {
       serverVoiceAvailable = false;
-      await speakInBrowser(spokenText);
+      await speakInBrowser(spokenText, cancelExisting);
       startConversationFollowUp();
     }
   }
@@ -4166,6 +4167,7 @@
   }
 
   async function startServerRecording({ automatic = false, followUp = false } = {}) {
+    cancelSpeechQueue(); // Interrupción por voz (Barge-in): silenciar a JARVIS de inmediato
     stopWakeListening();
     try {
       recorderStream = await navigator.mediaDevices.getUserMedia({
