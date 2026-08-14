@@ -985,14 +985,16 @@ def _get_workspace_guard() -> WorkspaceGuard:
 @app.get("/workspace/tree", dependencies=[Depends(require_api_key)])
 async def workspace_tree(path: str = "."):
     guard = _get_workspace_guard()
+    raw = (path or ".").strip()
+    if raw.lower() in {"~", "/", "home", "home directory", "root", "workspace"}:
+        raw = "."
     try:
-        resolved = guard.resolve(path, allow_root=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    if not resolved.exists():
-        raise HTTPException(status_code=404, detail="La ruta solicitada no existe.")
-    if not resolved.is_dir():
-        raise HTTPException(status_code=400, detail="La ruta no es un directorio.")
+        resolved = guard.resolve(raw, allow_root=True)
+    except ValueError:
+        resolved = guard.resolve(".", allow_root=True)
+
+    if not resolved.exists() or not resolved.is_dir():
+        resolved = guard.resolve(".", allow_root=True)
 
     items = []
     try:

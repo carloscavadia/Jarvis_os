@@ -337,11 +337,27 @@
   }
   .explorer-panel.active {
     display: flex;
-    animation: hologram-project-in .38s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: hologram-project-in 0.92s cubic-bezier(0.16, 1, 0.3, 1);
   }
   @keyframes hologram-project-in {
-    from { opacity: 0; transform: translate(-50%, -15px) scale(0.92); filter: blur(6px) brightness(1.8); }
-    to { opacity: 1; transform: translate(-50%, 0) scale(1); filter: blur(0) brightness(1); }
+    0% {
+      opacity: 0;
+      transform: translate(-50%, 80px) scale(0.06);
+      filter: blur(18px) brightness(3.5) contrast(2);
+      box-shadow: 0 0 140px var(--core-bright), 0 0 70px var(--core);
+    }
+    40% {
+      opacity: 0.82;
+      transform: translate(-50%, 20px) scale(0.72);
+      filter: blur(5px) brightness(1.6) contrast(1.25);
+      box-shadow: 0 0 80px rgba(53,230,255,0.4);
+    }
+    100% {
+      opacity: 1;
+      transform: translate(-50%, 0) scale(1);
+      filter: blur(0) brightness(1) contrast(1);
+      box-shadow: 0 24px 90px rgba(0,0,0,0.68), 0 0 50px rgba(53,230,255,0.1);
+    }
   }
   .explorer-head {
     display: flex; align-items: center; justify-content: space-between;
@@ -690,6 +706,7 @@
   const previewBodyBox = document.getElementById("preview-body-box");
   const explorerAskJarvis = document.getElementById("explorer-ask-jarvis");
   const explorerOpenBoard = document.getElementById("explorer-open-board");
+  let explorerOpenTime = 0;
   let currentExplorerPath = ".";
   let currentExplorerItems = [];
   let selectedFileItem = null;
@@ -1733,8 +1750,13 @@
     const response = await fetch(`${gatewayHttpBase()}${path}`, options);
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const detail = typeof payload.detail === "string" ? payload.detail : JSON.stringify(payload.detail || {});
-      throw new Error(detail || `HTTP ${response.status}`);
+      let detail = "";
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      } else if (payload.detail && typeof payload.detail === "object" && Object.keys(payload.detail).length > 0) {
+        detail = JSON.stringify(payload.detail);
+      }
+      throw new Error(detail || `Error HTTP ${response.status}`);
     }
     return payload;
   }
@@ -1844,14 +1866,18 @@
     const pLeft = panelRect.left;
     const pRight = panelRect.right;
     
+    const ageSec = (Date.now() - (explorerOpenTime || 0)) / 1000;
+    const isOpening = ageSec < 1.2;
+    const boost = isOpening ? (1.2 - ageSec) * 1.5 : 0;
+    
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     
     // Beam cone fill
     const grad = ctx.createLinearGradient(cx, cy, px, py);
-    grad.addColorStop(0, `rgba(${rgbCol}, 0.26)`);
-    grad.addColorStop(0.65, `rgba(${rgbCol}, 0.08)`);
-    grad.addColorStop(1, `rgba(${rgbCol}, 0.01)`);
+    grad.addColorStop(0, `rgba(${rgbCol}, ${0.35 + boost * 0.4})`);
+    grad.addColorStop(0.65, `rgba(${rgbCol}, ${0.12 + boost * 0.2})`);
+    grad.addColorStop(1, `rgba(${rgbCol}, 0.02)`);
     
     ctx.fillStyle = grad;
     ctx.beginPath();
@@ -1862,35 +1888,51 @@
     ctx.fill();
 
     // Laser rays
-    ctx.lineWidth = 1.2;
-    const rays = [pLeft, pLeft + panelRect.width * 0.25, px, pLeft + panelRect.width * 0.75, pRight];
-    for (let i = 0; i < rays.length; i++) {
-      const rx = rays[i];
-      const flick = 0.6 + 0.4 * Math.sin(t * 12 + i * 1.5);
-      ctx.globalAlpha = 0.35 * flick;
+    ctx.lineWidth = 1.2 + boost * 0.8;
+    const rayCoords = [
+      pLeft,
+      pLeft + panelRect.width * 0.2,
+      pLeft + panelRect.width * 0.4,
+      px,
+      pLeft + panelRect.width * 0.6,
+      pLeft + panelRect.width * 0.8,
+      pRight
+    ];
+    for (let i = 0; i < rayCoords.length; i++) {
+      const rx = rayCoords[i];
+      const flick = 0.6 + 0.4 * Math.sin(t * 14 + i * 1.8);
+      ctx.globalAlpha = (0.35 + boost * 0.3) * flick;
       ctx.strokeStyle = `rgb(${rgbCol})`;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      const midX = (cx + rx) / 2 + Math.sin(t * 4 + i) * 6;
+      const midX = (cx + rx) / 2 + Math.sin(t * 4 + i) * (8 + boost * 4);
       const midY = (cy + py) / 2;
       ctx.quadraticCurveTo(midX, midY, rx, py);
       ctx.stroke();
     }
 
     // Energy rings traveling from core to panel
-    const ringCount = 3;
+    const ringCount = isOpening ? 5 : 3;
+    const speed = isOpening ? 1.4 : 0.8;
     for (let r = 0; r < ringCount; r++) {
-      const progress = ((t * 0.8 + r / ringCount) % 1);
+      const progress = ((t * speed + r / ringCount) % 1);
       const rx = cx + (px - cx) * progress;
       const ry = cy + (py - cy) * progress;
-      const w = progress * (panelRect.width * 0.6);
-      const h = progress * 14;
-      ctx.globalAlpha = (1 - progress) * 0.45;
+      const w = progress * (panelRect.width * 0.65);
+      const h = progress * 16;
+      ctx.globalAlpha = (1 - progress) * (0.5 + boost * 0.3);
       ctx.strokeStyle = `rgb(${rgbCol})`;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1 + boost;
       ctx.beginPath();
       ctx.ellipse(rx, ry, Math.max(2, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2);
       ctx.stroke();
+    }
+
+    if (isOpening) {
+      const scanX = pLeft + (panelRect.width * ((t * 2) % 1));
+      ctx.globalAlpha = boost * 0.8;
+      ctx.fillStyle = `rgb(${rgbCol})`;
+      ctx.fillRect(scanX - 30, py - 1, 60, 3);
     }
     
     ctx.restore();
@@ -1917,6 +1959,7 @@
   }
 
   async function openExplorer(path = ".") {
+    explorerOpenTime = Date.now();
     explorerPanel.classList.add("active");
     await loadExplorerFiles(path);
   }
@@ -1926,18 +1969,26 @@
   }
 
   async function loadExplorerFiles(path = ".") {
+    let cleanPath = (path || ".").trim();
+    if (["home", "home directory", "~", "/", "root", "workspace"].includes(cleanPath.toLowerCase())) {
+      cleanPath = ".";
+    }
     try {
-      const data = await connectorRequest(`/workspace/tree?path=${encodeURIComponent(path)}`, { headers: connectorApiHeaders() });
+      const data = await connectorRequest(`/workspace/tree?path=${encodeURIComponent(cleanPath)}`, { headers: connectorApiHeaders() });
       currentExplorerPath = data.path;
       currentExplorerItems = data.items || [];
       renderExplorerBreadcrumbs(data.path);
       renderExplorerGrid(currentExplorerItems);
       resetFilePreview();
     } catch (error) {
+      if (cleanPath !== ".") {
+        return await loadExplorerFiles(".");
+      }
       explorerGrid.replaceChildren();
       const errEl = document.createElement("div");
       errEl.className = "preview-empty";
-      errEl.textContent = `ERROR · ${error.message}`;
+      const errorText = typeof error.message === "string" && error.message.trim() && error.message !== "{}" ? error.message : "Ruta no encontrada o inaccesible";
+      errEl.textContent = `ERROR · ${errorText}`;
       explorerGrid.appendChild(errEl);
     }
   }
