@@ -462,19 +462,20 @@
 
   /* ── HUD Side Deck (Panel Lateral Elegante) ── */
   .side-deck {
-    position: fixed; left: 34px; top: 90px; bottom: 90px;
-    width: min(280px, calc(100vw - 40px));
-    display: flex; flex-direction: column; gap: 14px;
-    pointer-events: auto; z-index: 4;
+    position: fixed; left: 34px; top: 210px; bottom: 140px;
+    width: min(240px, calc(100vw - 40px));
+    display: flex; flex-direction: column; gap: 12px;
+    pointer-events: auto; z-index: 4; overflow: hidden;
   }
-  @media (max-width: 900px) { .side-deck { display: none; } }
+  @media (max-width: 1000px) { .side-deck { display: none; } }
 
   /* ── Mini Calendario ── */
   .calendar-widget {
     border: 1px solid var(--hairline-2); border-radius: 12px;
     background: rgba(4, 12, 21, 0.65); backdrop-filter: blur(14px) saturate(120%);
     box-shadow: 0 14px 45px rgba(0,0,0,0.45), 0 0 20px rgba(53,230,255,0.05);
-    padding: 12px; font-family: var(--mono); position: relative; overflow: hidden;
+    padding: 12px; font-family: var(--mono); position: relative; overflow: visible;
+    flex-shrink: 0;
   }
   .calendar-widget::before {
     content: ""; position: absolute; top: 0; left: 0; width: 36px; height: 1px;
@@ -487,11 +488,12 @@
   .cal-month { font-size: 10px; letter-spacing: 0.16em; color: var(--core-bright); text-transform: uppercase; }
   .cal-today-badge { font-size: 8px; letter-spacing: 0.1em; color: var(--core); background: rgba(53,230,255,0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--hairline); }
   
-  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; font-size: 9px; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; font-size: 9px; min-height: 0; }
   .cal-day-header { color: var(--muted); padding-bottom: 4px; font-size: 8px; }
   .cal-day {
-    padding: 5px 0; border-radius: 6px; color: var(--text); cursor: pointer; transition: .15s ease;
-    border: 1px solid transparent; position: relative;
+    padding: 4px 0; border-radius: 5px; color: var(--text); cursor: pointer; transition: .15s ease;
+    border: 1px solid transparent; position: relative; aspect-ratio: 1; display: flex;
+    align-items: center; justify-content: center; min-width: 0; font-size: 9px;
   }
   .cal-day:hover { background: rgba(53,230,255,0.12); color: var(--core-bright); }
   .cal-day.today {
@@ -645,29 +647,24 @@
       </div>
       <div class="tasks-list" id="tasks-list"></div>
     </div>
-
+    
     <!-- Barra de Accesos Rápidos -->
     <div class="quick-launcher">
       <button id="quick-explorer" type="button" title="Abrir Explorador de Archivos">📂 ARCHIVOS</button>
       <button id="quick-connectors" type="button" title="Abrir Centro de Conectores">⚡ CONECTORES</button>
-      <button id="quick-config" type="button" title="Configurar Conexión">⚙️ RED</button>
     </div>
   </aside>
 
   <!-- Contenedor de Notificaciones Toasts HUD -->
   <div class="toast-container" id="hud-toast-container" aria-live="polite"></div>
 
-  <!-- Modal de Configuración de Conexión -->
-  <div class="config-modal" id="config-modal" aria-label="Configuración de Red">
-    <div class="config-modal-head"><span>CONFIGURACIÓN DE RED Y CLAVE</span><button class="action-close" id="config-modal-close" type="button">×</button></div>
-    <div class="config-modal-body">
-      <label>CLAVE DEL HUB / API KEY</label>
-      <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
-      <div style="color:var(--muted); font-size:9px;">Permite conectar de forma segura el HUD con el servidor de JARVIS.</div>
-    </div>
-    <div class="config-modal-actions">
-      <button class="primary" id="ws-connect" type="button">CONECTAR HUB</button>
-    </div>
+  <!-- Controles de conexión originales -->
+  <div class="controls">
+    <div class="cap">Conexión</div>
+    <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
+    <button id="ws-connect">Conectar</button>
+    <button id="connector-open">Conectores</button>
+    <button id="explorer-open">Archivos 📂</button>
   </div>
 
   <!-- Configuración local opcional (config.js, no versionado). Si no existe, el
@@ -2557,17 +2554,14 @@
   renderMiniCalendar();
   setTimeout(() => fetchTasks(), 1500);
 
-  // ── Config Modal & Quick Launchers ──
-  const configModal = document.getElementById("config-modal");
-  const quickConfig = document.getElementById("quick-config");
+  // ── Quick Launchers del Side Deck ──
   const quickExplorer = document.getElementById("quick-explorer");
   const quickConnectors = document.getElementById("quick-connectors");
-  const configModalClose = document.getElementById("config-modal-close");
 
-  if (quickConfig) quickConfig.onclick = () => configModal.classList.add("active");
-  if (configModalClose) configModalClose.onclick = () => configModal.classList.remove("active");
   if (quickExplorer) quickExplorer.onclick = () => openExplorer();
   if (quickConnectors) quickConnectors.onclick = () => { connectorPanel.classList.add("active"); refreshConnectorModules(); };
+
+  document.getElementById("explorer-open")?.addEventListener("click", () => openExplorer(currentExplorerPath));
 
   // ── Voz: wake/STT local + OpenAI Realtime bajo demanda + Kokoro fallback ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
