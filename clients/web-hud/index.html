@@ -3076,7 +3076,7 @@
 
   function gatewayHttpBase() {
     try {
-      const url = new URL(FIXED_WS_URL);
+      const url = new URL(resolvedWsUrl());
       const protocol = url.protocol === "wss:" ? "https:" : "http:";
       return `${protocol}//${url.host}`;
     } catch { return ""; }
@@ -3638,7 +3638,7 @@
 
   function wakeSocketUrl() {
     try {
-      const url = new URL(FIXED_WS_URL);
+      const url = new URL(resolvedWsUrl());
       url.pathname = "/ws/wake/hud";
       url.searchParams.set("token", hubKey());
       return url.toString();
@@ -3762,7 +3762,7 @@
 
   function voiceSocketUrl() {
     try {
-      const url = new URL(FIXED_WS_URL);
+      const url = new URL(resolvedWsUrl());
       const session = url.pathname.split("/").filter(Boolean).pop() || "hud";
       url.pathname = `/ws/voice/${session}`;
       url.searchParams.set("token", hubKey());
