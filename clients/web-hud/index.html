@@ -1169,7 +1169,9 @@
     if (shouldUseBoard && !streamDirectedToBoard) {
       streamDirectedToBoard = true;
       // El detalle pasa al pizarrón; la voz dirá únicamente la síntesis final.
-      cancelSpeechQueue();
+      // Se deja terminar la frase que ya está sonando: abrir el pizarrón no es
+      // motivo para cortar a JARVIS a mitad de palabra.
+      dropQueuedSpeech();
       const format = presentationFormat(activeReplyText);
       const title = format === "code" || activeReplyText.includes("```") ? "CÓDIGO GENERADO" : "RESULTADO DETALLADO";
       showOnBoard({ title, content: activeReplyText, format, keepOpen: true });
@@ -1696,6 +1698,15 @@
     voiceWaveform = null;
   }
 
+  // Cancelación suave: descarta lo que aún no ha empezado a sonar pero deja
+  // terminar la frase en curso. Cortar el audio a mitad de palabra solo tiene
+  // sentido cuando el usuario interrumpe, no cuando somos nosotros los que
+  // cambiamos de idea sobre qué decir.
+  function dropQueuedSpeech() {
+    speechQueue = [];
+    streamSpeechBuffer = "";
+  }
+
   function closeRealtimeVoiceSession() {
     const current = realtimeVoiceSession;
     realtimeVoiceSession = null;
@@ -1939,11 +1950,21 @@
   function finishStreamSpeech(finalText) {
     if (!voiceEnabled) return;
     if (!realtimeVoiceAvailable && !serverVoiceAvailable) { speak(finalText); return; }
-    if (finalText !== streamSpeechSource) {
-      // Si el mensaje final corrigió el stream, prioriza la versión autoritativa.
-      cancelSpeechQueue();
-      streamSpeechBuffer = finalText;
+    if (finalText === streamSpeechSource) { flushStreamSpeech(true); return; }
+    if (finalText.startsWith(streamSpeechSource)) {
+      // Caso normal: el texto autoritativo solo añade lo que faltaba del stream.
+      // Antes se cancelaba la cola y se volvía a hablar desde el principio, así
+      // que la frase en curso se cortaba y parte de la respuesta se repetía.
+      streamSpeechBuffer = finalText.slice(streamSpeechSource.length);
+      streamSpeechSource = finalText;
+      flushStreamSpeech(true);
+      return;
     }
+    // El texto final sustituye al del stream (por ejemplo, el resumen cuando el
+    // detalle se fue al pizarrón). Se descarta lo pendiente sin cortar el audio.
+    dropQueuedSpeech();
+    streamSpeechSource = finalText;
+    streamSpeechBuffer = finalText;
     flushStreamSpeech(true);
   }
 

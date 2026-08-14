@@ -35,6 +35,9 @@ jobs:
           python -c "from pathlib import Path; h=Path('clients/web-hud/index.html').read_text(); Path('/tmp/jarvis-hud.js').write_text(h.split('<script>',1)[1].split('</script>',1)[0])"
           node --check /tmp/jarvis-hud.js
 
+      - name: Test HUD speech queue
+        run: node clients/web-hud/tests/speech-queue.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
