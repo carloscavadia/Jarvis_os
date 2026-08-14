@@ -354,7 +354,48 @@
 
   @media (max-width: 1120px) { .console { width: min(720px, 72vw); min-width: 0; } }
 
-  .controls { position: fixed; left: 24px; bottom: 30px; display: flex; flex-direction: column; gap: 7px; width: 176px; }
+  .controls {
+    position: fixed; left: 24px; bottom: 30px;
+    display: flex; flex-direction: column; gap: 6px; width: 190px;
+    background: rgba(4,11,20,.72); border: 1px solid var(--hairline);
+    border-radius: 12px; padding: 11px 12px;
+    backdrop-filter: blur(14px); z-index: 6;
+    transition: border-color .3s ease, box-shadow .3s ease;
+  }
+  .controls.connected {
+    border-color: rgba(96,236,168,.4);
+    box-shadow: 0 0 22px rgba(96,236,168,.08);
+  }
+  .conn-status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+  .conn-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--muted); flex: none;
+    transition: background .3s, box-shadow .3s;
+  }
+  .controls.connected .conn-dot { background: #60eca8; box-shadow: 0 0 8px rgba(96,236,168,.7); }
+  .controls.connecting .conn-dot { background: var(--core); box-shadow: 0 0 8px rgba(53,230,255,.5); animation: dot-pulse 1s ease infinite; }
+  .conn-status-label { font: 8px var(--mono); letter-spacing: .18em; color: var(--muted); }
+  .controls.connected .conn-status-label { color: #60eca8; }
+  .controls.connecting .conn-status-label { color: var(--core); }
+  @keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .controls-row { display: flex; gap: 6px; }
+  .controls-row button { flex: 1; }
+  /* Demo banner */
+  .demo-banner {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 18px; z-index: 9;
+    background: rgba(255,140,50,.12); border-bottom: 1px solid rgba(255,140,50,.3);
+    font: 9px var(--mono); letter-spacing: .16em; color: rgba(255,180,96,.9);
+    transition: opacity .5s ease, transform .5s ease;
+  }
+  .demo-banner.hidden { opacity: 0; transform: translateX(-50%) translateY(-100%); pointer-events: none; }
+  .demo-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,140,50,.8); flex: none;
+    box-shadow: 0 0 8px rgba(255,140,50,.6); animation: dot-pulse 1.2s ease infinite; }
+  .demo-banner button { border: 1px solid rgba(255,180,96,.4); border-radius: 8px; padding: 2px 9px;
+    background: rgba(255,120,30,.15); color: rgba(255,180,96,.9); cursor: pointer;
+    font: 8px var(--mono); letter-spacing: .12em; transition: .15s ease; }
+  .demo-banner button:hover { background: rgba(255,120,30,.3); color: #ffd0a0; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
   .controls button, .controls input {
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
@@ -767,13 +808,26 @@
   <!-- Contenedor de Notificaciones Toasts HUD -->
   <div class="toast-container" id="hud-toast-container" aria-live="polite"></div>
 
-  <!-- Controles de conexión originales -->
-  <div class="controls">
-    <div class="cap">Conexión</div>
-    <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
-    <button id="ws-connect">Conectar</button>
-    <button id="connector-open">Conectores</button>
-    <button id="explorer-open">Archivos 📂</button>
+  <!-- Controles de conexión -->
+  <div class="controls" id="controls">
+    <div class="cap">J.A.R.V.I.S · ENLACE</div>
+    <div class="conn-status-row">
+      <span class="conn-dot" id="conn-dot"></span>
+      <span class="conn-status-label" id="conn-status-label">SIN CONEXIÓN</span>
+    </div>
+    <input id="ws-url-input" type="text" placeholder="URL del servidor (auto)" autocomplete="off" />
+    <input id="ws-token" type="password" placeholder="API Key del gateway" autocomplete="current-password" />
+    <button id="ws-connect" class="primary">CONECTAR</button>
+    <div class="controls-row">
+      <button id="connector-open">⚡ Conectores</button>
+      <button id="explorer-open">📂 Archivos</button>
+    </div>
+  </div>
+
+  <!-- Banner modo DEMO -->
+  <div class="demo-banner" id="demo-banner">
+    <span class="demo-dot"></span> MODO DEMO — Sin conexión al servidor
+    <button id="demo-banner-connect" type="button">Conectar →</button>
   </div>
 
   <!-- Configuración local opcional (config.js, no versionado). Si no existe, el
@@ -1847,12 +1901,14 @@
       target = new URL(url);
       if (token) target.searchParams.set("token", token);
       rLink.textContent = "CONECTANDO…";
+      setConnStatus("connecting");
       ws = new WebSocket(target.toString());
-    } catch (e) { rLink.textContent = "ERROR"; return; }
+    } catch (e) { rLink.textContent = "ERROR"; setConnStatus("disconnected"); return; }
     // No mostrar la URL completa: puede contener la credencial del HUB.
     ws.onopen = () => {
       rLink.textContent = "EN LÍNEA";
       rememberHubKey(token);
+      setConnStatus("connected");
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
       // si el detector local está disponible; encadenarlo evita una carrera en la
@@ -1861,8 +1917,8 @@
       loadCurrentGoal();
       loadPendingProactive();
     };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
-    ws.onerror = () => { rLink.textContent = "SIN SERVIDOR (DEMO)"; };
+    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; setConnStatus("disconnected"); teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
+    ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
       if (m.type === "state") setState(m.state);
@@ -1957,19 +2013,60 @@
 
   const CONFIG = window.JARVIS_CONFIG || {};
 
-  // Cuando es el propio gateway quien sirve el HUD (ruta /hud), su dirección es
-  // la de esta misma página. Así funciona igual por IP directa que a través de
-  // un túnel, sin tener que editar nada.
+  // Auto-detectar URL del gateway: si el HUD es servido por el propio gateway
+  // o por cualquier host con puerto 8080 conocido, usar ese host.
   function defaultWsUrl() {
+    const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+    // Si servido desde el gateway (ruta /hud)
     if (location.pathname.replace(/\/+$/, "").endsWith("/hud")) {
-      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
       return `${scheme}//${location.host}/ws/hub-test`;
     }
-    return "ws://192.168.68.100:8080/ws/hub-test";
+    // Si se abre desde un host real (IP, dominio, localhost) — usar ese mismo host
+    if (location.hostname !== "" && location.hostname !== "null") {
+      // Asumir puerto 8080 si el HUD se abre directamente como HTML
+      const port = location.port || (location.protocol === "https:" ? "443" : "8080");
+      return `${scheme}//${location.hostname}:${port}/ws/hub-test`;
+    }
+    // Fallback para apertura desde filesystem (file:///)
+    return "ws://localhost:8080/ws/hub-test";
   }
   const FIXED_WS_URL = CONFIG.wsUrl || defaultWsUrl();
   const tokenInput = document.getElementById("ws-token");
+  const wsUrlInput = document.getElementById("ws-url-input");
+  const controlsPanel = document.getElementById("controls");
+  const demoBanner = document.getElementById("demo-banner");
+  const connStatusLabel = document.getElementById("conn-status-label");
   const HUB_KEY_STORAGE = "jarvis.hubKey";
+  const HUB_URL_STORAGE = "jarvis.hubUrl";
+
+  // Pre-rellenar el campo URL con la auto-detectada o la guardada
+  if (wsUrlInput) {
+    const savedUrl = (() => { try { return localStorage.getItem(HUB_URL_STORAGE); } catch { return null; } })();
+    wsUrlInput.value = savedUrl || FIXED_WS_URL;
+    wsUrlInput.placeholder = FIXED_WS_URL;
+  }
+
+  function resolvedWsUrl() {
+    return (wsUrlInput && wsUrlInput.value.trim()) || FIXED_WS_URL;
+  }
+
+  function setConnStatus(state) { // state: 'disconnected' | 'connecting' | 'connected'
+    if (!controlsPanel) return;
+    controlsPanel.classList.remove("connected", "connecting");
+    const label = connStatusLabel;
+    if (state === "connected") {
+      controlsPanel.classList.add("connected");
+      if (label) label.textContent = "EN LÍNEA";
+      if (demoBanner) demoBanner.classList.add("hidden");
+    } else if (state === "connecting") {
+      controlsPanel.classList.add("connecting");
+      if (label) label.textContent = "CONECTANDO…";
+    } else {
+      if (label) label.textContent = "SIN CONEXIÓN";
+      if (demoBanner) demoBanner.classList.remove("hidden");
+    }
+  }
+
 
   // La clave viene de config.js si existe; si no, de la última conexión correcta
   // guardada en este navegador. El campo solo hace falta la primera vez.
@@ -1979,6 +2076,7 @@
   function rememberHubKey(key) {
     if (!key || CONFIG.hubKey) return;
     try { localStorage.setItem(HUB_KEY_STORAGE, key); } catch {}
+    try { if (wsUrlInput) localStorage.setItem(HUB_URL_STORAGE, wsUrlInput.value.trim()); } catch {}
   }
 
   function connectorApiHeaders(json = false) {
@@ -3949,24 +4047,34 @@
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
   document.getElementById("pulse").addEventListener("click", firePulse);
 
-  document.getElementById("ws-connect").addEventListener("click", () => connect(FIXED_WS_URL, hubKey()));
+  document.getElementById("ws-connect").addEventListener("click", () => connect(resolvedWsUrl(), hubKey()));
   tokenInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(FIXED_WS_URL, hubKey());
+    if (e.key === "Enter") connect(resolvedWsUrl(), hubKey());
+  });
+  if (wsUrlInput) wsUrlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") connect(resolvedWsUrl(), hubKey());
+  });
+  // Botón del banner DEMO — hace scroll/focus al panel de conexión
+  document.getElementById("demo-banner-connect")?.addEventListener("click", () => {
+    tokenInput.focus();
+    tokenInput.scrollIntoView({ behavior: "smooth" });
   });
 
-  // Conexión automática: con config.js, o recordando la última clave válida.
+  // Conexión automática: con config.js, guardando/recuperando clave Y url.
   (function autoConnect() {
     if (CONFIG.hubKey) {
       tokenInput.value = "";
       tokenInput.placeholder = "Clave fijada en config.js";
       tokenInput.disabled = true;
     } else {
-      let stored = "";
-      try { stored = localStorage.getItem(HUB_KEY_STORAGE) || ""; } catch {}
-      if (!stored) return;
-      tokenInput.value = stored;
+      let storedKey = "", storedUrl = "";
+      try { storedKey = localStorage.getItem(HUB_KEY_STORAGE) || ""; } catch {}
+      try { storedUrl = localStorage.getItem(HUB_URL_STORAGE) || ""; } catch {}
+      if (storedKey) tokenInput.value = storedKey;
+      if (storedUrl && wsUrlInput) wsUrlInput.value = storedUrl;
+      if (!storedKey) return; // sin clave → modo demo, no conectar
     }
-    if (CONFIG.autoConnect !== false) connect(FIXED_WS_URL, hubKey());
+    if (CONFIG.autoConnect !== false) connect(resolvedWsUrl(), hubKey());
   })();
 })();
 </script>
