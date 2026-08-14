@@ -18,21 +18,30 @@ class WorkspaceGuard:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def resolve(self, raw_path: str, *, allow_root: bool = False) -> Path:
-        relative = Path(raw_path or ".")
-        if relative.is_absolute():
+        raw = (raw_path or ".").strip()
+        candidate = Path(raw)
+        if candidate.is_absolute():
+            try:
+                candidate = candidate.relative_to(self.root)
+            except ValueError:
+                pass
+        if candidate.is_absolute():
             raise ValueError("La ruta debe ser relativa al workspace.")
-        candidate = (self.root / relative).resolve(strict=False)
+        resolved = (self.root / candidate).resolve(strict=False)
         try:
-            candidate.relative_to(self.root)
+            resolved.relative_to(self.root)
         except ValueError as exc:
             raise ValueError("La ruta sale del workspace permitido.") from exc
-        if candidate == self.root and not allow_root:
+        if resolved == self.root and not allow_root:
             raise ValueError("Esta operación requiere una ruta dentro del workspace.")
-        return candidate
+        return resolved
 
     def display(self, path: Path) -> str:
-        relative = path.relative_to(self.root)
-        return "." if not relative.parts else relative.as_posix()
+        try:
+            relative = path.relative_to(self.root)
+            return "." if not relative.parts else relative.as_posix()
+        except ValueError:
+            return path.name
 
 
 class ListDirectoryTool(Tool):

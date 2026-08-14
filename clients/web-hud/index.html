@@ -596,6 +596,8 @@
     border-color: var(--core-bright); background: rgba(20, 45, 65, 0.85);
     box-shadow: 0 0 20px rgba(53,230,255,0.25);
   }
+  .file-card.up-folder { border-style: dashed; opacity: 0.8; }
+  .file-card.up-folder:hover { opacity: 1; border-style: solid; border-color: var(--core); }
   .file-card .icon { font-size: 26px; margin-bottom: 6px; line-height: 1; }
   .file-card .name {
     font-family: var(--mono); font-size: 10.5px; color: var(--text);
@@ -2556,7 +2558,21 @@
     const filterText = (explorerFilterInput.value || "").toLowerCase().trim();
     const filtered = items.filter(item => item.name.toLowerCase().includes(filterText));
 
-    if (!filtered.length) {
+    if (currentExplorerPath && currentExplorerPath !== "." && !filterText) {
+      const parts = currentExplorerPath.split("/").filter(Boolean);
+      parts.pop();
+      const parentPath = parts.join("/") || ".";
+      const upCard = document.createElement("div");
+      upCard.className = "file-card up-folder";
+      const icon = document.createElement("div"); icon.className = "icon"; icon.textContent = "📁";
+      const name = document.createElement("div"); name.className = "name"; name.textContent = "..";
+      const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = "SUBIR NIVEL";
+      upCard.append(icon, name, sub);
+      upCard.onclick = () => loadExplorerFiles(parentPath);
+      explorerGrid.appendChild(upCard);
+    }
+
+    if (!filtered.length && (!currentExplorerPath || currentExplorerPath === "." || filterText)) {
       const empty = document.createElement("div");
       empty.className = "preview-empty";
       empty.textContent = filterText ? "SIN COINCIDENCIAS" : "CARPETA VACÍA";
