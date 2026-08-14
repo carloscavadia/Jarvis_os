@@ -53,13 +53,16 @@
     pointer-events: none; padding-left: 0.55em;
   }
 
+  /* ── Consola flotante sin caja (Iron Man HUD) ── */
   .console {
-    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
-    width: min(760px, calc(100vw - 420px)); min-width: 540px;
-    background: rgba(5, 13, 22, .76); border: 1px solid var(--hairline); border-radius: 14px;
-    backdrop-filter: blur(14px) saturate(115%); box-shadow: 0 16px 55px rgba(0,0,0,.48), 0 0 28px rgba(53,230,255,.045);
-    overflow: hidden; transition: width .25s ease, box-shadow .25s ease;
+    position: fixed; left: 50%; bottom: 0;
+    transform: translateX(-50%);
+    width: min(780px, calc(100vw - 340px)); min-width: 480px;
+    display: flex; flex-direction: column;
+    pointer-events: none;
+    z-index: 5;
   }
+  .console * { pointer-events: auto; }
   .action-trace { display: none; position: fixed; z-index: 4; top: 28px; right: 28px;
     width: min(430px, calc(100vw - 56px)); max-height: min(68vh, 620px); overflow: hidden;
     border: 1px solid var(--hairline-2); border-radius: 12px; background: rgba(4,12,21,.62);
@@ -170,46 +173,75 @@
   .approval-actions button:hover { transform: translateY(-1px); background: rgba(24,50,61,.86);
     box-shadow: 0 0 18px rgba(53,230,255,.12); }
   .approval-actions button:disabled { opacity: .35; cursor: wait; transform: none; }
-  @keyframes workspace-in { from { opacity: 0; transform: translate(10px,-6px) scale(.97); filter: blur(3px); }
-    to { opacity: 1; transform: translate(0) scale(1); filter: blur(0); } }
-  @keyframes card-scan { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
-  .response-head { height: 27px; padding: 7px 13px 0 16px; display: flex; align-items: center;
-    justify-content: space-between; color: rgba(127,175,193,.64); font: 8px var(--mono);
-    letter-spacing: .18em; border-bottom: 1px solid rgba(53,230,255,.06); }
-  .response-head button { border: 0; padding: 2px 4px; background: transparent; color: var(--muted);
-    cursor: pointer; font: 8px var(--mono); letter-spacing: .13em; }
-  .response-head button:hover { color: var(--core); }
-  .log { height: 92px; overflow-y: auto; padding: 10px 16px 12px;
-    display: flex; flex-direction: column; gap: 7px; font-size: 14px; line-height: 1.48;
-    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; transition: height .24s ease; }
-  .console.expanded .log { height: min(36vh, 330px); }
-  .log::-webkit-scrollbar { width: 3px; }
-  .log::-webkit-scrollbar-thumb { background: var(--hairline-2); }
-  .line { display: none; gap: 12px; transform-origin: left center;
-    transition: opacity .3s ease, filter .3s ease, transform .3s ease; }
-  .line.history-current { display: flex; }
-  .console.expanded .line { display: flex; opacity: .36; filter: blur(.25px); }
-  .console.expanded .line.history-current { opacity: 1; filter: none; }
-  .line .who { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em;
-    text-transform: uppercase; color: var(--muted); min-width: 62px; padding-top: 4px; }
-  .line.jarvis .who { color: var(--core); }
-  .line .txt { flex: 1; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
-  .line.jarvis .txt { color: var(--core-bright); }
-  .line.system .txt { color: var(--muted); font-style: italic; }
-  .line.history-current { opacity: 1; filter: blur(0); transform: translateX(0); }
-  .line.history-current.jarvis .txt { color: #effdff; font-size: 15.5px; font-weight: 450;
-    text-shadow: 0 0 18px rgba(53,230,255,.16); }
-  .txt p { margin: 0 0 7px; }
-  .txt p:last-child { margin-bottom: 0; }
-  .txt ul, .txt ol { margin: 2px 0 6px; padding-left: 20px; }
-  .txt li { margin: 3px 0; padding-left: 2px; }
-  .txt .md-heading { color: var(--core); font: 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
-  .txt .md-code { margin: 6px 0; padding: 8px 9px; overflow: auto; border: 1px solid var(--hairline);
-    border-radius: 6px; background: rgba(0,4,9,.7); color: #bceefa; font: 11px/1.45 var(--mono); white-space: pre; }
-  .txt .md-table { width: 100%; margin: 5px 0 7px; border-collapse: collapse; font-size: 12px; line-height: 1.35; }
-  .txt .md-table th { color: var(--core); font: 9px var(--mono); letter-spacing: .08em; text-align: left;
-    border-bottom: 1px solid var(--hairline-2); padding: 5px 8px 5px 0; }
-  .txt .md-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid rgba(53,230,255,.08); vertical-align: top; }
+  /* ── Área del último mensaje (flotante sobre el canvas) ── */
+  .response-head { display: none; }
+
+  .log {
+    position: relative;
+    display: flex; flex-direction: column; justify-content: flex-end;
+    min-height: 120px; padding: 0 0 8px 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .line {
+    display: none;
+    gap: 12px;
+    padding: 0 20px;
+    pointer-events: none;
+  }
+  .line.history-current { display: flex; pointer-events: auto; }
+
+  /* Mensaje activo de JARVIS — gran e imóponente, texto flotante */
+  .line.history-current.jarvis {
+    flex-direction: column; gap: 2px; padding: 0 22px 6px;
+  }
+  .line.history-current.jarvis .who {
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.3em;
+    color: var(--core); text-transform: uppercase; opacity: 0.7;
+    margin-bottom: 2px;
+  }
+  .line.history-current.jarvis .txt {
+    color: #e6faff; font-size: 16.5px; font-weight: 350;
+    line-height: 1.5; letter-spacing: 0.01em;
+    text-shadow: 0 0 40px rgba(53,230,255,.22), 0 0 80px rgba(53,230,255,.08);
+    animation: msg-appear .45s cubic-bezier(.16,1,.3,1);
+  }
+
+  /* Mensaje del usuario — compacto alineado a la derecha */
+  .line.history-current.user {
+    justify-content: flex-end; padding: 4px 22px 4px;
+  }
+  .line.history-current.user .who { display: none; }
+  .line.history-current.user .txt {
+    font-size: 13px; color: rgba(207,230,240,.65); max-width: 70%;
+    text-align: right; font-style: italic;
+  }
+
+  /* Mensajes de sistema — muy sutiles */
+  .line.history-current.system .who { display: none; }
+  .line.history-current.system .txt {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em;
+    color: rgba(107,138,153,.5); text-align: center; width: 100%;
+  }
+
+  /* ── Historial fantasmal en capas por encima del activo ── */
+  .log .line.ghost {
+    display: flex;
+    pointer-events: none;
+    opacity: 0;
+    filter: blur(0);
+    transition: opacity .6s ease, filter .6s ease;
+  }
+  .log.show-ghosts .line.ghost { opacity: 0.18; filter: blur(0.6px); }
+  .log.show-ghosts .line.ghost:nth-last-of-type(2) { opacity: 0.12; filter: blur(0.8px); }
+  .log.show-ghosts .line.ghost:nth-last-of-type(3) { opacity: 0.08; filter: blur(1.2px); }
+
+  @keyframes msg-appear {
+    from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+    to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
+
   .line.streaming .txt::after {
     content: ""; display: inline-block; width: 7px; height: 1em; margin-left: 3px;
     vertical-align: -0.16em; background: var(--core); box-shadow: 0 0 10px var(--core);
@@ -226,14 +258,91 @@
   }
   @keyframes stream-cursor { 0%, 48% { opacity: 1; } 49%, 100% { opacity: .15; } }
 
-  .inputbar { height: 46px; display: flex; align-items: center; gap: 10px;
-    padding: 6px 14px; border-top: 1px solid var(--hairline); }
+  /* ── Panel de Historial por Demanda ── */
+  .history-drawer {
+    display: none; position: fixed; z-index: 7;
+    left: 50%; bottom: 78px; transform: translateX(-50%);
+    width: min(720px, calc(100vw - 340px));
+    max-height: min(52vh, 480px); overflow-y: auto;
+    border: 1px solid var(--hairline); border-radius: 14px 14px 0 0;
+    background: linear-gradient(180deg, rgba(3,10,18,.0) 0%, rgba(4,12,21,.85) 18%, rgba(4,12,21,.96) 100%);
+    backdrop-filter: blur(18px) saturate(120%);
+    padding: 20px 24px 12px;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
+    animation: drawer-up .32s cubic-bezier(.16,1,.3,1);
+  }
+  .history-drawer.open { display: block; }
+  @keyframes drawer-up {
+    from { opacity: 0; transform: translateX(-50%) translateY(30px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  .history-drawer::before {
+    content: ""; position: sticky; top: 0; left: 0; right: 0; height: 32px;
+    display: block; margin: -20px -24px 8px;
+    background: linear-gradient(180deg, rgba(4,12,21,.96), transparent);
+    pointer-events: none;
+  }
+  .history-line {
+    display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(53,230,255,.05);
+    font-size: 12px; line-height: 1.45;
+  }
+  .history-line:last-child { border-bottom: 0; }
+  .history-line .h-who {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .18em;
+    text-transform: uppercase; color: var(--muted); min-width: 60px; padding-top: 3px; flex: none;
+  }
+  .history-line.jarvis .h-who { color: var(--core); }
+  .history-line .h-txt { flex: 1; color: rgba(207,230,240,.72); overflow-wrap: anywhere; }
+  .history-line.jarvis .h-txt { color: #c6f0fa; }
+  .history-line.system .h-txt { color: var(--muted); font-style: italic; font-size: 10px; }
+
+  /* ── Barra de entrada renovada (sin caja, flotante) ── */
+  .inputbar {
+    margin: 0 0 28px;
+    height: 50px; display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    background: rgba(5,13,22,.82);
+    border: 1px solid var(--hairline-2);
+    border-radius: 30px;
+    backdrop-filter: blur(18px) saturate(120%);
+    box-shadow: 0 8px 35px rgba(0,0,0,.55), 0 0 28px rgba(53,230,255,.07);
+    transition: box-shadow .25s ease, border-color .25s ease;
+  }
+  .inputbar:focus-within {
+    border-color: rgba(53,230,255,.45);
+    box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 40px rgba(53,230,255,.12);
+  }
   .inputbar .prompt { font-family: var(--mono); color: var(--core); font-size: 14px; }
-  .inputbar input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
-    font-family: var(--sans); font-size: 15px; padding: 6px 0; }
+  .inputbar input {
+    flex: 1; background: transparent; border: 0; outline: 0; color: var(--text);
+    font-family: var(--sans); font-size: 15px; padding: 6px 0;
+  }
   .inputbar input::placeholder { color: var(--muted); }
   .inputbar input:disabled { opacity: .55; cursor: wait; }
-  .voice-btn { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center;
+
+  /* Botón historial — dentro del flujo, entre el log y la barra */
+  .history-toggle-btn {
+    align-self: center;
+    border: 1px solid var(--hairline); border-radius: 20px;
+    background: rgba(6,15,24,.72); color: var(--muted);
+    font: 8px var(--mono); letter-spacing: .18em; padding: 5px 14px;
+    cursor: pointer; backdrop-filter: blur(10px);
+    transition: color .18s, border-color .18s, opacity .22s;
+    opacity: 0; pointer-events: none;
+    margin-bottom: 8px;
+    white-space: nowrap;
+  }
+  .history-toggle-btn.visible { opacity: 1; pointer-events: auto; }
+  .history-toggle-btn:hover { color: var(--core); border-color: var(--hairline-2); box-shadow: 0 0 14px rgba(53,230,255,.1); }
+
+  /* Desvanecer el texto del log hacia arriba */
+  .log::before {
+    content: ""; position: absolute; inset: 0 0 auto 0; height: 50px;
+    background: linear-gradient(to bottom, rgba(4,7,14,0.0), transparent);
+    pointer-events: none; z-index: 1;
+  }
+
+  .voice-btn { width: 36px; height: 36px; flex: 0 0 36px; display: grid; place-items: center;
     border: 1px solid var(--hairline); border-radius: 50%; color: var(--muted);
     background: rgba(9,18,28,.46); cursor: pointer; font-size: 15px;
     transition: color .18s, border-color .18s, background .18s, box-shadow .18s, transform .18s; }
@@ -791,9 +900,12 @@
     </div>
   </section>
 
-  <div class="console">
-    <div class="response-head"><span>RESPUESTA ACTUAL</span><button id="history-toggle" type="button" aria-expanded="false">VER HISTORIAL</button></div>
+  <!-- Panel de historial deslizante (por demanda) -->
+  <div class="history-drawer" id="history-drawer" aria-label="Historial de conversación"></div>
+
+  <div class="console" id="console">
     <div class="log" id="log"></div>
+    <button class="history-toggle-btn" id="history-toggle" type="button">VER HISTORIAL ↑</button>
     <form class="inputbar" id="form" autocomplete="off">
       <span class="prompt">&rsaquo;</span>
       <input id="input" placeholder="Habla con JARVIS…" aria-label="Mensaje" />
@@ -826,9 +938,10 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const canvas = document.getElementById("scene");
   const ctx = canvas.getContext("2d", { alpha: false });
-  const consoleEl = document.querySelector(".console");
+  const consoleEl = document.getElementById("console");
   const logEl = document.getElementById("log");
   const historyToggle = document.getElementById("history-toggle");
+  const historyDrawer = document.getElementById("history-drawer");
   const actionTrace = document.getElementById("action-trace");
   const actionList = document.getElementById("action-list");
   const actionHeadTitle = document.getElementById("action-head-title");
@@ -1533,24 +1646,37 @@
     if ((cls || "").includes("jarvis") && !(cls || "").includes("streaming")) renderStructuredText(x, text);
     else x.textContent = text;
     line.appendChild(w); line.appendChild(x); logEl.appendChild(line);
+    // Also feed history drawer
+    const hLine = document.createElement("div");
+    hLine.className = "history-line " + (cls || "");
+    const hw = document.createElement("span"); hw.className = "h-who"; hw.textContent = who;
+    const hx = document.createElement("div"); hx.className = "h-txt"; hx.textContent = text;
+    hLine.appendChild(hw); hLine.appendChild(hx); historyDrawer.appendChild(hLine);
+    historyDrawer.scrollTop = historyDrawer.scrollHeight;
     focusRecentHistory();
-    logEl.scrollTop = logEl.scrollHeight;
     return { line, text: x };
   }
 
   function focusRecentHistory() {
     const lines = Array.from(logEl.querySelectorAll(".line"));
+    // Mostrar solo el último como activo; los 2 anteriores como ghost difuminados
+    lines.forEach((l, i) => {
+      const distance = (lines.length - 1) - i;
+      l.classList.remove("history-current", "ghost", "history-near", "history-mid", "history-old");
+      if (distance === 0) {
+        l.classList.add("history-current");
+      } else if (distance <= 2) {
+        l.classList.add("ghost");
+      } else {
+        l.style.display = "none"; // ocultar los muy antiguos del log
+      }
+    });
+    // Activar ghosts visibles en el log
+    const hasGhosts = lines.some(l => l.classList.contains("ghost"));
+    logEl.classList.toggle("show-ghosts", hasGhosts);
+    // Mostrar botón historial si hay más de 3 mensajes
     logEl.classList.toggle("has-history", lines.length > 3);
-    const current = lines.length - 1;
-    for (let i = 0; i < lines.length; i++) {
-      const distance = current - i;
-      lines[i].classList.remove("history-current", "history-near", "history-mid", "history-old");
-      lines[i].classList.add(
-        distance === 0 ? "history-current"
-          : distance === 1 ? "history-near"
-            : distance === 2 ? "history-mid" : "history-old"
-      );
-    }
+    if (historyToggle) historyToggle.classList.toggle("visible", lines.length > 3);
   }
 
   let activeReply = null;
@@ -1699,10 +1825,17 @@
   }
   addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
   historyToggle.addEventListener("click", () => {
-    const expanded = consoleEl.classList.toggle("expanded");
-    historyToggle.textContent = expanded ? "OCULTAR HISTORIAL" : "VER HISTORIAL";
-    historyToggle.setAttribute("aria-expanded", String(expanded));
-    logEl.scrollTop = logEl.scrollHeight;
+    const isOpen = historyDrawer.classList.toggle("open");
+    historyToggle.textContent = isOpen ? "CERRAR HISTORIAL ↓" : "VER HISTORIAL ↑";
+    if (isOpen) historyDrawer.scrollTop = historyDrawer.scrollHeight;
+  });
+  // Cerrar drawer al hacer clic fuera
+  document.addEventListener("click", (e) => {
+    if (historyDrawer.classList.contains("open") &&
+        !historyDrawer.contains(e.target) && e.target !== historyToggle) {
+      historyDrawer.classList.remove("open");
+      historyToggle.textContent = "VER HISTORIAL ↑";
+    }
   });
 
   // ── WebSocket al gateway ──
