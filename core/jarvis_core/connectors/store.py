@@ -145,6 +145,8 @@ class ConnectorStore:
                 "type": row[1],
                 "enabled": bool(row[3]),
                 "url": config.get("url", ""),
+                # No es un secreto y el panel lo necesita para poder editar.
+                "username": config.get("username", ""),
                 "services": config.get("services", []),
                 "read_actions": read_actions,
                 "write_actions": config.get("write_actions", []),

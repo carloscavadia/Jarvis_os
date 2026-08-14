@@ -49,7 +49,14 @@ viaja: cada petición manda `t = md5(contraseña + sal)` con una sal nueva.
 | Tipo | `navidrome` |
 | URL | `http://192.168.68.159:4533` |
 | Usuario | tu usuario de Navidrome |
-| Contraseña | se cifra en SQLite igual que el resto de credenciales |
+| Contraseña | va en el campo **CLAVE / TOKEN**; se cifra igual que el resto |
+
+> La contraseña debe tener al menos 8 caracteres — es el mínimo común a todos los
+> módulos. Si la tuya es más corta, cámbiala en Navidrome antes de registrarlo.
+
+Las herramientas aparecen **en el momento**, sin reiniciar el gateway ni perder la
+conversación en curso: al registrar o borrar un módulo se rehacen las herramientas de
+las sesiones abiertas.
 
 No hace falta declarar acciones: un servidor de música solo sabe hacer consultas de
 lectura (`music.search`, `music.random`, `music.playlists`, `music.playlist`) y se

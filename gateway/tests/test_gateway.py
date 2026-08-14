@@ -912,3 +912,92 @@ def test_music_stream_requires_the_gateway_key(monkeypatch):
         assert client.get(
             "/music/musica/stream/../secreto?token=ci-test-key"
         ).status_code in {404, 422}
+
+
+def test_navidrome_module_can_be_registered_through_the_api(tmp_path, monkeypatch):
+    """El camino que usa el panel: sin esto no había forma de dar de alta música."""
+    store = ConnectorStore(str(tmp_path / "c.db"), "n" * 32)
+    monkeypatch.setattr(gateway_module.sessions, "connector_store", store)
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    headers = {"X-Jarvis-Key": "ci-test-key"}
+    try:
+        with TestClient(gateway_module.app) as client:
+            created = client.put(
+                "/connector-modules/musica",
+                headers=headers,
+                json={
+                    "name": "musica",
+                    "type": "navidrome",
+                    "url": "http://192.168.68.159:4533",
+                    "username": "carlos",
+                    "token": "mi-contrasena",
+                },
+            )
+            assert created.status_code == 200, created.text
+
+            record = store.get("musica")
+            # Subsonic autentica con contraseña; guardarla como "token" la haría
+            # invisible para el runtime de música.
+            assert record.config["_secrets"]["password"] == "mi-contrasena"
+            assert record.config["username"] == "carlos"
+
+            listing = client.get("/connector-modules", headers=headers).json()[0]
+            assert listing["username"] == "carlos"
+            assert "mi-contrasena" not in json.dumps(listing)
+            # Las consultas de música se conceden sin declararlas.
+            assert "music.search" in listing["read_actions"]
+    finally:
+        store.close()
+
+
+def test_navidrome_module_requires_a_username(tmp_path, monkeypatch):
+    store = ConnectorStore(str(tmp_path / "c.db"), "n" * 32)
+    monkeypatch.setattr(gateway_module.sessions, "connector_store", store)
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    try:
+        with TestClient(gateway_module.app) as client:
+            response = client.put(
+                "/connector-modules/musica",
+                headers={"X-Jarvis-Key": "ci-test-key"},
+                json={
+                    "name": "musica",
+                    "type": "navidrome",
+                    "url": "http://nav:4533",
+                    "token": "contrasena",
+                },
+            )
+            assert response.status_code == 422
+            assert "usuario" in response.json()["detail"].lower()
+    finally:
+        store.close()
+
+
+def test_registering_a_module_refreshes_tools_in_open_sessions(tmp_path, monkeypatch):
+    """Sin esto, quien registra su música sigue oyendo «no puedo reproducir»."""
+    store = ConnectorStore(str(tmp_path / "c.db"), "n" * 32)
+    monkeypatch.setattr(gateway_module.sessions, "connector_store", store)
+    monkeypatch.setattr(gateway_module.settings, "connectors_enabled", True)
+    refreshed: list[bool] = []
+
+    async def fake_refresh():
+        refreshed.append(True)
+
+    monkeypatch.setattr(gateway_module.sessions, "refresh_tools", fake_refresh)
+    try:
+        with TestClient(gateway_module.app) as client:
+            client.put(
+                "/connector-modules/musica",
+                headers={"X-Jarvis-Key": "ci-test-key"},
+                json={
+                    "name": "musica",
+                    "type": "navidrome",
+                    "url": "http://nav:4533",
+                    "username": "c",
+                    "token": "contrasena",
+                },
+            )
+            assert refreshed == [True]
+            client.delete("/connector-modules/musica", headers={"X-Jarvis-Key": "ci-test-key"})
+            assert refreshed == [True, True]
+    finally:
+        store.close()

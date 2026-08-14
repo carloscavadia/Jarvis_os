@@ -33,6 +33,9 @@ class SessionManager:
         self.goals = GoalStore(settings.goals_db_path)
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
         self._sessions: dict[str, Orchestrator] = {}
+        # Se conserva el estado emocional de cada sesión para poder rehacer sus
+        # herramientas sin perder el color que JARVIS tenga en ese momento.
+        self._emotions: dict[str, EmotionState] = {}
         self.connector_store = (
             ConnectorStore(settings.connector_db_path, settings.connector_master_key)
             if settings.connectors_enabled and settings.connector_master_key
@@ -61,7 +64,24 @@ class SessionManager:
                 )
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
+                self._emotions[session_id] = emotion
             return orch
+
+    async def refresh_tools(self) -> None:
+        """Reconstruye las herramientas de las sesiones ya abiertas.
+
+        Al registrar un conector, las herramientas que dependen de él solo
+        existirían en sesiones nuevas. Sin esto, quien acaba de registrar su
+        servidor de música seguiría oyendo «no puedo reproducir audio» hasta
+        reiniciar el gateway. La conversación se conserva.
+        """
+        async with self._lock:
+            for session_id, orch in self._sessions.items():
+                orch.set_registry(
+                    self.build_registry(
+                        self._emotions.setdefault(session_id, EmotionState())
+                    )
+                )
 
     def build_registry(self, emotion: EmotionState) -> ToolRegistry:
         """Herramientas para un canal que no usa el orquestador (voz Realtime).

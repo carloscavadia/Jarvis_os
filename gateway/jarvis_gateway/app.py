@@ -403,9 +403,11 @@ class ProactiveDecisionRequest(BaseModel):
 
 class ConnectorModuleRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
-    type: str = Field(pattern=r"^(n8n|home_assistant)$")
+    type: str = Field(pattern=r"^(n8n|home_assistant|navidrome)$")
     url: str = Field(min_length=8, max_length=2000)
     token: str = Field(default="", max_length=8192)
+    # Solo lo usa navidrome: Subsonic autentica con usuario + contraseña.
+    username: str = Field(default="", max_length=128)
     services: list[str] = Field(default_factory=list, max_length=64)
     read_actions: list[str] = Field(default_factory=list, max_length=128)
     write_actions: list[str] = Field(default_factory=list, max_length=128)
@@ -509,28 +511,38 @@ async def register_connector_module(
     try:
         url = validate_connector_url(req.url)
         store = _require_connector_store()
-        token = req.token
-        if not token:
+        # Subsonic autentica con contraseña, no con token: el secreto se guarda
+        # bajo la clave que después lee el runtime de cada tipo.
+        secret_key = "password" if req.type == "navidrome" else "token"
+        secret = req.token
+        if not secret:
             existing = store.get(req.name)
             if existing is None:
                 raise ValueError("La clave o token es obligatorio al crear el módulo.")
-            token = str(existing.config.get("_secrets", {}).get("token", ""))
-        if len(token) < 8:
+            secret = str(existing.config.get("_secrets", {}).get(secret_key, ""))
+        if len(secret) < 8:
             raise ValueError("La clave o token debe tener al menos 8 caracteres.")
+        config: dict[str, object] = {
+            "url": url,
+            "services": sorted(set(req.services)),
+            "read_actions": sorted(set(req.read_actions)),
+            "write_actions": sorted(set(req.write_actions)),
+        }
+        if req.type == "navidrome":
+            if not req.username.strip():
+                raise ValueError("El servidor de música requiere un usuario.")
+            config["username"] = req.username.strip()
         store.upsert(
             req.name,
             req.type,
-            {
-                "url": url,
-                "services": sorted(set(req.services)),
-                "read_actions": sorted(set(req.read_actions)),
-                "write_actions": sorted(set(req.write_actions)),
-            },
-            {"token": token},
+            config,
+            {secret_key: secret},
             enabled=req.enabled,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Las herramientas del módulo deben aparecer ya, sin reiniciar el gateway.
+    await sessions.refresh_tools()
     return {"name": req.name, "type": req.type, "enabled": req.enabled, "stored": True}
 
 
@@ -551,7 +563,10 @@ async def test_connector_module(req: ConnectorModuleTestRequest) -> dict[str, ob
 
 @app.delete("/connector-modules/{name}", dependencies=[Depends(require_api_key)])
 async def delete_connector_module(name: str) -> dict[str, object]:
-    return {"name": name, "deleted": _require_connector_store().delete(name)}
+    deleted = _require_connector_store().delete(name)
+    if deleted:
+        await sessions.refresh_tools()
+    return {"name": name, "deleted": deleted}
 
 
 @app.get("/goals/current", dependencies=[Depends(require_api_key)])

@@ -58,6 +58,14 @@ class Orchestrator:
         self._history: list[dict[str, Any]] = []
         self._send_lock = asyncio.Lock()
 
+    def set_registry(self, registry: ToolRegistry) -> None:
+        """Cambia las herramientas disponibles conservando la conversación.
+
+        Se usa al registrar o quitar un conector: las herramientas que dependen
+        de él aparecen o desaparecen sin obligar al usuario a empezar de cero.
+        """
+        self._registry = registry
+
     def reset(self) -> None:
         """Olvida la conversación actual (no la memoria a largo plazo)."""
         self._history = []
