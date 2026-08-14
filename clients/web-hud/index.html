@@ -356,46 +356,50 @@
 
   .controls {
     position: fixed; left: 24px; bottom: 30px;
-    display: flex; flex-direction: column; gap: 6px; width: 190px;
-    background: rgba(4,11,20,.72); border: 1px solid var(--hairline);
-    border-radius: 12px; padding: 11px 12px;
+    display: flex; flex-direction: column; gap: 5px; width: 175px;
+    background: rgba(4,11,20,.80); border: 1px solid var(--hairline);
+    border-radius: 10px; padding: 9px 10px;
     backdrop-filter: blur(14px); z-index: 6;
     transition: border-color .3s ease, box-shadow .3s ease;
+    font-family: var(--mono);
   }
   .controls.connected {
     border-color: rgba(96,236,168,.4);
-    box-shadow: 0 0 22px rgba(96,236,168,.08);
+    box-shadow: 0 0 18px rgba(96,236,168,.07);
   }
   .conn-status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
   .conn-dot {
-    width: 7px; height: 7px; border-radius: 50%;
+    width: 6px; height: 6px; border-radius: 50%;
     background: var(--muted); flex: none;
     transition: background .3s, box-shadow .3s;
   }
   .controls.connected .conn-dot { background: #60eca8; box-shadow: 0 0 8px rgba(96,236,168,.7); }
   .controls.connecting .conn-dot { background: var(--core); box-shadow: 0 0 8px rgba(53,230,255,.5); animation: dot-pulse 1s ease infinite; }
-  .conn-status-label { font: 8px var(--mono); letter-spacing: .18em; color: var(--muted); }
+  .conn-status-label { font: 8px var(--mono); letter-spacing: .16em; color: var(--muted); }
   .controls.connected .conn-status-label { color: #60eca8; }
   .controls.connecting .conn-status-label { color: var(--core); }
   @keyframes dot-pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-  .controls-row { display: flex; gap: 6px; }
+  .controls-row { display: flex; gap: 5px; }
   .controls-row button { flex: 1; }
+  /* Ocultar campo de URL por defecto; solo mostrar en modo avanzado */
+  #ws-url-input { display: none; }
+  .controls.show-url #ws-url-input { display: block; }
   /* Demo banner */
   .demo-banner {
     position: fixed; top: 0; left: 50%; transform: translateX(-50%);
     display: flex; align-items: center; gap: 10px;
-    padding: 5px 18px; z-index: 9;
-    background: rgba(255,140,50,.12); border-bottom: 1px solid rgba(255,140,50,.3);
-    font: 9px var(--mono); letter-spacing: .16em; color: rgba(255,180,96,.9);
+    padding: 4px 18px; z-index: 9;
+    background: rgba(255,140,50,.10); border-bottom: 1px solid rgba(255,140,50,.25);
+    font: 9px var(--mono); letter-spacing: .16em; color: rgba(255,180,96,.85);
     transition: opacity .5s ease, transform .5s ease;
   }
   .demo-banner.hidden { opacity: 0; transform: translateX(-50%) translateY(-100%); pointer-events: none; }
-  .demo-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,140,50,.8); flex: none;
+  .demo-dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,140,50,.8); flex: none;
     box-shadow: 0 0 8px rgba(255,140,50,.6); animation: dot-pulse 1.2s ease infinite; }
-  .demo-banner button { border: 1px solid rgba(255,180,96,.4); border-radius: 8px; padding: 2px 9px;
-    background: rgba(255,120,30,.15); color: rgba(255,180,96,.9); cursor: pointer;
-    font: 8px var(--mono); letter-spacing: .12em; transition: .15s ease; }
-  .demo-banner button:hover { background: rgba(255,120,30,.3); color: #ffd0a0; }
+  .demo-banner button { border: 1px solid rgba(255,180,96,.4); border-radius: 6px; padding: 2px 8px;
+    background: rgba(255,120,30,.12); color: rgba(255,180,96,.9); cursor: pointer;
+    font: 8px var(--mono); letter-spacing: .1em; transition: .15s ease; }
+  .demo-banner button:hover { background: rgba(255,120,30,.28); color: #ffd0a0; }
   .controls .grp { display: flex; gap: 6px; flex-wrap: wrap; }
   .controls button, .controls input {
     font-family: var(--mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase;
@@ -810,17 +814,16 @@
 
   <!-- Controles de conexión -->
   <div class="controls" id="controls">
-    <div class="cap">J.A.R.V.I.S · ENLACE</div>
     <div class="conn-status-row">
       <span class="conn-dot" id="conn-dot"></span>
-      <span class="conn-status-label" id="conn-status-label">SIN CONEXIÓN</span>
+      <span class="conn-status-label" id="conn-status-label">SIN CONEXIÓN · DEMO</span>
     </div>
-    <input id="ws-url-input" type="text" placeholder="URL del servidor (auto)" autocomplete="off" />
-    <input id="ws-token" type="password" placeholder="API Key del gateway" autocomplete="current-password" />
-    <button id="ws-connect" class="primary">CONECTAR</button>
+    <input id="ws-token" type="password" placeholder="API Key" autocomplete="current-password" />
+    <input id="ws-url-input" type="text" placeholder="ws://host:8080/ws/hub-test" autocomplete="off" title="URL del servidor" />
+    <button id="ws-connect">CONECTAR</button>
     <div class="controls-row">
-      <button id="connector-open">⚡ Conectores</button>
-      <button id="explorer-open">📂 Archivos</button>
+      <button id="connector-open">⚡</button>
+      <button id="explorer-open">📂</button>
     </div>
   </div>
 
@@ -1876,6 +1879,10 @@
       rLatency.textContent = `${((performance.now() - requestStartedAt) / 1000).toFixed(1)}s · TOTAL`;
     }
     setBusy(false);
+    // Refrescar tareas por si JARVIS acaba de crear/modificar alguna
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      setTimeout(() => fetchTasks(), 800);
+    }
   }
   addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
   historyToggle.addEventListener("click", () => {
@@ -1912,6 +1919,12 @@
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       // Cargar tareas ahora que tenemos conexión y clave válida
       fetchTasks();
+      // Polling automático de tareas cada 20s
+      if (window._taskPoll) clearInterval(window._taskPoll);
+      window._taskPoll = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) fetchTasks();
+        else clearInterval(window._taskPoll);
+      }, 20000);
       // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
       // si el detector local está disponible; encadenarlo evita una carrera en la
       // que el HUD se rinde antes de recibir la respuesta.
@@ -1919,7 +1932,12 @@
       loadCurrentGoal();
       loadPendingProactive();
     };
-    ws.onclose = () => { rLink.textContent = "DESCONECTADO"; setConnStatus("disconnected"); teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null; };
+    ws.onclose = () => {
+      rLink.textContent = "DESCONECTADO";
+      setConnStatus("disconnected");
+      clearInterval(window._taskPoll);
+      teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null;
+    };
     ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
