@@ -61,6 +61,14 @@ function hubKey() { return tokenInput.value; }
 function gatewayHttpBase() { return harness.base; }
 function duckedForSpeech() { return false; }
 function addLine(who, text) { harness.lines.push(text); }
+function showToolEvent(event) { harness.toolEvents.push(event); }
+function setEmotion(emotion) { harness.emotions.push(emotion); }
+const MUSIC_HTTP_HELP = {};
+async function reportMusicFailure(url, song) {
+  harness.lines.push("fallo: " + song.title);
+  return harness.fatalFailure;
+}
+async function fetch() { throw new Error("sin red en el test"); }
 class Audio {
   constructor(src) { this.src = src; this.volume = 1; this.paused = true;
     harness.created.push(this); }
@@ -75,7 +83,8 @@ class Audio {
 }
 `;
 
-const harness = { lines: [], created: [], base: "http://gw:8080", playRejects: false };
+const harness = { lines: [], created: [], toolEvents: [], emotions: [],
+                  base: "http://gw:8080", playRejects: false, fatalFailure: false };
 new Function(
   "harness",
   `${PRELUDE}
@@ -86,7 +95,8 @@ new Function(
    harness.reset = () => {
      musicAudio = null; musicQueue = []; musicIndex = 0;
      playerEl.classList.remove("active");
-     harness.lines = []; harness.created = []; harness.playRejects = false;
+     harness.lines = []; harness.created = []; harness.toolEvents = [];
+     harness.emotions = []; harness.playRejects = false; harness.fatalFailure = false;
    };`
 )(harness);
 
@@ -150,6 +160,23 @@ async function main() {
   abandoned.ontimeupdate?.();
   abandoned.onended?.();
   check("el audio abandonado no avanza la cola", harness.visible());
+
+  // ── Un fallo de audio se cuenta y no recorre la cola en silencio ────────────
+  harness.reset();
+  harness.fatalFailure = true;   // p. ej. 404: fallará con todas las canciones
+  harness.handleMusicCommand({ command: "play", queue: QUEUE });
+  const failing = harness.created.at(-1);
+  await failing.onerror();
+  check("fallo de configuración · no salta a la siguiente",
+        harness.created.length === 1, `${harness.created.length} audios`);
+  check("fallo de configuración · deja el reproductor oculto", !harness.visible());
+
+  harness.reset();
+  harness.fatalFailure = false;  // una pista rota suelta: se pasa a la siguiente
+  harness.handleMusicCommand({ command: "play", queue: QUEUE });
+  await harness.created.at(-1).onerror();
+  check("pista rota · continúa con la siguiente", harness.created.length === 2,
+        `${harness.created.length} audios`);
 
   // ── La URL lleva la clave del gateway y el módulo ───────────────────────────
   harness.reset();

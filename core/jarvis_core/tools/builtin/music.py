@@ -63,10 +63,14 @@ class SearchMusicTool(_MusicTool):
 class PlayMusicTool(_MusicTool):
     name = "play_music"
     description = (
-        "Reproduce música en el reproductor del HUD. Con `query` busca y reproduce lo "
-        "que mejor encaje; sin `query` pone una selección aleatoria de la biblioteca. "
-        "Úsala cuando el usuario pida escuchar algo. Después responde en una frase "
-        "corta diciendo qué suena; no enumeres la lista."
+        "Envía música al reproductor del HUD. Con `query` busca y encola lo que mejor "
+        "encaje; sin `query` pone una selección aleatoria de la biblioteca. Úsala "
+        "cuando el usuario pida escuchar algo.\n"
+        "La reproducción ocurre en el dispositivo del usuario, no aquí: esta "
+        "herramienta solo la solicita y NO puede confirmar que esté sonando. Responde "
+        "en una frase corta y honesta —«te pongo X»—, nunca afirmes que «ya está "
+        "sonando». Si no se oye nada, el HUD mostrará el motivo; no lo achaques a la "
+        "biblioteca ni insistas con otra canción."
     )
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",

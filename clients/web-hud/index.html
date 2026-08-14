@@ -2574,6 +2574,46 @@
     }
   }
 
+  // Un fallo de audio no dice nada por sí solo: el navegador solo avisa de que
+  // «no pudo». Se vuelve a pedir la URL para conocer el motivo real y se muestra
+  // en el panel de actividad, que está a la vista, en vez de en el historial.
+  const MUSIC_HTTP_HELP = {
+    401: "la clave del HUB no es válida para el gateway",
+    404: "el gateway no tiene la ruta de audio — reconstruye el servidor",
+    422: "el identificador de la canción no fue aceptado",
+    502: "el gateway no pudo contactar con Navidrome",
+    503: "no hay servidor de música configurado en el gateway",
+  };
+
+  async function reportMusicFailure(url, song) {
+    let detail = "el navegador no pudo reproducir el audio";
+    let fatal = false;
+    try {
+      const response = await fetch(url, { method: "GET", headers: { Range: "bytes=0-0" } });
+      if (!response.ok) {
+        detail = `el servidor respondió ${response.status}`;
+        const help = MUSIC_HTTP_HELP[response.status];
+        if (help) detail += ` · ${help}`;
+        // Un fallo de configuración se repetirá con todas las canciones:
+        // recorrer la cola entera solo multiplica el ruido.
+        fatal = true;
+      }
+    } catch (error) {
+      detail = `no se pudo alcanzar el gateway (${error.message})`;
+      fatal = true;
+    }
+    const message = `No pude reproducir «${song.title}»: ${detail}.`;
+    addLine("SISTEMA", message, "system");
+    showToolEvent({
+      phase: "completed",
+      tool: "play_music",
+      is_error: true,
+      output: message,
+    });
+    setEmotion("concern");
+    return fatal;
+  }
+
   function playMusicAt(index) {
     if (index < 0 || index >= musicQueue.length) { stopMusic(); return; }
     musicIndex = index;
@@ -2597,10 +2637,12 @@
       playerEl.classList.add("active");
     };
     audio.onended = () => { if (musicAudio === audio) playMusicAt(musicIndex + 1); };
-    audio.onerror = () => {
+    audio.onerror = async () => {
       if (musicAudio !== audio) return;
-      addLine("SISTEMA", `No pude reproducir «${musicQueue[index].title}».`, "system");
-      playMusicAt(musicIndex + 1);
+      const fatal = await reportMusicFailure(url, musicQueue[index]);
+      if (musicAudio !== audio) return;
+      if (fatal) stopMusic();
+      else playMusicAt(musicIndex + 1);
     };
     audio.ontimeupdate = () => {
       if (musicAudio !== audio) return;
@@ -2610,7 +2652,14 @@
     };
     audio.play().catch((error) => {
       if (musicAudio !== audio) return;
-      addLine("SISTEMA", "El navegador bloqueó la reproducción: " + error.message, "system");
+      const message =
+        "El navegador bloqueó la reproducción (" + error.message +
+        "). Haz clic en cualquier parte del HUD y vuelve a pedirla.";
+      addLine("SISTEMA", message, "system");
+      showToolEvent({
+        phase: "completed", tool: "play_music", is_error: true, output: message,
+      });
+      setEmotion("concern");
       stopMusic();
     });
     renderNowPlaying();
