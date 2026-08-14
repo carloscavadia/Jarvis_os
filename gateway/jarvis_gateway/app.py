@@ -1176,6 +1176,55 @@ async def workspace_file_delete(path: str):
     return {"status": "ok", "message": f"Eliminado: {guard.display(resolved)}"}
 
 
+class TaskCreateRequest(BaseModel):
+    title: str
+    prompt: str
+    next_run: float | None = None
+    interval_seconds: float | None = None
+
+
+@app.get("/tasks", dependencies=[Depends(require_api_key)])
+async def list_tasks(include_disabled: bool = True):
+    tasks = sessions.tasks.list(include_disabled=include_disabled)
+    return {
+        "tasks": [
+            {
+                "id": t.id,
+                "title": t.title,
+                "prompt": t.prompt,
+                "kind": t.kind,
+                "next_run": t.next_run,
+                "interval_seconds": t.interval_seconds,
+                "enabled": t.enabled,
+                "created_at": t.created_at,
+                "last_run": t.last_run,
+            }
+            for t in tasks
+        ]
+    }
+
+
+@app.post("/tasks", dependencies=[Depends(require_api_key)])
+async def create_task(req: TaskCreateRequest):
+    import time
+    next_run = req.next_run if req.next_run else (time.time() + 60)
+    task_id = sessions.tasks.add(
+        title=req.title,
+        prompt=req.prompt,
+        next_run=next_run,
+        interval_seconds=req.interval_seconds,
+    )
+    return {"status": "ok", "task_id": task_id, "message": f"Tarea creada con ID {task_id}"}
+
+
+@app.delete("/tasks/{task_id}", dependencies=[Depends(require_api_key)])
+async def delete_task(task_id: int):
+    success = sessions.tasks.cancel(task_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="La tarea no existe o ya fue cancelada.")
+    return {"status": "ok", "message": f"Tarea {task_id} cancelada"}
+
+
 @app.websocket("/ws/wake/{device_id}")
 async def wakeword_endpoint(websocket: WebSocket, device_id: str) -> None:
     """Escucha permanente: recibe PCM crudo y avisa al oír «Hey JARVIS».

@@ -459,6 +459,155 @@
   }
   .preview-actions button.primary { color: #baffdf; border-color: rgba(96,236,168,0.45); background: rgba(15,40,35,0.7); }
   .preview-actions button:hover { transform: translateY(-1px); box-shadow: 0 0 14px rgba(53,230,255,0.14); }
+
+  /* ── HUD Side Deck (Panel Lateral Elegante) ── */
+  .side-deck {
+    position: fixed; left: 34px; top: 90px; bottom: 90px;
+    width: min(280px, calc(100vw - 40px));
+    display: flex; flex-direction: column; gap: 14px;
+    pointer-events: auto; z-index: 4;
+  }
+  @media (max-width: 900px) { .side-deck { display: none; } }
+
+  /* ── Mini Calendario ── */
+  .calendar-widget {
+    border: 1px solid var(--hairline-2); border-radius: 12px;
+    background: rgba(4, 12, 21, 0.65); backdrop-filter: blur(14px) saturate(120%);
+    box-shadow: 0 14px 45px rgba(0,0,0,0.45), 0 0 20px rgba(53,230,255,0.05);
+    padding: 12px; font-family: var(--mono); position: relative; overflow: hidden;
+  }
+  .calendar-widget::before {
+    content: ""; position: absolute; top: 0; left: 0; width: 36px; height: 1px;
+    background: var(--core); box-shadow: 0 0 10px var(--core);
+  }
+  .cal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--hairline);
+  }
+  .cal-month { font-size: 10px; letter-spacing: 0.16em; color: var(--core-bright); text-transform: uppercase; }
+  .cal-today-badge { font-size: 8px; letter-spacing: 0.1em; color: var(--core); background: rgba(53,230,255,0.1); padding: 2px 6px; border-radius: 4px; border: 1px solid var(--hairline); }
+  
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center; font-size: 9px; }
+  .cal-day-header { color: var(--muted); padding-bottom: 4px; font-size: 8px; }
+  .cal-day {
+    padding: 5px 0; border-radius: 6px; color: var(--text); cursor: pointer; transition: .15s ease;
+    border: 1px solid transparent; position: relative;
+  }
+  .cal-day:hover { background: rgba(53,230,255,0.12); color: var(--core-bright); }
+  .cal-day.today {
+    background: rgba(53,230,255,0.2); border-color: var(--core); color: #ffffff;
+    box-shadow: 0 0 12px rgba(53,230,255,0.3); font-weight: bold;
+  }
+  .cal-day.has-task::after {
+    content: ""; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+    width: 3px; height: 3px; border-radius: 50%; background: #60eca8; box-shadow: 0 0 6px #60eca8;
+  }
+  .cal-day.other-month { opacity: 0.25; }
+
+  /* ── Tareas & Reminders Widget ── */
+  .tasks-widget {
+    flex: 1; min-height: 180px; max-height: 320px;
+    border: 1px solid var(--hairline-2); border-radius: 12px;
+    background: rgba(4, 12, 21, 0.65); backdrop-filter: blur(14px) saturate(120%);
+    box-shadow: 0 14px 45px rgba(0,0,0,0.45), 0 0 20px rgba(53,230,255,0.05);
+    padding: 12px; font-family: var(--mono); display: flex; flex-direction: column;
+  }
+  .tasks-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--hairline);
+  }
+  .tasks-title { font-size: 10px; letter-spacing: 0.16em; color: var(--core-bright); }
+  .tasks-add-btn {
+    border: 1px solid var(--hairline); border-radius: 5px; background: rgba(9,22,32,0.6);
+    color: var(--core); cursor: pointer; padding: 2px 7px; font: 10px var(--mono); transition: .15s ease;
+  }
+  .tasks-add-btn:hover { border-color: var(--core); background: rgba(53,230,255,0.15); color: #fff; }
+  
+  .tasks-list {
+    flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;
+    scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent;
+  }
+  .task-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 7px 9px; border: 1px solid var(--hairline); border-radius: 7px;
+    background: rgba(8, 20, 31, 0.4); font-size: 9.5px; transition: .15s ease;
+  }
+  .task-item:hover { border-color: var(--hairline-2); background: rgba(12, 28, 42, 0.6); }
+  .task-item .task-info { min-width: 0; flex: 1; }
+  .task-item .task-t-title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-item .task-t-meta { color: var(--muted); font-size: 8px; margin-top: 2px; }
+  .task-item .task-del {
+    color: var(--muted); cursor: pointer; border: 0; background: transparent; font-size: 12px; padding: 0 3px;
+  }
+  .task-item .task-del:hover { color: #ffb460; }
+  .tasks-empty { color: var(--muted); font-size: 9px; text-align: center; margin: auto; }
+
+  /* ── Quick Launcher Bar ── */
+  .quick-launcher { display: flex; gap: 6px; margin-top: auto; }
+  .quick-launcher button {
+    flex: 1; height: 32px; border: 1px solid var(--hairline-2); border-radius: 8px;
+    background: rgba(8, 22, 34, 0.65); color: var(--text); cursor: pointer;
+    font: 9px var(--mono); letter-spacing: 0.08em; transition: .18s ease;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .quick-launcher button:hover {
+    border-color: var(--core); color: var(--core-bright);
+    background: rgba(14, 38, 55, 0.85); box-shadow: 0 0 14px rgba(53,230,255,0.15);
+  }
+
+  /* ── Sistema de Notificaciones Toasts de JARVIS ── */
+  .toast-container {
+    position: fixed; top: 24px; right: 28px; z-index: 10;
+    display: flex; flex-direction: column; gap: 8px;
+    pointer-events: none; width: min(340px, calc(100vw - 56px));
+  }
+  .hud-toast {
+    pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 13px; border: 1px solid var(--hairline-2); border-radius: 10px;
+    background: linear-gradient(135deg, rgba(4, 14, 24, 0.92), rgba(6, 20, 32, 0.85));
+    backdrop-filter: blur(16px) saturate(125%);
+    box-shadow: 0 14px 45px rgba(0,0,0,0.5), 0 0 25px rgba(53,230,255,0.08);
+    font-family: var(--mono); animation: toast-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative; overflow: hidden;
+  }
+  .hud-toast::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--core); box-shadow: 0 0 10px var(--core);
+  }
+  .hud-toast.tool::before { background: #8496ff; box-shadow: 0 0 10px #8496ff; }
+  .hud-toast.alert::before { background: #ffb460; box-shadow: 0 0 10px #ffb460; }
+  .hud-toast.task::before { background: #60eca8; box-shadow: 0 0 10px #60eca8; }
+
+  .hud-toast .toast-icon { font-size: 14px; margin-top: 1px; flex: none; }
+  .hud-toast .toast-body { flex: 1; min-width: 0; }
+  .hud-toast .toast-title { font-size: 9px; letter-spacing: 0.15em; color: var(--core-bright); text-transform: uppercase; }
+  .hud-toast .toast-msg { font-size: 10.5px; color: var(--text); margin-top: 3px; word-break: break-word; line-height: 1.35; }
+  .hud-toast .toast-close { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0; margin-left: 4px; }
+  .hud-toast .toast-close:hover { color: var(--core-bright); }
+
+  @keyframes toast-slide-in {
+    from { opacity: 0; transform: translateY(-12px) scale(0.95); filter: blur(4px); }
+    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  }
+  @keyframes toast-slide-out {
+    to { opacity: 0; transform: translateX(20px) scale(0.95); filter: blur(4px); }
+  }
+
+  /* ── Modal de Configuración de Conexión ── */
+  .config-modal {
+    display: none; position: fixed; z-index: 9; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(420px, calc(100vw - 36px));
+    padding: 18px; border: 1px solid var(--hairline-2); border-radius: 13px;
+    background: rgba(4,12,21,0.96); backdrop-filter: blur(18px); box-shadow: 0 24px 90px rgba(0,0,0,0.72);
+    font-family: var(--mono);
+  }
+  .config-modal.active { display: block; animation: workspace-in 0.25s ease-out; }
+  .config-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 11px; letter-spacing: .18em; color: var(--core); }
+  .config-modal-body { display: flex; flex-direction: column; gap: 10px; font-size: 10px; }
+  .config-modal-body input { padding: 9px 10px; border: 1px solid var(--hairline); border-radius: 7px; background: rgba(8,20,30,0.8); color: var(--text); font: 11px var(--mono); outline: none; }
+  .config-modal-body input:focus { border-color: var(--core); }
+  .config-modal-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .config-modal-actions button { flex: 1; padding: 8px; border: 1px solid var(--hairline-2); border-radius: 7px; background: rgba(12,29,40,0.8); color: var(--text); cursor: pointer; font: 9px var(--mono); letter-spacing: .08em; }
 </style>
 </head>
 <body>
@@ -477,30 +626,48 @@
     <div>VOZ · <span class="val" id="r-voice">LISTA</span></div>
   </div>
 
-  <div class="controls">
-    <div class="cap">Estados</div>
-    <div class="grp">
-      <button data-state="idle">Reposo</button>
-      <button data-state="listening">Escucha</button>
-      <button data-state="thinking">Pensar</button>
-      <button data-state="speaking">Hablar</button>
+  <!-- Panel Lateral Inteligente (Iron Man HUD Side Deck) -->
+  <aside class="side-deck" aria-label="Consola Lateral JARVIS">
+    <!-- Widget Calendario -->
+    <div class="calendar-widget">
+      <div class="cal-head">
+        <span class="cal-month" id="cal-month-title">AGOSTO 2026</span>
+        <span class="cal-today-badge" id="cal-today-badge">HOY</span>
+      </div>
+      <div class="cal-grid" id="cal-grid"></div>
     </div>
-    <div class="cap">Emociones</div>
-    <div class="grp">
-      <button data-emotion="neutral">Neutral</button>
-      <button data-emotion="happy">Feliz</button>
-      <button data-emotion="alert">Alerta</button>
-      <button data-emotion="focused">Foco</button>
-      <button data-emotion="concern">Duda</button>
+
+    <!-- Widget Tareas & Recordatorios -->
+    <div class="tasks-widget">
+      <div class="tasks-head">
+        <span class="tasks-title">TAREAS PENDIENTES</span>
+        <button class="tasks-add-btn" id="task-add-trigger" type="button" title="Agregar tarea">+ TAREA</button>
+      </div>
+      <div class="tasks-list" id="tasks-list"></div>
     </div>
-    <div class="cap">Evento</div>
-    <div class="grp"><button id="pulse">Ejecución ⚡</button></div>
-    <div class="cap">Conexión</div>
-    <div class="cap">192.168.68.100 · HUB TEST</div>
-    <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
-    <button id="ws-connect">Conectar</button>
-    <button id="connector-open">Conectores</button>
-    <button id="explorer-open">Archivos 📂</button>
+
+    <!-- Barra de Accesos Rápidos -->
+    <div class="quick-launcher">
+      <button id="quick-explorer" type="button" title="Abrir Explorador de Archivos">📂 ARCHIVOS</button>
+      <button id="quick-connectors" type="button" title="Abrir Centro de Conectores">⚡ CONECTORES</button>
+      <button id="quick-config" type="button" title="Configurar Conexión">⚙️ RED</button>
+    </div>
+  </aside>
+
+  <!-- Contenedor de Notificaciones Toasts HUD -->
+  <div class="toast-container" id="hud-toast-container" aria-live="polite"></div>
+
+  <!-- Modal de Configuración de Conexión -->
+  <div class="config-modal" id="config-modal" aria-label="Configuración de Red">
+    <div class="config-modal-head"><span>CONFIGURACIÓN DE RED Y CLAVE</span><button class="action-close" id="config-modal-close" type="button">×</button></div>
+    <div class="config-modal-body">
+      <label>CLAVE DEL HUB / API KEY</label>
+      <input id="ws-token" type="password" placeholder="Clave del HUB" autocomplete="current-password" />
+      <div style="color:var(--muted); font-size:9px;">Permite conectar de forma segura el HUD con el servidor de JARVIS.</div>
+    </div>
+    <div class="config-modal-actions">
+      <button class="primary" id="ws-connect" type="button">CONECTAR HUB</button>
+    </div>
   </div>
 
   <!-- Configuración local opcional (config.js, no versionado). Si no existe, el
@@ -743,13 +910,29 @@
 
   function setState(next) {
     if (!STATES[next]) return;
+    const prev = stateName;
     stateName = next;
     rState.textContent = STATES[next].label;
+    if (next !== "idle" && next !== prev) {
+      showHudNotification({
+        title: "ESTADO DEL SISTEMA",
+        message: `MODO ${STATES[next].label}`,
+        type: "system"
+      });
+    }
   }
   function setEmotion(next) {
     if (!EMOTIONS[next]) return;
+    const prev = emotionName;
     emotionName = next;
     rEmotion.textContent = EMO_LABEL[next];
+    if (next !== "neutral" && next !== prev) {
+      showHudNotification({
+        title: "EMOCIÓN DEL NÚCLEO",
+        message: `EMOCIÓN: ${EMO_LABEL[next]}`,
+        type: "system"
+      });
+    }
   }
   function firePulse() { pulses.push({ r: 0, life: 1 }); }
 
@@ -835,6 +1018,13 @@
   function showToolEvent(event) {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     actionTrace.classList.add("active");
+    if (event.phase === "running") {
+      showHudNotification({
+        title: "EJECUTANDO HERRAMIENTA",
+        message: `${TOOL_LABELS[event.tool] || event.tool}`,
+        type: "tool"
+      });
+    }
     if (event.presentation) {
       currentTurnPresented = true;
       showOnBoard({
@@ -2127,7 +2317,6 @@
     }
   }
 
-  document.getElementById("explorer-open").addEventListener("click", () => openExplorer(currentExplorerPath));
   document.getElementById("explorer-close").addEventListener("click", closeExplorer);
   document.getElementById("explorer-refresh").addEventListener("click", () => loadExplorerFiles(currentExplorerPath));
   document.getElementById("explorer-view-grid").addEventListener("click", () => {
@@ -2160,6 +2349,225 @@
       keepOpen: true,
     });
   });
+
+  // ── Sistema de Notificaciones Toasts de JARVIS ──
+  const toastContainer = document.getElementById("hud-toast-container");
+  
+  function showHudNotification({ title = "JARVIS OS", message = "", type = "system", duration = 4500 } = {}) {
+    if (!toastContainer) return;
+    const toast = document.createElement("div");
+    toast.className = `hud-toast ${type}`;
+    
+    const iconText = type === "tool" ? "⚡" : type === "alert" ? "⚠️" : type === "task" ? "⏰" : "🤖";
+    
+    const icon = document.createElement("div"); icon.className = "toast-icon"; icon.textContent = iconText;
+    const body = document.createElement("div"); body.className = "toast-body";
+    const tTitle = document.createElement("div"); tTitle.className = "toast-title"; tTitle.textContent = title;
+    const tMsg = document.createElement("div"); tMsg.className = "toast-msg"; tMsg.textContent = message;
+    body.append(tTitle, tMsg);
+    
+    const closeBtn = document.createElement("button"); closeBtn.className = "toast-close"; closeBtn.textContent = "×";
+    closeBtn.onclick = () => removeToast(toast);
+    
+    toast.append(icon, body, closeBtn);
+    toastContainer.appendChild(toast);
+    
+    if (duration > 0) {
+      setTimeout(() => removeToast(toast), duration);
+    }
+  }
+
+  function removeToast(toast) {
+    if (!toast || !toast.parentNode) return;
+    toast.style.animation = "toast-slide-out 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards";
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 300);
+  }
+
+  // ── Mini Calendario ──
+  const calMonthTitle = document.getElementById("cal-month-title");
+  const calGrid = document.getElementById("cal-grid");
+  const calTodayBadge = document.getElementById("cal-today-badge");
+  let currentTasksList = [];
+
+  function renderMiniCalendar() {
+    if (!calGrid) return;
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const todayDate = now.getDate();
+    
+    const monthNames = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"];
+    const dayNames = ["L", "M", "X", "J", "V", "S", "D"];
+    
+    if (calMonthTitle) calMonthTitle.textContent = `${monthNames[month]} ${year}`;
+    if (calTodayBadge) {
+      const dayNameStr = ["DOM", "LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB"][now.getDay()];
+      calTodayBadge.textContent = `${dayNameStr} · ${todayDate}`;
+    }
+    
+    calGrid.replaceChildren();
+    
+    for (const dName of dayNames) {
+      const dHead = document.createElement("div");
+      dHead.className = "cal-day-header";
+      dHead.textContent = dName;
+      calGrid.appendChild(dHead);
+    }
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    let startDayIdx = (firstDay.getDay() + 6) % 7;
+    
+    const totalDays = lastDay.getDate();
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    
+    for (let i = startDayIdx - 1; i >= 0; i--) {
+      const cell = document.createElement("div");
+      cell.className = "cal-day other-month";
+      cell.textContent = prevMonthLastDay - i;
+      calGrid.appendChild(cell);
+    }
+    
+    for (let day = 1; day <= totalDays; day++) {
+      const cell = document.createElement("div");
+      cell.className = "cal-day";
+      if (day === todayDate) cell.classList.add("today");
+      
+      const dayTimestampStart = new Date(year, month, day).getTime() / 1000;
+      const dayTimestampEnd = dayTimestampStart + 86400;
+      const hasTask = currentTasksList.some(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
+      if (hasTask) cell.classList.add("has-task");
+      
+      cell.textContent = day;
+      cell.onclick = () => {
+        const matchingTasks = currentTasksList.filter(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
+        if (matchingTasks.length) {
+          showHudNotification({
+            title: `TAREAS · ${day} DE ${monthNames[month]}`,
+            message: matchingTasks.map(t => `• ${t.title}`).join("\n"),
+            type: "task",
+            duration: 5500
+          });
+        } else {
+          showHudNotification({
+            title: `AGENDA · ${day} DE ${monthNames[month]}`,
+            message: "Sin tareas programadas para este día.",
+            type: "system",
+            duration: 3000
+          });
+        }
+      };
+      calGrid.appendChild(cell);
+    }
+  }
+
+  // ── Tareas & Reminders Manager ──
+  const tasksList = document.getElementById("tasks-list");
+  const taskAddTrigger = document.getElementById("task-add-trigger");
+
+  async function fetchTasks() {
+    if (!tasksList) return;
+    try {
+      const data = await connectorRequest("/tasks", { headers: connectorApiHeaders() });
+      currentTasksList = data.tasks || [];
+      renderTasksList(currentTasksList);
+      renderMiniCalendar();
+    } catch (error) {
+      renderTasksList(currentTasksList);
+    }
+  }
+
+  function renderTasksList(tasks) {
+    if (!tasksList) return;
+    tasksList.replaceChildren();
+    const activeTasks = tasks.filter(t => t.enabled);
+
+    if (!activeTasks.length) {
+      const empty = document.createElement("div");
+      empty.className = "tasks-empty";
+      empty.textContent = "SIN TAREAS PENDIENTES";
+      tasksList.appendChild(empty);
+      return;
+    }
+
+    for (const task of activeTasks) {
+      const item = document.createElement("div");
+      item.className = "task-item";
+      
+      const info = document.createElement("div");
+      info.className = "task-info";
+      const title = document.createElement("div");
+      title.className = "task-t-title";
+      title.textContent = task.title;
+      
+      const meta = document.createElement("div");
+      meta.className = "task-t-meta";
+      const dueStr = formatTaskTime(task.next_run);
+      meta.textContent = task.kind === "recurring" ? `🔄 Recurrente · ${dueStr}` : `⏰ Programada · ${dueStr}`;
+      
+      info.append(title, meta);
+      
+      const delBtn = document.createElement("button");
+      delBtn.className = "task-del";
+      delBtn.textContent = "×";
+      delBtn.title = "Cancelar tarea";
+      delBtn.onclick = async (e) => {
+        e.stopPropagation();
+        await deleteTask(task.id);
+      };
+      
+      item.append(info, delBtn);
+      tasksList.appendChild(item);
+    }
+  }
+
+  function formatTaskTime(timestamp) {
+    if (!timestamp) return "Pendiente";
+    const now = Date.now() / 1000;
+    const diff = timestamp - now;
+    if (diff < 0) return "Vencida";
+    if (diff < 3600) return `En ${Math.ceil(diff / 60)} min`;
+    if (diff < 86400) return `En ${Math.ceil(diff / 3600)} h`;
+    const d = new Date(timestamp * 1000);
+    return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+
+  async function deleteTask(taskId) {
+    try {
+      await connectorRequest(`/tasks/${taskId}`, { method: "DELETE", headers: connectorApiHeaders() });
+      showHudNotification({ title: "TAREA CANCELADA", message: `Tarea #${taskId} eliminada`, type: "task" });
+      await fetchTasks();
+    } catch (error) {
+      showHudNotification({ title: "ERROR", message: error.message, type: "alert" });
+    }
+  }
+
+  if (taskAddTrigger) {
+    taskAddTrigger.onclick = () => {
+      const promptText = prompt("Escribe una tarea o recordatorio para JARVIS:");
+      if (!promptText || !promptText.trim()) return;
+      messageInput.value = `JARVIS, recuérdame: ${promptText}`;
+      document.getElementById("form").dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+    };
+  }
+
+  // Initial loads
+  renderMiniCalendar();
+  setTimeout(() => fetchTasks(), 1500);
+
+  // ── Config Modal & Quick Launchers ──
+  const configModal = document.getElementById("config-modal");
+  const quickConfig = document.getElementById("quick-config");
+  const quickExplorer = document.getElementById("quick-explorer");
+  const quickConnectors = document.getElementById("quick-connectors");
+  const configModalClose = document.getElementById("config-modal-close");
+
+  if (quickConfig) quickConfig.onclick = () => configModal.classList.add("active");
+  if (configModalClose) configModalClose.onclick = () => configModal.classList.remove("active");
+  if (quickExplorer) quickExplorer.onclick = () => openExplorer();
+  if (quickConnectors) quickConnectors.onclick = () => { connectorPanel.classList.add("active"); refreshConnectorModules(); };
 
   // ── Voz: wake/STT local + OpenAI Realtime bajo demanda + Kokoro fallback ──
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
