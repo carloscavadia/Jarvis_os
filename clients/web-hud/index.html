@@ -1910,6 +1910,8 @@
       rememberHubKey(token);
       setConnStatus("connected");
       addLine("SISTEMA", "Conectado a " + target.host, "system");
+      // Cargar tareas ahora que tenemos conexión y clave válida
+      fetchTasks();
       // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
       // si el detector local está disponible; encadenarlo evita una carrera en la
       // que el HUD se rinde antes de recibir la respuesta.
@@ -2781,9 +2783,9 @@
     };
   }
 
-  // Initial loads
+  // Initial loads — sin clave todavía, solo el calendario
   renderMiniCalendar();
-  setTimeout(() => fetchTasks(), 1500);
+  // fetchTasks se llama desde ws.onopen (cuando ya hay API Key) para evitar 401
 
   // ── Quick Launchers del Side Deck ──
   const quickExplorer = document.getElementById("quick-explorer");
@@ -4045,7 +4047,7 @@
 
   document.querySelectorAll("[data-state]").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state)));
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
-  document.getElementById("pulse").addEventListener("click", firePulse);
+  document.getElementById("pulse")?.addEventListener("click", firePulse);
 
   document.getElementById("ws-connect").addEventListener("click", () => connect(resolvedWsUrl(), hubKey()));
   tokenInput.addEventListener("keydown", (e) => {
