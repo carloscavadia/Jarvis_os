@@ -912,3 +912,12 @@ def test_music_stream_requires_the_gateway_key(monkeypatch):
         ).status_code in {404, 422}
         # Sin servidor de música configurado no hay nada que servir.
         assert client.get("/music/stream/7?token=ci-test-key").status_code == 404
+
+
+def test_health_reports_features_so_version_mismatches_are_visible():
+    """Un HUD nuevo contra un gateway viejo falla en silencio; esto lo delata."""
+    with TestClient(gateway_module.app) as client:
+        health = client.get("/health").json()
+    assert "music_stream" in health["features"]
+    assert "wakeword" in health["features"]
+    assert health["music"] == "off"  # sin JARVIS_NAVIDROME_URL

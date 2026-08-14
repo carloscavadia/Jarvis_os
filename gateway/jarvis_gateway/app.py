@@ -55,6 +55,12 @@ logger = logging.getLogger("jarvis.gateway")
 
 _SESSION_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
+#: Capacidades que este gateway sabe servir. El HUD las consulta para avisar
+#: cuando pide algo que esta versión del servidor todavía no ofrece.
+GATEWAY_FEATURES = frozenset(
+    {"wakeword", "realtime_conversation", "music_stream", "music_cover"}
+)
+
 settings = Settings.from_env()
 sessions = SessionManager(settings)
 mqtt_bridge = MqttBridge(settings, sessions)
@@ -421,7 +427,7 @@ class GoalControlRequest(BaseModel):
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health() -> dict[str, object]:
     return {
         "status": "ok",
         "persona": settings.persona_name,
@@ -430,6 +436,10 @@ async def health() -> dict[str, str]:
         "voice": "on" if settings.voice_enabled else "off",
         "realtime_voice": "on" if realtime_voice.enabled else "off",
         "connectors": "on" if settings.connectors_enabled else "off",
+        # Permite detectar de un vistazo que el HUD y el gateway van desparejados,
+        # que es la causa típica de que una función "esté" pero no haga nada.
+        "music": "on" if settings.navidrome_url else "off",
+        "features": sorted(GATEWAY_FEATURES),
     }
 
 

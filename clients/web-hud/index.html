@@ -1333,7 +1333,7 @@
       if (m.type === "state") setState(m.state);
       else if (m.type === "emotion") setEmotion(m.emotion);
       else if (m.type === "event") firePulse();
-      else if (m.type === "tool_event") { showToolEvent(m); handleMusicCommand(m.music); firePulse(); }
+      else if (m.type === "tool_event") { showToolEvent(m); receiveMusicEvent(m); firePulse(); }
       else if (m.type === "reply_start") startStreamReply();
       else if (m.type === "reply_delta") appendStreamDelta(m.delta);
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
@@ -2431,7 +2431,7 @@
     else if (message.type === "transcript") addLine("TÚ", message.text, "user");
     else if (message.type === "reply_delta") appendStreamDelta(message.delta);
     else if (message.type === "reply_done") finishStreamReply(message.text);
-    else if (message.type === "tool") { showToolEvent(message); handleMusicCommand(message.music); }
+    else if (message.type === "tool") { showToolEvent(message); receiveMusicEvent(message); }
     else if (message.type === "approval_required") {
       // La decisión vuelve por el mismo canal de voz, no por el de texto.
       pendingApproval = { ...message, channel: "voice" };
@@ -2680,8 +2680,31 @@
     }
   }, 120);
 
+  // Un fallo silencioso entre el gateway y el reproductor es indistinguible de
+  // «no funciona»: si JARVIS ejecuta play_music y aquí no llega la orden, la
+  // causa es una discrepancia de versiones y conviene decirlo, no callarlo.
+  function receiveMusicEvent(event) {
+    const musical = event.tool === "play_music" || event.tool === "control_music";
+    if (musical && event.phase === "completed" && !event.is_error && !event.music) {
+      addLine(
+        "SISTEMA",
+        "El gateway ejecutó " + event.tool + " pero no envió la orden al "
+          + "reproductor. Suele significar que el servidor tiene una versión "
+          + "anterior a la del HUD: reconstruye el gateway.",
+        "system",
+      );
+      setEmotion("concern");
+      return;
+    }
+    handleMusicCommand(event.music);
+  }
+
   function handleMusicCommand(music) {
     if (!music) return;
+    if (music.command === "play" && !(music.queue || []).length) {
+      addLine("SISTEMA", "El servidor devolvió una lista de reproducción vacía.", "system");
+      return;
+    }
     if (music.command === "play") {
       musicQueue = Array.isArray(music.queue) ? music.queue : [];
       if (!musicQueue.length) return;
