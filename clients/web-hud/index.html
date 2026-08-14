@@ -902,6 +902,7 @@
 
     if (event.phase === "completed" && ["list_directory", "read_file", "create_file", "update_file", "create_directory"].includes(event.tool)) {
       const targetPath = event.arguments?.path || currentExplorerPath;
+      closeWorkspace();
       openExplorer(targetPath);
     }
   }
@@ -1959,6 +1960,7 @@
   }
 
   async function openExplorer(path = ".") {
+    closeWorkspace();
     explorerOpenTime = Date.now();
     explorerPanel.classList.add("active");
     await loadExplorerFiles(path);
