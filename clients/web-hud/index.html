@@ -151,6 +151,45 @@
     line-height: 1.55; scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
   .action-presentation.code, .action-presentation.json, .action-presentation.table {
     font-family: var(--mono); white-space: pre; overflow-wrap: normal; tab-size: 2; }
+  .action-presentation.json { white-space: normal; overflow-wrap: anywhere; }
+
+  /* ── Explorador de JSON Holográfico ── */
+  .json-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; margin-bottom: 10px; border-bottom: 1px solid var(--hairline);
+    background: rgba(6, 18, 30, 0.6); font-family: var(--mono); border-radius: 6px;
+  }
+  .json-meta-info { font-size: 9px; letter-spacing: 0.15em; color: var(--core-bright); font-weight: 500; }
+  .json-toggle-btn {
+    border: 1px solid var(--hairline-2); border-radius: 5px;
+    background: rgba(10,26,40,0.8); color: var(--core); cursor: pointer;
+    font: 8.5px var(--mono); padding: 3px 8px; letter-spacing: .08em; transition: .15s ease;
+  }
+  .json-toggle-btn:hover { border-color: var(--core); color: #fff; background: rgba(53,230,255,0.15); }
+
+  .json-tree-root { font-family: var(--mono); font-size: 11px; line-height: 1.6; user-select: text; }
+  .json-raw-highlight {
+    font-family: var(--mono); font-size: 11px; line-height: 1.5;
+    margin: 0; padding: 10px; border-radius: 6px; background: rgba(2, 8, 15, 0.75);
+    overflow: auto; border: 1px solid var(--hairline); color: var(--text);
+  }
+  .json-node-wrapper { margin-left: 14px; position: relative; }
+  .json-tree-root > .json-node-wrapper { margin-left: 0; }
+  .json-node-head { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; padding: 2px 5px; border-radius: 4px; }
+  .json-node-head:hover { background: rgba(53,230,255,0.08); }
+  .json-toggle-icon { font-size: 8px; color: var(--core); width: 10px; transition: transform .15s; }
+  .json-badge { font-size: 8px; letter-spacing: .06em; padding: 1px 5px; border-radius: 4px; font-weight: bold; }
+  .json-badge.arr { color: #60eca8; background: rgba(96,236,168,0.1); border: 1px solid rgba(96,236,168,0.25); }
+  .json-badge.obj { color: #35e6ff; background: rgba(53,230,255,0.1); border: 1px solid rgba(53,230,255,0.25); }
+  .json-node-children { border-left: 1px dashed rgba(53,230,255,0.2); margin-left: 5px; padding-left: 6px; }
+  .json-node-wrapper.collapsed > .json-node-children { display: none; }
+
+  /* Colores Sintácticos Neón */
+  .json-key { color: #35e6ff; font-weight: 500; text-shadow: 0 0 6px rgba(53,230,255,0.2); }
+  .json-str { color: #60eca8; word-break: break-all; }
+  .json-num { color: #ffb460; font-weight: bold; }
+  .json-bool { color: #8496ff; font-weight: bold; }
+  .json-null { color: #ff6060; font-style: italic; }
   .presentation-mode .action-card { border-left-color: var(--core); padding: 0; background: transparent; }
   .presentation-mode .action-presentation { margin: 0; max-height: min(65vh, 600px); padding: 15px 17px;
     font-size: 12px; line-height: 1.65; background: rgba(0,4,9,.52); }
@@ -1306,6 +1345,187 @@
     if (/^\s*\|.+\|\s*$/m.test(source)) return "table";
     return "text";
   }
+  function highlightJsonSyntax(data) {
+    const jsonStr = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    return jsonStr.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+      let cls = "json-num";
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = "json-key";
+          return `<span class="${cls}">${match.slice(0, -1)}</span>:`;
+        } else {
+          cls = "json-str";
+        }
+      } else if (/true|false/.test(match)) {
+        cls = "json-bool";
+      } else if (/null/.test(match)) {
+        cls = "json-null";
+      }
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+
+  function buildJsonNode(value, isRoot = false, keyName = null) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "json-node-wrapper";
+
+    if (value === null) {
+      const keyHtml = keyName !== null ? `<span class="json-key">"${keyName}"</span>: ` : '';
+      wrapper.innerHTML = `${keyHtml}<span class="json-null">null</span>`;
+      return wrapper;
+    }
+
+    const type = typeof value;
+
+    if (type === "boolean") {
+      const keyHtml = keyName !== null ? `<span class="json-key">"${keyName}"</span>: ` : '';
+      wrapper.innerHTML = `${keyHtml}<span class="json-bool">${value}</span>`;
+      return wrapper;
+    }
+
+    if (type === "number") {
+      const keyHtml = keyName !== null ? `<span class="json-key">"${keyName}"</span>: ` : '';
+      wrapper.innerHTML = `${keyHtml}<span class="json-num">${value}</span>`;
+      return wrapper;
+    }
+
+    if (type === "string") {
+      const keyHtml = keyName !== null ? `<span class="json-key">"${keyName}"</span>: ` : '';
+      const escaped = value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      wrapper.innerHTML = `${keyHtml}<span class="json-str">"${escaped}"</span>`;
+      return wrapper;
+    }
+
+    if (Array.isArray(value)) {
+      const count = value.length;
+      const header = document.createElement("div");
+      header.className = "json-node-head foldable";
+
+      const toggleIcon = document.createElement("span");
+      toggleIcon.className = "json-toggle-icon";
+      toggleIcon.textContent = "▼";
+
+      const keySpan = document.createElement("span");
+      if (keyName !== null) {
+        keySpan.className = "json-key";
+        keySpan.textContent = `"${keyName}": `;
+      }
+
+      const badge = document.createElement("span");
+      badge.className = "json-badge arr";
+      badge.textContent = `[ ${count} ${count === 1 ? 'item' : 'items'} ]`;
+
+      header.append(toggleIcon, keySpan, badge);
+      wrapper.appendChild(header);
+
+      const childrenBox = document.createElement("div");
+      childrenBox.className = "json-node-children";
+
+      value.forEach((item, idx) => {
+        childrenBox.appendChild(buildJsonNode(item, false, idx));
+      });
+
+      wrapper.appendChild(childrenBox);
+
+      header.onclick = (e) => {
+        e.stopPropagation();
+        const collapsed = wrapper.classList.toggle("collapsed");
+        toggleIcon.textContent = collapsed ? "▶" : "▼";
+      };
+
+      return wrapper;
+    }
+
+    if (type === "object") {
+      const keys = Object.keys(value);
+      const count = keys.length;
+
+      const header = document.createElement("div");
+      header.className = "json-node-head foldable";
+
+      const toggleIcon = document.createElement("span");
+      toggleIcon.className = "json-toggle-icon";
+      toggleIcon.textContent = "▼";
+
+      const keySpan = document.createElement("span");
+      if (keyName !== null) {
+        keySpan.className = "json-key";
+        keySpan.textContent = `"${keyName}": `;
+      }
+
+      const badge = document.createElement("span");
+      badge.className = "json-badge obj";
+      badge.textContent = `{ ${count} ${count === 1 ? 'clave' : 'claves'} }`;
+
+      header.append(toggleIcon, keySpan, badge);
+      wrapper.appendChild(header);
+
+      const childrenBox = document.createElement("div");
+      childrenBox.className = "json-node-children";
+
+      keys.forEach((k) => {
+        childrenBox.appendChild(buildJsonNode(value[k], false, k));
+      });
+
+      wrapper.appendChild(childrenBox);
+
+      header.onclick = (e) => {
+        e.stopPropagation();
+        const collapsed = wrapper.classList.toggle("collapsed");
+        toggleIcon.textContent = collapsed ? "▶" : "▼";
+      };
+
+      return wrapper;
+    }
+
+    return wrapper;
+  }
+
+  function renderJsonExplorer(container, data) {
+    container.replaceChildren();
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "json-toolbar";
+    const titleInfo = document.createElement("span");
+    titleInfo.className = "json-meta-info";
+
+    let countText = "";
+    if (Array.isArray(data)) countText = `[ ${data.length} ELEMENTOS ]`;
+    else if (typeof data === "object" && data !== null) {
+      const keys = Object.keys(data);
+      countText = `{ ${keys.length} CLAVES }`;
+      if (data.total !== undefined) countText += ` · TOTAL: ${data.total}`;
+    }
+    titleInfo.textContent = `JSON HOLOGRÁFICO · ${countText}`;
+
+    const modeToggle = document.createElement("button");
+    modeToggle.className = "json-toggle-btn";
+    modeToggle.type = "button";
+    modeToggle.textContent = "⚙ VISTA RAW";
+
+    toolbar.append(titleInfo, modeToggle);
+    container.appendChild(toolbar);
+
+    const treeContainer = document.createElement("div");
+    treeContainer.className = "json-tree-root";
+    const rawContainer = document.createElement("pre");
+    rawContainer.className = "json-raw-highlight";
+    rawContainer.style.display = "none";
+
+    treeContainer.appendChild(buildJsonNode(data, true));
+    rawContainer.innerHTML = highlightJsonSyntax(data);
+
+    container.append(treeContainer, rawContainer);
+
+    let isRaw = false;
+    modeToggle.onclick = () => {
+      isRaw = !isRaw;
+      modeToggle.textContent = isRaw ? "🌳 VISTA ÁRBOL" : "⚙ VISTA RAW";
+      treeContainer.style.display = isRaw ? "none" : "block";
+      rawContainer.style.display = isRaw ? "block" : "none";
+    };
+  }
+
   function showOnBoard({ title = "RESULTADO", content = "", format = "text", language = "", keepOpen = true } = {}) {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     boardContent = String(content || "");
@@ -1323,7 +1543,7 @@
     const contentEl = document.createElement("div"); contentEl.className = `action-presentation ${resolvedFormat}`;
     if (["markdown", "table"].includes(resolvedFormat)) renderStructuredText(contentEl, boardContent);
     else if (resolvedFormat === "json") {
-      try { contentEl.textContent = JSON.stringify(JSON.parse(boardContent), null, 2); }
+      try { renderJsonExplorer(contentEl, JSON.parse(boardContent)); }
       catch { contentEl.textContent = boardContent; }
     } else contentEl.textContent = boardContent;
     card.appendChild(contentEl); actionList.appendChild(card);
@@ -1337,7 +1557,10 @@
     if (!contentEl) return;
     const format = [...contentEl.classList].find(value => ["text", "code", "json", "table", "markdown"].includes(value)) || "text";
     if (["markdown", "table"].includes(format)) renderStructuredText(contentEl, boardContent);
-    else contentEl.textContent = boardContent;
+    else if (format === "json") {
+      try { renderJsonExplorer(contentEl, JSON.parse(boardContent)); }
+      catch { contentEl.textContent = boardContent; }
+    } else contentEl.textContent = boardContent;
     if (follow) requestAnimationFrame(() => contentEl.scrollTo({ top: contentEl.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" }));
   }
   function showToolEvent(event) {
@@ -1816,10 +2039,22 @@
       const line = lines[i].trim();
       if (!line) { i++; continue; }
       if (line.startsWith("```")) {
+        const lang = line.slice(3).trim().toLowerCase();
         const codeLines = []; i++;
         while (i < lines.length && !lines[i].trim().startsWith("```")) codeLines.push(lines[i++]);
         if (i < lines.length) i++;
-        const pre = document.createElement("pre"); pre.className = "md-code"; pre.textContent = codeLines.join("\n"); container.appendChild(pre); continue;
+        const codeContent = codeLines.join("\n");
+        if (lang === "json" || (/^\s*[\[{]/.test(codeContent.trim()) && /[\]}]\s*$/.test(codeContent.trim()))) {
+          try {
+            const parsed = JSON.parse(codeContent);
+            const jsonBox = document.createElement("div");
+            jsonBox.className = "action-presentation json";
+            renderJsonExplorer(jsonBox, parsed);
+            container.appendChild(jsonBox);
+            continue;
+          } catch {}
+        }
+        const pre = document.createElement("pre"); pre.className = "md-code"; pre.textContent = codeContent; container.appendChild(pre); continue;
       }
       if (/^#{1,4}\s+/.test(line)) {
         const heading = document.createElement("p"); heading.className = "md-heading";
