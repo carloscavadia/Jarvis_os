@@ -24,14 +24,22 @@ para ver cada estado, y escribe en la consola para una respuesta simulada.
 
 ### Conectado a tu servidor
 
-El HUD usa una dirección fija para el gateway:
+El HUD es un fichero que abre el navegador, así que **no puede leer el `.env` del
+servidor**. Su equivalente es `config.js`, que se edita una vez donde sirves el HUD:
 
-```text
-ws://192.168.68.100:8080/ws/hub-test
+```bash
+cd clients/web-hud
+cp config.example.js config.js     # y pon ahí la clave del HUB
 ```
 
-Introduce la clave del HUB y pulsa **Conectar**; ya no es necesario escribir ni pasar la
-URL mediante parámetros.
+Con eso se conecta solo al abrirlo y el campo de clave queda deshabilitado. El fichero
+está en `.gitignore`, así que la clave no se sube al repositorio.
+
+Si prefieres no crearlo, el HUD **recuerda la clave en el navegador** tras la primera
+conexión correcta y se reconecta solo las siguientes veces. Solo hay que escribirla una vez.
+
+> No se sirve la clave desde el gateway a propósito: cualquiera que alcanzase esa ruta
+> la obtendría, y eso convertiría un gateway autenticado en uno abierto para toda la red.
 
 A partir de ahí, lo que escribas va a JARVIS de verdad y el orbe reacciona a los estados
 que emite el servidor (`listening` → `thinking` → `speaking` → `idle`). También recibe los
@@ -92,7 +100,7 @@ HTTPS para que el navegador permita usar el micrófono.
 
 ### Reproductor de música
 
-Si hay un módulo **navidrome** registrado, pedirle a JARVIS «pon música» o «pon algo de
+Si el gateway tiene `JARVIS_NAVIDROME_URL` configurado, pedirle a JARVIS «pon música» o «pon algo de
 Queen» abre un reproductor en la **esquina inferior derecha**. Tiene anterior, pausa,
 siguiente, cierre, barra de progreso y carátula.
 

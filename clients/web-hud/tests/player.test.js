@@ -54,9 +54,10 @@ function fakeEl() {
 const playerEl = fakeEl(), playerTitle = fakeEl(), playerArtist = fakeEl();
 const playerCover = fakeEl(), playerQueueEl = fakeEl(), playerProgress = fakeEl();
 const playerTime = fakeEl(), playerToggle = fakeEl();
-let musicAudio = null, musicQueue = [], musicIndex = 0, musicConnector = "musica";
+let musicAudio = null, musicQueue = [], musicIndex = 0;
 let voiceActive = false, speechQueueRunning = false, voiceSocket = null;
 const tokenInput = { value: "clave" };
+function hubKey() { return tokenInput.value; }
 function gatewayHttpBase() { return harness.base; }
 function duckedForSpeech() { return false; }
 function addLine(who, text) { harness.lines.push(text); }
@@ -154,7 +155,7 @@ async function main() {
   harness.reset();
   harness.handleMusicCommand({ command: "play", connector: "musica", queue: QUEUE });
   const url = harness.created.at(-1).src;
-  check("la URL apunta al proxy del gateway", url.includes("/music/musica/stream/1"), url);
+  check("la URL apunta al proxy del gateway", url.includes("/music/stream/1"), url);
   check("la URL lleva la clave", url.includes("token=clave"), url);
 
 }

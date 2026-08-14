@@ -38,3 +38,6 @@ firmware/.piolibdeps/
 Thumbs.db
 .idea/
 .vscode/
+
+# Configuración local del HUD (clave del HUB)
+clients/web-hud/config.js

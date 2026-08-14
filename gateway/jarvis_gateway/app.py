@@ -34,6 +34,7 @@ from fastapi.responses import StreamingResponse
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
+from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
@@ -249,7 +250,6 @@ def _music_command(name: str, result: ToolResult | None) -> dict[str, object] | 
         return None
     return {
         "command": "play",
-        "connector": str(payload.get("connector", "")),
         "source": str(payload.get("source", "")),
         "queue": songs[:50],
     }
@@ -403,11 +403,9 @@ class ProactiveDecisionRequest(BaseModel):
 
 class ConnectorModuleRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
-    type: str = Field(pattern=r"^(n8n|home_assistant|navidrome)$")
+    type: str = Field(pattern=r"^(n8n|home_assistant)$")
     url: str = Field(min_length=8, max_length=2000)
     token: str = Field(default="", max_length=8192)
-    # Solo lo usa navidrome: Subsonic autentica con usuario + contraseña.
-    username: str = Field(default="", max_length=128)
     services: list[str] = Field(default_factory=list, max_length=64)
     read_actions: list[str] = Field(default_factory=list, max_length=128)
     write_actions: list[str] = Field(default_factory=list, max_length=128)
@@ -511,15 +509,12 @@ async def register_connector_module(
     try:
         url = validate_connector_url(req.url)
         store = _require_connector_store()
-        # Subsonic autentica con contraseña, no con token: el secreto se guarda
-        # bajo la clave que después lee el runtime de cada tipo.
-        secret_key = "password" if req.type == "navidrome" else "token"
         secret = req.token
         if not secret:
             existing = store.get(req.name)
             if existing is None:
                 raise ValueError("La clave o token es obligatorio al crear el módulo.")
-            secret = str(existing.config.get("_secrets", {}).get(secret_key, ""))
+            secret = str(existing.config.get("_secrets", {}).get("token", ""))
         if len(secret) < 8:
             raise ValueError("La clave o token debe tener al menos 8 caracteres.")
         config: dict[str, object] = {
@@ -528,15 +523,11 @@ async def register_connector_module(
             "read_actions": sorted(set(req.read_actions)),
             "write_actions": sorted(set(req.write_actions)),
         }
-        if req.type == "navidrome":
-            if not req.username.strip():
-                raise ValueError("El servidor de música requiere un usuario.")
-            config["username"] = req.username.strip()
         store.upsert(
             req.name,
             req.type,
             config,
-            {secret_key: secret},
+            {"token": secret},
             enabled=req.enabled,
         )
     except ValueError as exc:
@@ -869,35 +860,32 @@ async def synthesize_voice(req: SpeechRequest) -> Response:
 _MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
-async def _proxy_media(connector: str, endpoint: str, params: dict[str, str]):
+async def _proxy_media(endpoint: str, params: dict[str, str]):
     """Sirve audio o carátula desde Navidrome sin exponer sus credenciales.
 
     El navegador no puede poner cabeceras en `<audio src>`, así que la
     alternativa sería mandarle la contraseña del servidor de música. Con el proxy
     solo circula la clave del gateway, que es la que el HUD ya tiene.
     """
-    store = _require_connector_store()
-    runtime = ConnectorRuntime(
-        store,
-        timeout=settings.connector_timeout_seconds,
-        max_payload_bytes=settings.connector_max_payload_bytes,
-        max_response_bytes=settings.connector_max_response_bytes,
-    )
-    try:
-        url = runtime.media_url(connector, endpoint, params)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    client = build_navidrome_client(settings)
+    if client is None:
+        raise HTTPException(
+            status_code=404, detail="No hay servidor de música configurado."
+        )
+    url = client.endpoint_url(endpoint, params)
 
     def fetch():
         request = urllib.request.Request(
             url, method="GET", headers={"User-Agent": "JARVIS-OS/0.3 navidrome"}
         )
-        return urllib.request.urlopen(request, timeout=settings.connector_timeout_seconds)
+        return urllib.request.urlopen(
+            request, timeout=settings.navidrome_timeout_seconds
+        )
 
     try:
         upstream = await asyncio.to_thread(fetch)
     except Exception as exc:
-        logger.warning("No pude obtener %s de %s: %s", endpoint, connector, exc)
+        logger.warning("No pude obtener %s del servidor de música: %s", endpoint, exc)
         raise HTTPException(
             status_code=502, detail="El servidor de música no respondió."
         ) from exc
@@ -906,7 +894,7 @@ async def _proxy_media(connector: str, endpoint: str, params: dict[str, str]):
 
     def chunks():
         # Se transmite por partes: una canción no cabe —ni debe caber— en los
-        # límites de respuesta pensados para JSON de conectores.
+        # límites de respuesta pensados para JSON.
         try:
             while True:
                 block = upstream.read(64 * 1024)
@@ -923,27 +911,25 @@ async def _proxy_media(connector: str, endpoint: str, params: dict[str, str]):
     )
 
 
-@app.get("/music/{connector}/stream/{song_id}")
-async def music_stream(connector: str, song_id: str, token: str = ""):
+@app.get("/music/stream/{song_id}")
+async def music_stream(song_id: str, token: str = ""):
     # El `<audio>` del navegador no admite cabeceras: la clave viaja por query,
     # igual que ya hace el WebSocket del HUD.
     if not _valid_api_key(token):
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
-    if not _SESSION_RE.fullmatch(connector) or not _MEDIA_ID_RE.fullmatch(song_id):
+    if not _MEDIA_ID_RE.fullmatch(song_id):
         raise HTTPException(status_code=422, detail="Identificador inválido.")
-    return await _proxy_media(connector, "stream", {"id": song_id})
+    return await _proxy_media("stream", {"id": song_id})
 
 
-@app.get("/music/{connector}/cover/{cover_id}")
-async def music_cover(connector: str, cover_id: str, token: str = "", size: int = 256):
+@app.get("/music/cover/{cover_id}")
+async def music_cover(cover_id: str, token: str = "", size: int = 256):
     if not _valid_api_key(token):
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
-    if not _SESSION_RE.fullmatch(connector) or not _MEDIA_ID_RE.fullmatch(cover_id):
+    if not _MEDIA_ID_RE.fullmatch(cover_id):
         raise HTTPException(status_code=422, detail="Identificador inválido.")
     return await _proxy_media(
-        connector,
-        "getCoverArt",
-        {"id": cover_id, "size": str(max(32, min(size, 1024)))},
+        "getCoverArt", {"id": cover_id, "size": str(max(32, min(size, 1024)))}
     )
 
 

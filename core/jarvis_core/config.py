@@ -196,6 +196,13 @@ class Settings:
     n8n_webhook_token: str = ""
     n8n_read_actions: list[str] = field(default_factory=list)
     n8n_write_actions: list[str] = field(default_factory=list)
+    # --- Música (Navidrome / Subsonic) ---
+    # Se configura aquí y no en el panel: es un servidor propio y fijo.
+    navidrome_url: str = ""
+    navidrome_username: str = ""
+    navidrome_password: str = ""
+    navidrome_timeout_seconds: float = 20.0
+
     connector_timeout_seconds: float = 20.0
     connector_max_payload_bytes: int = 64 * 1024
     connector_max_response_bytes: int = 256 * 1024
@@ -460,6 +467,13 @@ class Settings:
             n8n_webhook_token=os.environ.get("JARVIS_N8N_WEBHOOK_TOKEN", ""),
             n8n_read_actions=_get_list("JARVIS_N8N_READ_ACTIONS", []),
             n8n_write_actions=_get_list("JARVIS_N8N_WRITE_ACTIONS", []),
+            navidrome_url=os.environ.get("JARVIS_NAVIDROME_URL", "").strip(),
+            navidrome_username=os.environ.get("JARVIS_NAVIDROME_USERNAME", ""),
+            navidrome_password=os.environ.get("JARVIS_NAVIDROME_PASSWORD", ""),
+            navidrome_timeout_seconds=max(
+                3.0,
+                min(120.0, float(os.environ.get("JARVIS_NAVIDROME_TIMEOUT", "20"))),
+            ),
             connector_timeout_seconds=max(
                 3.0,
                 min(

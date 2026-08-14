@@ -15,15 +15,7 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
-SUPPORTED_TYPES = {"n8n", "home_assistant", "navidrome"}
-#: Consultas fijas de un servidor Subsonic/Navidrome. Son de solo lectura y no
-#: modifican nada, así que se conceden siempre que el módulo esté registrado.
-NAVIDROME_READ_ACTIONS = (
-    "music.search",
-    "music.random",
-    "music.playlists",
-    "music.playlist",
-)
+SUPPORTED_TYPES = {"n8n", "home_assistant"}
 
 
 @dataclass(frozen=True)
@@ -134,19 +126,11 @@ class ConnectorStore:
             read_actions = list(config.get("read_actions", []))
             if row[1] == "home_assistant" and "homeassistant.entities" not in read_actions:
                 read_actions.append("homeassistant.entities")
-            # Un servidor de música solo sabe hacer estas consultas, así que
-            # exigir que el administrador las liste una a una sería ruido.
-            if row[1] == "navidrome":
-                for action in NAVIDROME_READ_ACTIONS:
-                    if action not in read_actions:
-                        read_actions.append(action)
             result.append({
                 "name": row[0],
                 "type": row[1],
                 "enabled": bool(row[3]),
                 "url": config.get("url", ""),
-                # No es un secreto y el panel lo necesita para poder editar.
-                "username": config.get("username", ""),
                 "services": config.get("services", []),
                 "read_actions": read_actions,
                 "write_actions": config.get("write_actions", []),

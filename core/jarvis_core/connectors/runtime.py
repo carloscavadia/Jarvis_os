@@ -1,57 +1,20 @@
-"""Ejecución segura de módulos n8n, Home Assistant y Navidrome."""
+"""Ejecución segura de módulos n8n y Home Assistant."""
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
-import secrets
 import ssl
 import urllib.error
 import urllib.request
 import uuid
 from typing import Any, ClassVar
-from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import certifi
 
-from jarvis_core.connectors.store import (
-    NAVIDROME_READ_ACTIONS,
-    ConnectorRecord,
-    ConnectorStore,
-)
+from jarvis_core.connectors.store import ConnectorRecord, ConnectorStore
 from jarvis_core.tools.base import ToolResult
-
-#: Versión del protocolo Subsonic que declara el cliente.
-SUBSONIC_VERSION = "1.16.1"
-SUBSONIC_CLIENT = "jarvis-os"
-
-
-def subsonic_auth_params(username: str, password: str) -> dict[str, str]:
-    """Parámetros de autenticación de Subsonic.
-
-    El protocolo usa `t = md5(contraseña + sal)` con una sal aleatoria por
-    petición, de forma que la contraseña nunca viaja. MD5 aquí no es una
-    decisión nuestra: lo fija el protocolo, y por eso la conexión debería ir por
-    HTTPS o por red local de confianza.
-    """
-    salt = secrets.token_hex(8)
-    # MD5 lo impone el protocolo Subsonic; no es una elección de diseño nuestra.
-    token = hashlib.md5(f"{password}{salt}".encode()).hexdigest()
-    return {
-        "u": username,
-        "t": token,
-        "s": salt,
-        "v": SUBSONIC_VERSION,
-        "c": SUBSONIC_CLIENT,
-        "f": "json",
-    }
-
-
-def subsonic_url(base_url: str, endpoint: str, params: dict[str, str]) -> str:
-    """Compone una URL de la API REST de Subsonic ya autenticada."""
-    base = validate_connector_url(base_url).rstrip("/") + "/"
-    return urljoin(base, f"rest/{endpoint}") + "?" + urlencode(params)
 
 
 def validate_connector_url(raw_url: str) -> str:
@@ -304,155 +267,6 @@ class ConnectorRuntime:
             )
         return ToolResult("Acción de Home Assistant no implementada.", is_error=True)
 
-    # ── Navidrome / Subsonic ─────────────────────────────────────────────────
-
-    @staticmethod
-    def _song(item: dict[str, Any]) -> dict[str, Any]:
-        """Compacta una canción a lo que el agente y el reproductor necesitan.
-
-        Se leen los campos con `get` porque el catálogo de un servidor real tiene
-        pistas incompletas —sin álbum, sin año, sin carátula— y una sola de ellas
-        no debe tumbar toda la búsqueda.
-        """
-        song = {
-            "id": str(item.get("id", "")),
-            "title": str(item.get("title") or "(sin título)"),
-            "artist": str(item.get("artist") or ""),
-            "album": str(item.get("album") or ""),
-        }
-        duration = item.get("duration")
-        if isinstance(duration, (int, float)) and duration > 0:
-            song["duration"] = int(duration)
-        if item.get("coverArt"):
-            song["cover_art"] = str(item["coverArt"])
-        if item.get("year"):
-            song["year"] = str(item["year"])
-        return song
-
-    def _subsonic(
-        self, record: ConnectorRecord, endpoint: str, params: dict[str, str]
-    ) -> tuple[dict[str, Any] | None, ToolResult | None]:
-        """Llama a un endpoint Subsonic y devuelve el cuerpo ya desenvuelto."""
-        secrets_config = record.config["_secrets"]
-        auth = subsonic_auth_params(
-            str(record.config.get("username", "")),
-            str(secrets_config.get("password", "")),
-        )
-        url = subsonic_url(str(record.config.get("url", "")), endpoint, auth | params)
-        result = self._request(
-            url,
-            method="GET",
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "JARVIS-OS/0.3 navidrome",
-            },
-        )
-        if result.is_error:
-            return None, result
-        try:
-            body = json.loads(result.content).get("subsonic-response", {})
-        except (json.JSONDecodeError, AttributeError):
-            return None, ToolResult(
-                "El servidor de música devolvió una respuesta ilegible.", is_error=True
-            )
-        if body.get("status") != "ok":
-            # Subsonic informa el motivo real aquí; sin esto solo se vería un 200.
-            message = body.get("error", {}).get("message", "motivo desconocido")
-            return None, ToolResult(
-                f"El servidor de música rechazó la consulta: {message}", is_error=True
-            )
-        return body, None
-
-    def _navidrome(
-        self, record: ConnectorRecord, action: str, payload: dict[str, Any]
-    ) -> ToolResult:
-        try:
-            limit = max(1, min(int(payload.get("limit", 20)), 100))
-        except (TypeError, ValueError):
-            return ToolResult("limit inválido.", is_error=True)
-
-        if action == "music.search":
-            query = str(payload.get("query", "")).strip()
-            if not query:
-                return ToolResult("Falta el texto a buscar.", is_error=True)
-            body, error = self._subsonic(
-                record,
-                "search3",
-                {
-                    "query": query[:200],
-                    "songCount": str(limit),
-                    "albumCount": "0",
-                    "artistCount": "0",
-                },
-            )
-            if error is not None:
-                return error
-            songs = body.get("searchResult3", {}).get("song", []) or []
-            found = [self._song(item) for item in songs if isinstance(item, dict)]
-            return ToolResult(
-                json.dumps(
-                    {"query": query, "count": len(found), "songs": found},
-                    ensure_ascii=False,
-                )
-            )
-
-        if action == "music.random":
-            params = {"size": str(limit)}
-            genre = str(payload.get("genre", "")).strip()
-            if genre:
-                params["genre"] = genre[:100]
-            body, error = self._subsonic(record, "getRandomSongs", params)
-            if error is not None:
-                return error
-            songs = body.get("randomSongs", {}).get("song", []) or []
-            found = [self._song(item) for item in songs if isinstance(item, dict)]
-            return ToolResult(
-                json.dumps({"count": len(found), "songs": found}, ensure_ascii=False)
-            )
-
-        if action == "music.playlists":
-            body, error = self._subsonic(record, "getPlaylists", {})
-            if error is not None:
-                return error
-            items = body.get("playlists", {}).get("playlist", []) or []
-            playlists = [
-                {
-                    "id": str(item.get("id", "")),
-                    "name": str(item.get("name") or "(sin nombre)"),
-                    "songs": int(item.get("songCount") or 0),
-                }
-                for item in items
-                if isinstance(item, dict)
-            ]
-            return ToolResult(
-                json.dumps(
-                    {"count": len(playlists), "playlists": playlists},
-                    ensure_ascii=False,
-                )
-            )
-
-        if action == "music.playlist":
-            playlist_id = str(payload.get("playlist_id", "")).strip()
-            if not playlist_id:
-                return ToolResult("Falta playlist_id.", is_error=True)
-            body, error = self._subsonic(record, "getPlaylist", {"id": playlist_id})
-            if error is not None:
-                return error
-            playlist = body.get("playlist", {})
-            songs = playlist.get("entry", []) or []
-            found = [self._song(item) for item in songs if isinstance(item, dict)][:limit]
-            return ToolResult(
-                json.dumps(
-                    {
-                        "name": str(playlist.get("name") or ""),
-                        "count": len(found),
-                        "songs": found,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-        return ToolResult("Acción de música no implementada.", is_error=True)
-
     def _invoke(
         self, connector: str, action: str, payload: dict[str, Any], write: bool
     ) -> ToolResult:
@@ -463,16 +277,12 @@ class ConnectorRuntime:
         allowed_actions = set(record.config.get(allowed_key, []))
         if record.connector_type == "home_assistant" and not write:
             allowed_actions.update(self.HOME_ASSISTANT_READ_ACTIONS)
-        if record.connector_type == "navidrome" and not write:
-            allowed_actions.update(NAVIDROME_READ_ACTIONS)
         if action not in allowed_actions:
             return ToolResult("Acción no permitida para este módulo.", is_error=True)
         if record.connector_type == "n8n":
             return self._n8n(record, action, payload)
         if record.connector_type == "home_assistant":
             return self._home_assistant(record, action, payload)
-        if record.connector_type == "navidrome":
-            return self._navidrome(record, action, payload)
         return ToolResult("Tipo de módulo no soportado.", is_error=True)
 
     async def invoke(
@@ -499,33 +309,5 @@ class ConnectorRuntime:
                     "Accept": "application/json,text/plain",
                 },
             )
-        if record.connector_type == "navidrome":
-            # `ping` confirma a la vez que el servidor responde y que las
-            # credenciales son correctas, que es lo que interesa comprobar.
-            body, error = await asyncio.to_thread(
-                self._subsonic, record, "ping", {}
-            )
-            if error is not None:
-                return error
-            return ToolResult(
-                f"Servidor de música accesible (Subsonic {body.get('version', '?')})."
-            )
         return await asyncio.to_thread(self._n8n, record, "connector.test", {})
 
-    def media_url(self, connector: str, endpoint: str, params: dict[str, str]) -> str:
-        """URL autenticada de un recurso binario (audio o carátula).
-
-        El gateway la usa para hacer de proxy: así el navegador nunca recibe las
-        credenciales de Navidrome, y el flujo de audio no pasa por los límites de
-        tamaño pensados para respuestas JSON.
-        """
-        record = self.store.get(connector)
-        if record is None or not record.enabled:
-            raise ValueError("El módulo de música no existe o está desactivado.")
-        if record.connector_type != "navidrome":
-            raise ValueError("El módulo no es un servidor de música.")
-        auth = subsonic_auth_params(
-            str(record.config.get("username", "")),
-            str(record.config["_secrets"].get("password", "")),
-        )
-        return subsonic_url(str(record.config.get("url", "")), endpoint, auth | params)

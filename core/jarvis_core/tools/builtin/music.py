@@ -1,4 +1,4 @@
-"""Herramientas de música sobre un servidor Navidrome (protocolo Subsonic).
+"""Herramientas de música sobre un servidor Navidrome.
 
 `play_music` no reproduce nada en el servidor: resuelve las canciones y devuelve
 una **orden para el reproductor del HUD**, igual que `show_in_workspace` devuelve
@@ -8,38 +8,26 @@ donde están los altavoces.
 
 from __future__ import annotations
 
+import asyncio
 import json
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
 
+from jarvis_core.music.navidrome import NavidromeClient, NavidromeError
 from jarvis_core.tools.base import Tool, ToolRegistry, ToolResult
-
-if TYPE_CHECKING:
-    from jarvis_core.connectors.runtime import ConnectorRuntime
-    from jarvis_core.connectors.store import ConnectorStore
 
 MAX_QUEUE = 50
 
 
 class _MusicTool(Tool):
-    def __init__(self, runtime: ConnectorRuntime, connector: str) -> None:
-        self.runtime = runtime
-        self.connector = connector
+    def __init__(self, client: NavidromeClient) -> None:
+        self.client = client
 
-    async def _songs(self, action: str, payload: dict[str, Any]) -> tuple[
-        list[dict[str, Any]], ToolResult | None
-    ]:
-        result = await self.runtime.invoke(
-            self.connector, action, payload, write=False
-        )
-        if result.is_error:
-            return [], result
+    async def _run_query(self, call, *args, **kwargs):
+        """Ejecuta una consulta en un hilo y traduce el fallo a ToolResult."""
         try:
-            songs = json.loads(result.content).get("songs", [])
-        except (json.JSONDecodeError, AttributeError):
-            return [], ToolResult(
-                "El servidor de música devolvió una respuesta ilegible.", is_error=True
-            )
-        return [song for song in songs if song.get("id")], None
+            return await asyncio.to_thread(call, *args, **kwargs), None
+        except NavidromeError as exc:
+            return None, ToolResult(str(exc), is_error=True)
 
 
 class SearchMusicTool(_MusicTool):
@@ -61,9 +49,8 @@ class SearchMusicTool(_MusicTool):
 
     async def run(self, query: str = "", limit: int = 20, **kwargs: Any) -> ToolResult:
         del kwargs
-        songs, error = await self._songs(
-            "music.search", {"query": query, "limit": limit}
-        )
+        limit = max(1, min(int(limit or 20), 50))
+        songs, error = await self._run_query(self.client.search, query, limit)
         if error is not None:
             return error
         if not songs:
@@ -104,24 +91,23 @@ class PlayMusicTool(_MusicTool):
         query = (query or "").strip()
         limit = max(1, min(int(limit or 20), MAX_QUEUE))
         if query:
-            songs, error = await self._songs(
-                "music.search", {"query": query, "limit": limit}
-            )
+            songs, error = await self._run_query(self.client.search, query, limit)
         else:
-            songs, error = await self._songs("music.random", {"limit": limit})
+            songs, error = await self._run_query(self.client.random, limit)
         if error is not None:
             return error
+        # Sin id no se puede pedir el audio: encolarlas rompería el reproductor.
+        songs = [song for song in songs if song.get("id")]
         if not songs:
             return ToolResult(
-                f"No encontré «{query}» en tu biblioteca." if query
-                else "Tu biblioteca de música está vacía.",
+                f"No encontré «{query}» en tu biblioteca."
+                if query
+                else "Tu biblioteca de música está vacía."
             )
-        # `queue` es la orden que el gateway reenvía al reproductor del HUD.
         return ToolResult(
             json.dumps(
                 {
                     "queue": songs[:limit],
-                    "connector": self.connector,
                     "source": query or "aleatorio",
                     "now_playing": songs[0],
                 },
@@ -131,7 +117,7 @@ class PlayMusicTool(_MusicTool):
 
 
 class MusicPlaybackTool(Tool):
-    """Controla el reproductor ya abierto: pausa, siguiente, volumen…"""
+    """Controla el reproductor ya abierto: pausa, siguiente, parar…"""
 
     name = "control_music"
     description = (
@@ -158,25 +144,16 @@ class MusicPlaybackTool(Tool):
         return ToolResult(json.dumps({"command": command}, ensure_ascii=False))
 
 
-def find_music_connector(store: ConnectorStore) -> str | None:
-    """Nombre del primer módulo de música activo, si hay alguno."""
-    for module in store.list_public():
-        if module["type"] == "navidrome" and module["enabled"]:
-            return str(module["name"])
-    return None
-
-
 def register_music_tools(
-    registry: ToolRegistry, store: ConnectorStore, runtime: ConnectorRuntime
+    registry: ToolRegistry, client: NavidromeClient | None
 ) -> None:
-    """Registra las herramientas solo si hay un servidor de música configurado.
+    """Registra las herramientas solo si hay servidor de música configurado.
 
-    Sin módulo no se registran: ofrecerle a JARVIS herramientas que siempre
-    fallan solo consigue que las intente y se disculpe.
+    Sin él no se registran: ofrecerle a JARVIS herramientas que siempre fallan
+    solo consigue que las intente y se disculpe.
     """
-    connector = find_music_connector(store)
-    if connector is None:
+    if client is None:
         return
-    registry.register(SearchMusicTool(runtime, connector))
-    registry.register(PlayMusicTool(runtime, connector))
+    registry.register(SearchMusicTool(client))
+    registry.register(PlayMusicTool(client))
     registry.register(MusicPlaybackTool())

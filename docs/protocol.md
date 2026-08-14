@@ -109,7 +109,7 @@ Cuando JARVIS usa `play_music` o `control_music`, el `tool_event` (canal de text
 evento `tool` (canal de voz) incluye una clave `music` con la orden para el reproductor:
 
 ```json
-{"music": {"command": "play", "connector": "musica", "source": "queen",
+{"music": {"command": "play", "source": "queen",
            "queue": [{"id":"42","title":"…","artist":"…","album":"…",
                       "duration":355,"cover_art":"al-1"}]}}
 {"music": {"command": "pause"}}
@@ -118,8 +118,8 @@ evento `tool` (canal de voz) incluye una clave `music` con la orden para el repr
 `command` puede ser `play`, `pause`, `resume`, `next`, `previous` o `stop`. El
 dispositivo pide cada pista al gateway, que hace de proxy contra el servidor de música:
 
-- `GET /music/<módulo>/stream/<id>?token=<clave>` — audio.
-- `GET /music/<módulo>/cover/<id>?token=<clave>&size=256` — carátula.
+- `GET /music/stream/<id>?token=<clave>` — audio.
+- `GET /music/cover/<id>?token=<clave>&size=256` — carátula.
 
 La clave va por query porque un `<audio src>` no admite cabeceras, igual que en el
 WebSocket del HUD.

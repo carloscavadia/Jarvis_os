@@ -365,6 +365,10 @@
     <button id="connector-open">Conectores</button>
   </div>
 
+  <!-- Configuración local opcional (config.js, no versionado). Si no existe, el
+       navegador registra un 404 en consola y el HUD pide la clave a mano. -->
+  <script src="config.js" onerror="void 0"></script>
+
   <section class="connector-panel" id="connector-panel" aria-label="Módulos de conectores">
     <div class="connector-head"><span>CENTRO DE CONECTORES</span><button class="action-close" id="connector-close" type="button" aria-label="Cerrar conectores">×</button></div>
     <p class="connector-intro">Conecta servicios externos. Las consultas pueden ejecutarse directamente; cualquier acción de escritura siempre exige tu aprobación.</p>
@@ -378,9 +382,8 @@
         </div>
         <div class="connector-form">
           <label>NOMBRE<input id="connector-name" placeholder="mi_n8n" maxlength="32" /><small>Identificador interno, sin espacios.</small></label>
-          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="navidrome">Navidrome / música</option></select><small>Define cómo se prueba y ejecuta.</small></label>
+          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option></select><small>Define cómo se prueba y ejecuta.</small></label>
           <label class="wide">URL DEL ENDPOINT<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /><small id="connector-url-help">Webhook único que recibe las acciones de JARVIS.</small></label>
-          <label class="wide" id="connector-username-field" hidden>USUARIO<input id="connector-username" placeholder="Tu usuario de Navidrome" autocomplete="off" /><small>Subsonic autentica con usuario y contraseña.</small></label>
           <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Obligatorio al crear · vacío conserva la clave al editar" autocomplete="new-password" /><small>Se cifra en el servidor y nunca vuelve al navegador.</small></label>
           <label class="wide">SERVICIOS DISPONIBLES<input id="connector-services" placeholder="gmail, outlook, whatsapp" /><small>Lista descriptiva separada por comas.</small></label>
           <label class="wide">LECTURAS PERMITIDAS<input id="connector-read" placeholder="gmail.search, gmail.read" /><small>JARVIS puede ejecutarlas sin aprobación.</small></label>
@@ -1314,6 +1317,7 @@
     // No mostrar la URL completa: puede contener la credencial del HUB.
     ws.onopen = () => {
       rLink.textContent = "EN LÍNEA";
+      rememberHubKey(token);
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       // La escucha permanente solo puede arrancar cuando /voice/status haya dicho
       // si el detector local está disponible; encadenarlo evita una carrera en la
@@ -1416,11 +1420,23 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(text); else { setBusy(false); demoReply(); }
   });
 
-  const FIXED_WS_URL = "ws://192.168.68.100:8080/ws/hub-test";
+  const CONFIG = window.JARVIS_CONFIG || {};
+  const FIXED_WS_URL = CONFIG.wsUrl || "ws://192.168.68.100:8080/ws/hub-test";
   const tokenInput = document.getElementById("ws-token");
+  const HUB_KEY_STORAGE = "jarvis.hubKey";
+
+  // La clave viene de config.js si existe; si no, de la última conexión correcta
+  // guardada en este navegador. El campo solo hace falta la primera vez.
+  function hubKey() {
+    return CONFIG.hubKey || tokenInput.value || "";
+  }
+  function rememberHubKey(key) {
+    if (!key || CONFIG.hubKey) return;
+    try { localStorage.setItem(HUB_KEY_STORAGE, key); } catch {}
+  }
 
   function connectorApiHeaders(json = false) {
-    const headers = { "X-Jarvis-Key": tokenInput.value };
+    const headers = { "X-Jarvis-Key": hubKey() };
     if (json) headers["Content-Type"] = "application/json";
     return headers;
   }
@@ -1440,7 +1456,6 @@
       type: document.getElementById("connector-type").value,
       url: document.getElementById("connector-url").value.trim(),
       token: document.getElementById("connector-token").value,
-      username: document.getElementById("connector-username").value.trim(),
       services: csvValues("connector-services"),
       read_actions: csvValues("connector-read"),
       write_actions: csvValues("connector-write"),
@@ -1449,7 +1464,7 @@
   }
 
   function clearConnectorForm() {
-    for (const id of ["connector-name", "connector-url", "connector-token", "connector-username", "connector-services", "connector-read", "connector-write"]) {
+    for (const id of ["connector-name", "connector-url", "connector-token", "connector-services", "connector-read", "connector-write"]) {
       document.getElementById(id).value = "";
     }
     document.getElementById("connector-type").value = "n8n";
@@ -1463,7 +1478,6 @@
     document.getElementById("connector-name").disabled = true;
     document.getElementById("connector-type").value = module.type;
     document.getElementById("connector-url").value = module.url || "";
-    document.getElementById("connector-username").value = module.username || "";
     document.getElementById("connector-token").value = "";
     document.getElementById("connector-services").value = (module.services || []).join(", ");
     document.getElementById("connector-read").value = (module.read_actions || []).join(", ");
@@ -1480,18 +1494,12 @@
         "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa.",
         "URL base de Home Assistant, normalmente http://IP:8123.",
       ],
-      navidrome: [
-        "Navidrome da acceso de solo lectura a tu biblioteca de música.",
-        "URL base de Navidrome, normalmente http://IP:4533.",
-      ],
     }[type] || [
       "n8n funciona como puente para Gmail, Outlook, WhatsApp y otros servicios.",
       "Webhook único de n8n que recibe las acciones de JARVIS.",
     ];
     document.getElementById("connector-help").textContent = help[0];
     document.getElementById("connector-url-help").textContent = help[1];
-    // Subsonic necesita usuario además de contraseña; los otros tipos no.
-    document.getElementById("connector-username-field").hidden = type !== "navidrome";
   }
 
   function applyConnectorPreset(type) {
@@ -1693,10 +1701,10 @@
 
   async function refreshVoiceStatus() {
     const base = gatewayHttpBase();
-    if (!base || !tokenInput.value) return;
+    if (!base || !hubKey()) return;
     try {
       const response = await fetch(`${base}/voice/status`, {
-        headers: { "X-Jarvis-Key": tokenInput.value },
+        headers: { "X-Jarvis-Key": hubKey() },
       });
       const status = response.ok ? await response.json() : null;
       serverVoiceAvailable = !!status?.enabled;
@@ -1810,7 +1818,7 @@
   async function createRealtimeVoiceSession(session) {
     const tokenResponse = await fetch(`${gatewayHttpBase()}/voice/realtime-token`, {
       method: "POST",
-      headers: { "X-Jarvis-Key": tokenInput.value },
+      headers: { "X-Jarvis-Key": hubKey() },
     });
     const token = await tokenResponse.json().catch(() => ({}));
     if (!tokenResponse.ok || !token.value) throw new Error(token.detail || `Realtime ${tokenResponse.status}`);
@@ -1883,7 +1891,7 @@
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Jarvis-Key": tokenInput.value,
+          "X-Jarvis-Key": hubKey(),
         },
         body: JSON.stringify({ text }),
       });
@@ -2106,7 +2114,7 @@
         method: "POST",
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
-          "X-Jarvis-Key": tokenInput.value,
+          "X-Jarvis-Key": hubKey(),
         },
         body: blob,
       });
@@ -2249,7 +2257,7 @@
     try {
       const url = new URL(FIXED_WS_URL);
       url.pathname = "/ws/wake/hud";
-      url.searchParams.set("token", tokenInput.value);
+      url.searchParams.set("token", hubKey());
       return url.toString();
     } catch { return ""; }
   }
@@ -2374,7 +2382,7 @@
       const url = new URL(FIXED_WS_URL);
       const session = url.pathname.split("/").filter(Boolean).pop() || "hud";
       url.pathname = `/ws/voice/${session}`;
-      url.searchParams.set("token", tokenInput.value);
+      url.searchParams.set("token", hubKey());
       return url.toString();
     } catch { return ""; }
   }
@@ -2521,13 +2529,12 @@
   let musicAudio = null;
   let musicQueue = [];
   let musicIndex = 0;
-  let musicConnector = "";
 
   function musicMediaUrl(kind, id) {
     const base = gatewayHttpBase();
-    if (!base || !musicConnector || !id) return "";
-    return `${base}/music/${encodeURIComponent(musicConnector)}/${kind}/${encodeURIComponent(id)}`
-      + `?token=${encodeURIComponent(tokenInput.value)}`;
+    if (!base || !id) return "";
+    return `${base}/music/${kind}/${encodeURIComponent(id)}`
+      + `?token=${encodeURIComponent(hubKey())}`;
   }
 
   function formatTime(seconds) {
@@ -2627,7 +2634,6 @@
   function handleMusicCommand(music) {
     if (!music) return;
     if (music.command === "play") {
-      musicConnector = music.connector || musicConnector;
       musicQueue = Array.isArray(music.queue) ? music.queue : [];
       if (!musicQueue.length) return;
       playMusicAt(0);
@@ -2803,10 +2809,25 @@
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
   document.getElementById("pulse").addEventListener("click", firePulse);
 
-  document.getElementById("ws-connect").addEventListener("click", () => connect(FIXED_WS_URL, tokenInput.value));
+  document.getElementById("ws-connect").addEventListener("click", () => connect(FIXED_WS_URL, hubKey()));
   tokenInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(FIXED_WS_URL, tokenInput.value);
+    if (e.key === "Enter") connect(FIXED_WS_URL, hubKey());
   });
+
+  // Conexión automática: con config.js, o recordando la última clave válida.
+  (function autoConnect() {
+    if (CONFIG.hubKey) {
+      tokenInput.value = "";
+      tokenInput.placeholder = "Clave fijada en config.js";
+      tokenInput.disabled = true;
+    } else {
+      let stored = "";
+      try { stored = localStorage.getItem(HUB_KEY_STORAGE) || ""; } catch {}
+      if (!stored) return;
+      tokenInput.value = stored;
+    }
+    if (CONFIG.autoConnect !== false) connect(FIXED_WS_URL, hubKey());
+  })();
 })();
 </script>
 </body>

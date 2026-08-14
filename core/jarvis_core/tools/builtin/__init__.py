@@ -13,6 +13,7 @@ from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin.connectors import (
@@ -129,5 +130,5 @@ def build_default_registry(
         register_dynamic_connector_tools(
             registry, connector_store, connector_runtime
         )
-        register_music_tools(registry, connector_store, connector_runtime)
+    register_music_tools(registry, build_navidrome_client(settings))
     return registry
