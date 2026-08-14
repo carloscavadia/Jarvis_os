@@ -38,6 +38,9 @@ jobs:
       - name: Test HUD speech queue
         run: node clients/web-hud/tests/speech-queue.test.js
 
+      - name: Test HUD music player
+        run: node clients/web-hud/tests/player.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15

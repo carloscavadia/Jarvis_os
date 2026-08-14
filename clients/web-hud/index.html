@@ -2535,14 +2535,19 @@
   }
 
   function stopMusic({ hide = true } = {}) {
-    if (musicAudio) {
-      musicAudio.onended = null;
-      musicAudio.pause();
-      musicAudio.src = "";
-    }
+    const audio = musicAudio;
     musicAudio = null;
+    if (audio) {
+      // Se sueltan todos los manejadores: un elemento ya descartado no debe
+      // seguir avanzando la cola ni moviendo la barra de progreso.
+      audio.onplay = audio.onended = audio.onerror = audio.ontimeupdate = null;
+      audio.pause();
+      audio.src = "";
+    }
     if (hide) {
       playerEl.classList.remove("active");
+      playerProgress.style.width = "0%";
+      playerTime.textContent = "0:00";
       musicQueue = [];
       musicIndex = 0;
     }
@@ -2553,25 +2558,40 @@
     musicIndex = index;
     stopMusic({ hide: false });
     const url = musicMediaUrl("stream", musicQueue[index].id);
-    if (!url) { addLine("SISTEMA", "No pude construir la URL de la canción.", "system"); return; }
-    musicAudio = new Audio(url);
+    if (!url) {
+      addLine("SISTEMA", "No pude construir la URL de la canción.", "system");
+      stopMusic();
+      return;
+    }
+    const audio = new Audio(url);
+    musicAudio = audio;
     // JARVIS debe poder hablar por encima de la música sin que se pisen.
-    musicAudio.volume = duckedForSpeech() ? 0.18 : 0.85;
-    musicAudio.onended = () => playMusicAt(musicIndex + 1);
-    musicAudio.onerror = () => {
+    audio.volume = duckedForSpeech() ? 0.18 : 0.85;
+    // El panel aparece cuando el audio empieza de verdad, no al pedirlo: si la
+    // pista falla o el navegador bloquea la reproducción, no debe quedarse un
+    // reproductor visible con nada sonando.
+    audio.onplay = () => {
+      if (musicAudio !== audio) return;
+      playerToggle.textContent = "❚❚";
+      playerEl.classList.add("active");
+    };
+    audio.onended = () => { if (musicAudio === audio) playMusicAt(musicIndex + 1); };
+    audio.onerror = () => {
+      if (musicAudio !== audio) return;
       addLine("SISTEMA", `No pude reproducir «${musicQueue[index].title}».`, "system");
       playMusicAt(musicIndex + 1);
     };
-    musicAudio.ontimeupdate = () => {
-      const ratio = musicAudio.duration ? musicAudio.currentTime / musicAudio.duration : 0;
+    audio.ontimeupdate = () => {
+      if (musicAudio !== audio) return;
+      const ratio = audio.duration ? audio.currentTime / audio.duration : 0;
       playerProgress.style.width = `${Math.min(100, ratio * 100)}%`;
-      playerTime.textContent = formatTime(musicAudio.currentTime);
+      playerTime.textContent = formatTime(audio.currentTime);
     };
-    musicAudio.play().catch((error) => {
+    audio.play().catch((error) => {
+      if (musicAudio !== audio) return;
       addLine("SISTEMA", "El navegador bloqueó la reproducción: " + error.message, "system");
+      stopMusic();
     });
-    playerToggle.textContent = "❚❚";
-    playerEl.classList.add("active");
     renderNowPlaying();
   }
 

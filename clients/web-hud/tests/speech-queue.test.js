@@ -21,7 +21,10 @@ function extractFunction(name) {
   const match = header.exec(js);
   if (!match) throw new Error(`No encuentro la función ${name} en index.html`);
   let depth = 0;
-  let index = js.indexOf("{", match.index);
+  // Se empieza en la llave que cierra la cabecera, no en la primera del texto:
+  // una firma como `stopMusic({ hide = true } = {})` trae llaves en los
+  // parámetros y contarlas desde ahí trunca la función.
+  let index = match.index + match[0].length - 1;
   const start = index;
   for (;;) {
     if (js[index] === "{") depth += 1;
