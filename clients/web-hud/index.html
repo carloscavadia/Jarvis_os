@@ -1421,7 +1421,18 @@
   });
 
   const CONFIG = window.JARVIS_CONFIG || {};
-  const FIXED_WS_URL = CONFIG.wsUrl || "ws://192.168.68.100:8080/ws/hub-test";
+
+  // Cuando es el propio gateway quien sirve el HUD (ruta /hud), su dirección es
+  // la de esta misma página. Así funciona igual por IP directa que a través de
+  // un túnel, sin tener que editar nada.
+  function defaultWsUrl() {
+    if (location.pathname.replace(/\/+$/, "").endsWith("/hud")) {
+      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+      return `${scheme}//${location.host}/ws/hub-test`;
+    }
+    return "ws://192.168.68.100:8080/ws/hub-test";
+  }
+  const FIXED_WS_URL = CONFIG.wsUrl || defaultWsUrl();
   const tokenInput = document.getElementById("ws-token");
   const HUB_KEY_STORAGE = "jarvis.hubKey";
 

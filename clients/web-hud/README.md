@@ -8,14 +8,26 @@ reposo, escucha, pensamiento y habla. Es a la vez:
 
 ## Uso
 
-Es un único fichero sin dependencias. Ábrelo directamente o sírvelo:
+**Lo sirve el propio gateway** en `/hud`, así que el HUD y el servidor van
+siempre a la par: no hay copias sueltas que se queden atrás.
 
 ```bash
-# opción rápida: servirlo con Python
-cd clients/web-hud
-python3 -m http.server 5173
-# abre http://localhost:5173
+# desde tu equipo, un túnel al servidor
+ssh -L 8080:localhost:8080 usuario@servidor
+# y abre
+http://127.0.0.1:8080/hud
 ```
+
+El túnel no es capricho: el micrófono solo funciona desde `localhost` o HTTPS, y
+`http://IP-del-servidor:8080` no cuenta como origen seguro para Chrome.
+
+También puedes servir el fichero por tu cuenta si prefieres:
+
+```bash
+cd clients/web-hud && python3 -m http.server 4173
+```
+
+Pero entonces eres tú quien debe mantenerlo actualizado tras cada `git pull`.
 
 ### Modo demo (sin servidor)
 

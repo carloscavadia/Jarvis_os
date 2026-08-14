@@ -175,6 +175,9 @@ class Settings:
 
     # --- Control agéntico del servidor ---
     agent_control_enabled: bool = False
+    # Ruta del HUD servido por el propio gateway. Tenerlo aquí evita que una
+    # copia suelta del index.html quede desactualizada respecto al servidor.
+    hud_path: str = "clients/web-hud/index.html"
     workspace_root: str = "data/workspace"
     workspace_max_file_bytes: int = 256 * 1024
     package_install_enabled: bool = False
@@ -413,6 +416,9 @@ class Settings:
                 ],
             ),
             agent_control_enabled=_get_bool("JARVIS_AGENT_CONTROL_ENABLED", False),
+            hud_path=os.environ.get(
+                "JARVIS_HUD_PATH", "clients/web-hud/index.html"
+            ),
             workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
             workspace_max_file_bytes=max(
                 1024,

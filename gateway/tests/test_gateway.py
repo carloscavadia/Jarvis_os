@@ -921,3 +921,26 @@ def test_health_reports_features_so_version_mismatches_are_visible():
     assert "music_stream" in health["features"]
     assert "wakeword" in health["features"]
     assert health["music"] == "off"  # sin JARVIS_NAVIDROME_URL
+
+
+def test_hud_is_served_by_the_gateway(tmp_path, monkeypatch):
+    """El HUD viaja con el servidor: una copia suelta no puede quedarse atrás."""
+    hud = tmp_path / "index.html"
+    hud.write_text('<!doctype html><section id="player"></section>', encoding="utf-8")
+    monkeypatch.setattr(gateway_module.settings, "hud_path", str(hud))
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/hud")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    # Sin no-store el navegador seguiría con la versión anterior tras actualizar.
+    assert response.headers["cache-control"] == "no-store"
+    assert 'id="player"' in response.text
+
+
+def test_hud_reports_a_clear_error_when_missing(monkeypatch):
+    monkeypatch.setattr(gateway_module.settings, "hud_path", "/no/existe.html")
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/hud")
+    assert response.status_code == 404
+    assert "no/existe.html" in response.json()["detail"]

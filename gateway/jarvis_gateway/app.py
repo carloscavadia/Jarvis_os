@@ -443,6 +443,33 @@ async def health() -> dict[str, object]:
     }
 
 
+@app.get("/hud")
+async def serve_hud() -> Response:
+    """Sirve el HUD desde el propio gateway.
+
+    Así el HUD y el servidor viajan siempre juntos: no puede haber una copia
+    suelta del `index.html` en otra máquina que se quede atrás y provoque que
+    una función «esté» pero no haga nada.
+
+    Ábrelo por un túnel para conservar el contexto seguro que exige el micrófono:
+        ssh -L 8080:localhost:8080 usuario@servidor
+        http://127.0.0.1:8080/hud
+    """
+    path = Path(settings.hud_path)
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No encuentro el HUD en {settings.hud_path}.",
+        )
+    return Response(
+        content=path.read_bytes(),
+        media_type="text/html; charset=utf-8",
+        # Sin esto el navegador serviría la versión anterior tras cada
+        # actualización, que es justo el problema que este endpoint resuelve.
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/ready")
 async def ready() -> dict[str, str]:
     """Comprueba configuración mínima sin consumir una llamada al proveedor."""

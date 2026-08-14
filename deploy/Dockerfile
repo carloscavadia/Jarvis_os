@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY core/ ./core/
 COPY gateway/ ./gateway/
 COPY README.md ./README.md
+# El HUD viaja dentro de la imagen para que el gateway lo sirva en /hud y no
+# pueda quedarse desparejado con el servidor.
+COPY clients/ ./clients/
 
 # El núcleo con soporte OpenAI/NVIDIA y voz local Whisper + Kokoro.
 RUN pip install --no-cache-dir "./core[openai,voice]" ./gateway
@@ -36,6 +39,7 @@ ENV JARVIS_GOALS_DB=/app/data/jarvis_goals.db
 ENV JARVIS_STT_DOWNLOAD_ROOT=/app/data/models
 # Kokoro descarga sus pesos (~330 MB) en HF_HOME durante la primera síntesis.
 ENV JARVIS_TTS_VOICE=em_alex
+ENV JARVIS_HUD_PATH=/app/clients/web-hud/index.html
 ENV JARVIS_WORKSPACE_ROOT=/app/workspace
 ENV XDG_CACHE_HOME=/app/data/cache
 ENV HF_HOME=/app/data/huggingface
