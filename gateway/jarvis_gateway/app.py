@@ -984,84 +984,103 @@ def _get_workspace_guard() -> WorkspaceGuard:
 
 @app.get("/workspace/tree", dependencies=[Depends(require_api_key)])
 async def workspace_tree(path: str = "."):
-    guard = _get_workspace_guard()
-    raw = (path or ".").strip()
-    
-    resolved = None
     try:
-        candidate = guard.resolve(raw, allow_root=True)
-        if candidate.exists() and candidate.is_dir():
-            resolved = candidate
-    except ValueError:
-        pass
-
-    if resolved is None:
-        resolved = guard.resolve(".", allow_root=True)
-
-    items = []
-    try:
-        raw_entries = list(resolved.iterdir())
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Error leyendo directorio: {exc}")
-
-    def safe_sort_key(item: Path) -> tuple[bool, str]:
-        is_directory = False
+        guard = _get_workspace_guard()
+        raw = (path or ".").strip()
+        
+        resolved = None
         try:
-            is_directory = item.is_dir()
-        except OSError:
+            candidate = guard.resolve(raw, allow_root=True)
+            if candidate.exists() and candidate.is_dir():
+                resolved = candidate
+        except Exception:
             pass
-        return (not is_directory, item.name.lower())
 
-    entries = sorted(raw_entries, key=safe_sort_key)
+        if resolved is None:
+            resolved = guard.resolve(".", allow_root=True)
 
-    for entry in entries:
+        items = []
         try:
-            is_dir = False
-            is_symlink = False
-            size = 0
-            mod_time = 0
-            
+            raw_entries = list(resolved.iterdir())
+        except Exception as exc:
+            logger.warning("Error leyendo directorio %s: %s", resolved, exc)
+            disp_p = "."
             try:
-                is_symlink = entry.is_symlink()
-            except OSError:
+                disp_p = guard.display(resolved)
+            except Exception:
                 pass
+            return {"path": disp_p, "items": []}
 
+        def safe_sort_key(item: Path) -> tuple[bool, str]:
+            is_directory = False
             try:
-                is_dir = entry.is_dir()
-            except OSError:
+                is_directory = item.is_dir()
+            except Exception:
                 pass
+            return (not is_directory, item.name.lower())
 
-            if not is_dir and not is_symlink:
+        entries = sorted(raw_entries, key=safe_sort_key)
+
+        for entry in entries:
+            try:
+                is_dir = False
+                is_symlink = False
+                size = 0
+                mod_time = 0
+                
                 try:
-                    if entry.is_file():
-                        size = entry.stat().st_size
-                except OSError:
+                    is_symlink = entry.is_symlink()
+                except Exception:
                     pass
 
-            try:
-                mod_time = entry.stat().st_mtime
-            except OSError:
-                pass
+                try:
+                    is_dir = entry.is_dir()
+                except Exception:
+                    pass
 
-            rel = guard.display(entry)
-            ext = entry.suffix.lower() if not is_dir else ""
-            mime, _ = mimetypes.guess_type(entry.name)
+                if not is_dir and not is_symlink:
+                    try:
+                        if entry.is_file():
+                            size = entry.stat().st_size
+                    except Exception:
+                        pass
 
-            items.append({
-                "name": entry.name,
-                "path": rel,
-                "is_dir": is_dir,
-                "is_symlink": is_symlink,
-                "size": size,
-                "extension": ext,
-                "mime": mime or ("directory" if is_dir else "application/octet-stream"),
-                "mod_time": mod_time,
-            })
-        except Exception as item_err:
-            logger.warning("Error leyendo item %s en workspace: %s", entry.name, item_err)
-            continue
+                try:
+                    mod_time = entry.stat().st_mtime
+                except Exception:
+                    pass
 
-    return {"path": guard.display(resolved), "items": items}
+                try:
+                    rel = guard.display(entry)
+                except Exception:
+                    rel = entry.name
+
+                ext = entry.suffix.lower() if not is_dir else ""
+                mime, _ = mimetypes.guess_type(entry.name)
+
+                items.append({
+                    "name": entry.name,
+                    "path": rel,
+                    "is_dir": is_dir,
+                    "is_symlink": is_symlink,
+                    "size": size,
+                    "extension": ext,
+                    "mime": mime or ("directory" if is_dir else "application/octet-stream"),
+                    "mod_time": mod_time,
+                })
+            except Exception as item_err:
+                logger.warning("Error leyendo item %s en workspace: %s", entry.name, item_err)
+                continue
+
+        try:
+            disp_path = guard.display(resolved)
+        except Exception:
+            disp_path = "."
+
+        return {"path": disp_path, "items": items}
+    except Exception as top_err:
+        logger.error("Error top-level en workspace_tree: %s", top_err, exc_info=True)
+        return {"path": ".", "items": []}
 
 
 @app.get("/workspace/file/content", dependencies=[Depends(require_api_key)])
