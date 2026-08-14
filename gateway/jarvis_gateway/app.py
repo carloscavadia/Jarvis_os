@@ -14,6 +14,7 @@ import json
 import logging
 import re
 import secrets
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -29,6 +30,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
@@ -224,6 +226,33 @@ def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | 
     except (json.JSONDecodeError, TypeError):
         return None
     return progress if isinstance(progress, dict) and "goal_id" in progress else None
+
+
+def _music_command(name: str, result: ToolResult | None) -> dict[str, object] | None:
+    """Traduce el resultado de una herramienta de música en orden para el HUD."""
+    if name not in {"play_music", "control_music"} or result is None or result.is_error:
+        return None
+    try:
+        payload = json.loads(result.content)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if name == "control_music":
+        command = payload.get("command")
+        return {"command": command} if isinstance(command, str) else None
+    queue = payload.get("queue")
+    if not isinstance(queue, list) or not queue:
+        return None
+    songs = [song for song in queue if isinstance(song, dict) and song.get("id")]
+    if not songs:
+        return None
+    return {
+        "command": "play",
+        "connector": str(payload.get("connector", "")),
+        "source": str(payload.get("source", "")),
+        "queue": songs[:50],
+    }
 
 
 def _python_preview(name: str, arguments: dict[str, object]) -> str | None:
@@ -822,6 +851,87 @@ async def synthesize_voice(req: SpeechRequest) -> Response:
     )
 
 
+_MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+async def _proxy_media(connector: str, endpoint: str, params: dict[str, str]):
+    """Sirve audio o carátula desde Navidrome sin exponer sus credenciales.
+
+    El navegador no puede poner cabeceras en `<audio src>`, así que la
+    alternativa sería mandarle la contraseña del servidor de música. Con el proxy
+    solo circula la clave del gateway, que es la que el HUD ya tiene.
+    """
+    store = _require_connector_store()
+    runtime = ConnectorRuntime(
+        store,
+        timeout=settings.connector_timeout_seconds,
+        max_payload_bytes=settings.connector_max_payload_bytes,
+        max_response_bytes=settings.connector_max_response_bytes,
+    )
+    try:
+        url = runtime.media_url(connector, endpoint, params)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    def fetch():
+        request = urllib.request.Request(
+            url, method="GET", headers={"User-Agent": "JARVIS-OS/0.3 navidrome"}
+        )
+        return urllib.request.urlopen(request, timeout=settings.connector_timeout_seconds)
+
+    try:
+        upstream = await asyncio.to_thread(fetch)
+    except Exception as exc:
+        logger.warning("No pude obtener %s de %s: %s", endpoint, connector, exc)
+        raise HTTPException(
+            status_code=502, detail="El servidor de música no respondió."
+        ) from exc
+
+    media_type = upstream.headers.get_content_type() or "application/octet-stream"
+
+    def chunks():
+        # Se transmite por partes: una canción no cabe —ni debe caber— en los
+        # límites de respuesta pensados para JSON de conectores.
+        try:
+            while True:
+                block = upstream.read(64 * 1024)
+                if not block:
+                    return
+                yield block
+        finally:
+            upstream.close()
+
+    return StreamingResponse(
+        chunks(),
+        media_type=media_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
+
+
+@app.get("/music/{connector}/stream/{song_id}")
+async def music_stream(connector: str, song_id: str, token: str = ""):
+    # El `<audio>` del navegador no admite cabeceras: la clave viaja por query,
+    # igual que ya hace el WebSocket del HUD.
+    if not _valid_api_key(token):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+    if not _SESSION_RE.fullmatch(connector) or not _MEDIA_ID_RE.fullmatch(song_id):
+        raise HTTPException(status_code=422, detail="Identificador inválido.")
+    return await _proxy_media(connector, "stream", {"id": song_id})
+
+
+@app.get("/music/{connector}/cover/{cover_id}")
+async def music_cover(connector: str, cover_id: str, token: str = "", size: int = 256):
+    if not _valid_api_key(token):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+    if not _SESSION_RE.fullmatch(connector) or not _MEDIA_ID_RE.fullmatch(cover_id):
+        raise HTTPException(status_code=422, detail="Identificador inválido.")
+    return await _proxy_media(
+        connector,
+        "getCoverArt",
+        {"id": cover_id, "size": str(max(32, min(size, 1024)))},
+    )
+
+
 @app.websocket("/ws/wake/{device_id}")
 async def wakeword_endpoint(websocket: WebSocket, device_id: str) -> None:
     """Escucha permanente: recibe PCM crudo y avisa al oír «Hey JARVIS».
@@ -942,10 +1052,16 @@ async def realtime_voice_endpoint(websocket: WebSocket, session_id: str) -> None
         if payload.get("type") == "tool" and payload.get("phase") == "completed":
             await websocket.send_json({"type": "emotion", "emotion": emotion.current})
         if payload.get("type") == "tool":
+            payload = dict(payload)
             arguments = payload.get("arguments")
             if isinstance(arguments, dict):
-                payload = dict(payload)
                 payload["arguments"] = _public_approval_arguments(arguments)
+            # El resultado crudo nunca sale al cliente; solo se usa aquí para
+            # traducirlo en órdenes del reproductor.
+            result = payload.pop("_result", None)
+            music = _music_command(str(payload.get("tool", "")), result)
+            if music is not None:
+                payload["music"] = music
         await websocket.send_json(payload)
 
     async def confirm(name: str, arguments: dict[str, object]) -> bool:
@@ -1242,6 +1358,12 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     goal = _goal_progress(name, result)
                     if goal is not None:
                         payload["goal"] = goal
+                    music = _music_command(name, result)
+                    if music is not None:
+                        # La orden va al reproductor del HUD; el texto crudo de la
+                        # herramienta no aporta nada al usuario.
+                        payload.pop("output", None)
+                        payload["music"] = music
                 await websocket.send_json(payload)
 
             # El canal continúa disponible tras un fallo del proveedor.

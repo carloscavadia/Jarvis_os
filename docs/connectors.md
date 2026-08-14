@@ -38,6 +38,51 @@ HUD/voz → JARVIS → webhook n8n → correo / mensajes / domótica / APIs
               eventos y chat entrante
 ```
 
+## Música: Navidrome
+
+Registra un módulo de tipo **navidrome** con la URL de tu servidor, tu usuario y tu
+contraseña. Navidrome habla el protocolo **Subsonic**, así que la contraseña nunca
+viaja: cada petición manda `t = md5(contraseña + sal)` con una sal nueva.
+
+| Campo | Ejemplo |
+|---|---|
+| Tipo | `navidrome` |
+| URL | `http://192.168.68.159:4533` |
+| Usuario | tu usuario de Navidrome |
+| Contraseña | se cifra en SQLite igual que el resto de credenciales |
+
+No hace falta declarar acciones: un servidor de música solo sabe hacer consultas de
+lectura (`music.search`, `music.random`, `music.playlists`, `music.playlist`) y se
+conceden solas. **Nunca se conceden acciones de escritura**, así que JARVIS no puede
+modificar tu biblioteca.
+
+Con el módulo activo aparecen tres herramientas: `search_music`, `play_music` y
+`control_music`. Si no hay módulo de música registrado, no se registran — ofrecerle a
+JARVIS herramientas que siempre fallan solo consigue que las intente y se disculpe.
+
+### Cómo llega el audio al navegador
+
+`play_music` **no reproduce nada en el servidor**: resuelve las canciones y devuelve una
+orden para el reproductor del HUD, igual que `show_in_workspace` devuelve una
+presentación para el pizarrón. Los altavoces están en el dispositivo.
+
+El audio lo sirve el gateway haciendo de proxy:
+
+```text
+HUD  ──GET /music/<módulo>/stream/<id>?token=<clave del gateway>──▶  gateway
+                                                                      │
+                                            credenciales Subsonic ────┘
+                                                                      ▼
+                                                                  Navidrome
+```
+
+Es un proxy y no un enlace directo por dos razones: el navegador no puede poner
+cabeceras en `<audio src>`, así que la alternativa sería entregarle la contraseña de
+Navidrome; y el flujo de audio no cabe —ni debe caber— en los límites de respuesta
+pensados para el JSON de los conectores, así que se transmite por partes.
+
+`/music/<módulo>/cover/<id>` sirve las carátulas por el mismo camino.
+
 ## 1. JARVIS llama a n8n
 
 Crea en n8n un workflow con este patrón:

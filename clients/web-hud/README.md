@@ -90,6 +90,22 @@ navegador **solo para la pregunta**, nunca para la escucha permanente. Chrome of
 mejor compatibilidad para ese respaldo. El HUD debe servirse desde `localhost` o mediante
 HTTPS para que el navegador permita usar el micrófono.
 
+### Reproductor de música
+
+Si hay un módulo **navidrome** registrado, pedirle a JARVIS «pon música» o «pon algo de
+Queen» abre un reproductor en la **esquina inferior derecha**. Tiene anterior, pausa,
+siguiente, cierre, barra de progreso y carátula.
+
+También puedes decirle «pausa», «siguiente» o «para la música» y responde sobre el
+reproductor ya abierto.
+
+**La música baja de volumen sola mientras JARVIS habla** y vuelve a subir al terminar,
+así que no hace falta pausarla para preguntarle algo. Funciona con las tres rutas de voz
+(Kokoro, Realtime y la del navegador).
+
+El audio pasa por el gateway, que hace de proxy contra Navidrome: el navegador nunca
+recibe las credenciales del servidor de música.
+
 ### Aprobaciones de acciones sensibles
 
 Cuando JARVIS quiera modificar un archivo existente o instalar un paquete, el HUD muestra

@@ -26,6 +26,7 @@ from jarvis_core.tools.builtin.filesystem import (
 )
 from jarvis_core.tools.builtin.goal_tools import register_goal_tools
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
+from jarvis_core.tools.builtin.music import register_music_tools
 from jarvis_core.tools.builtin.packages import InstallPackageTool
 from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
 from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
@@ -119,14 +120,14 @@ def build_default_registry(
             max_response_bytes=settings.connector_max_response_bytes,
         )
     if settings.connectors_enabled and connector_store is not None:
-        register_dynamic_connector_tools(
-            registry,
+        connector_runtime = ConnectorRuntime(
             connector_store,
-            ConnectorRuntime(
-                connector_store,
-                timeout=settings.connector_timeout_seconds,
-                max_payload_bytes=settings.connector_max_payload_bytes,
-                max_response_bytes=settings.connector_max_response_bytes,
-            ),
+            timeout=settings.connector_timeout_seconds,
+            max_payload_bytes=settings.connector_max_payload_bytes,
+            max_response_bytes=settings.connector_max_response_bytes,
         )
+        register_dynamic_connector_tools(
+            registry, connector_store, connector_runtime
+        )
+        register_music_tools(registry, connector_store, connector_runtime)
     return registry

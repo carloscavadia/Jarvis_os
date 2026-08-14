@@ -865,3 +865,50 @@ def test_voice_status_never_reports_spending(monkeypatch):
         ).json()
     assert "usd" not in json.dumps(status).lower()
     assert "spend" not in json.dumps(status).lower()
+
+
+def test_music_command_only_reacts_to_music_tools():
+    assert gateway_module._music_command("read_file", ToolResult("{}")) is None
+    assert gateway_module._music_command("play_music", None) is None
+    # Un error no debe abrir el reproductor con una cola vacía.
+    assert gateway_module._music_command(
+        "play_music", ToolResult("fallo", is_error=True)
+    ) is None
+    assert gateway_module._music_command("play_music", ToolResult("no-es-json")) is None
+    assert gateway_module._music_command("play_music", ToolResult('{"queue": []}')) is None
+
+
+def test_music_command_builds_the_player_order():
+    result = ToolResult(
+        json.dumps(
+            {
+                "queue": [{"id": "7", "title": "Uno"}, {"sin_id": True}],
+                "connector": "musica",
+                "source": "queen",
+            }
+        )
+    )
+    command = gateway_module._music_command("play_music", result)
+    assert command == {
+        "command": "play",
+        "connector": "musica",
+        "source": "queen",
+        "queue": [{"id": "7", "title": "Uno"}],
+    }
+
+
+def test_music_control_passes_the_command_through():
+    command = gateway_module._music_command(
+        "control_music", ToolResult('{"command": "pause"}')
+    )
+    assert command == {"command": "pause"}
+
+
+def test_music_stream_requires_the_gateway_key(monkeypatch):
+    with TestClient(gateway_module.app) as client:
+        assert client.get("/music/musica/stream/7").status_code == 401
+        assert client.get("/music/musica/stream/7?token=mala").status_code == 401
+        # Identificadores fuera de forma no llegan al servidor de música.
+        assert client.get(
+            "/music/musica/stream/../secreto?token=ci-test-key"
+        ).status_code in {404, 422}

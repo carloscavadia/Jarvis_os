@@ -77,6 +77,44 @@
     border-bottom: 1px solid var(--hairline); background: rgba(4,12,21,.74);
     font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--muted); }
   .action-head-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Reproductor de música (esquina inferior derecha) ── */
+  .player { display: none; position: fixed; z-index: 5; right: 28px; bottom: 28px;
+    width: min(324px, calc(100vw - 56px)); overflow: hidden;
+    border: 1px solid var(--hairline-2); border-radius: 12px; background: rgba(4,12,21,.66);
+    backdrop-filter: blur(10px) saturate(118%);
+    box-shadow: 0 18px 60px rgba(0,0,0,.46), 0 0 26px rgba(53,230,255,.06);
+    transform-origin: bottom right; }
+  .player.active { display: block; animation: workspace-in .32s cubic-bezier(.2,.8,.2,1); }
+  .player::before { content: ""; position: absolute; inset: auto auto 0 0; width: 54px; height: 1px;
+    background: var(--core); box-shadow: 0 0 12px var(--core); pointer-events: none; }
+  .player-head { display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 11px 7px 13px; border-bottom: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: 9px; letter-spacing: .18em; color: var(--muted); }
+  .player-body { display: flex; gap: 11px; padding: 11px 13px 9px; align-items: center; }
+  .player-cover { flex: none; width: 46px; height: 46px; border-radius: 6px; object-fit: cover;
+    border: 1px solid var(--hairline); background: rgba(53,230,255,.05); }
+  .player-meta { min-width: 0; flex: 1; }
+  .player-title { font-size: 12.5px; color: var(--text); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .player-artist { margin-top: 2px; font-family: var(--mono); font-size: 9.5px;
+    letter-spacing: .06em; color: var(--muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .player-bar { height: 2px; margin: 0 13px; background: rgba(63,224,255,.12); border-radius: 2px; }
+  .player-bar-fill { height: 100%; width: 0; background: var(--core); border-radius: 2px;
+    box-shadow: 0 0 8px rgba(53,230,255,.55); transition: width .25s linear; }
+  .player-controls { display: flex; align-items: center; gap: 4px; padding: 8px 11px 11px; }
+  .player-btn { flex: none; width: 30px; height: 26px; display: grid; place-items: center;
+    border: 1px solid var(--hairline); border-radius: 6px; background: transparent;
+    color: var(--text); font-size: 11px; cursor: pointer; font-family: var(--mono);
+    transition: border-color .18s, color .18s, box-shadow .18s; }
+  .player-btn:hover { border-color: var(--hairline-2); color: var(--core-bright); }
+  .player-btn.primary { color: var(--core); border-color: var(--hairline-2);
+    box-shadow: 0 0 14px rgba(53,230,255,.10); }
+  .player-time { margin-left: auto; font-family: var(--mono); font-size: 9px;
+    letter-spacing: .08em; color: var(--muted); }
+  .player-queue { font-family: var(--mono); font-size: 9px; letter-spacing: .14em;
+    color: var(--muted); }
   .action-head-tools { display: flex; align-items: center; gap: 6px; margin-left: 12px; }
   .action-format { color: var(--core); font-size: 8px; letter-spacing: .12em; }
   .action-tool, .action-close { height: 25px; border: 1px solid var(--hairline); border-radius: 6px;
@@ -375,6 +413,28 @@
     <div class="approval-actions" id="approval-actions" hidden>
       <button class="approve" id="approval-approve" type="button">APROBAR</button>
       <button class="deny" id="approval-deny" type="button">DENEGAR</button>
+    </div>
+  </section>
+
+  <section class="player" id="player" aria-live="polite" aria-label="Reproductor de música">
+    <div class="player-head">
+      <span>REPRODUCIENDO</span>
+      <span class="player-queue" id="player-queue"></span>
+    </div>
+    <div class="player-body">
+      <img class="player-cover" id="player-cover" alt="" hidden>
+      <div class="player-meta">
+        <div class="player-title" id="player-title">—</div>
+        <div class="player-artist" id="player-artist"></div>
+      </div>
+    </div>
+    <div class="player-bar"><div class="player-bar-fill" id="player-progress"></div></div>
+    <div class="player-controls">
+      <button class="player-btn" id="player-prev" type="button" aria-label="Anterior">◀◀</button>
+      <button class="player-btn primary" id="player-toggle" type="button" aria-label="Pausar">❚❚</button>
+      <button class="player-btn" id="player-next" type="button" aria-label="Siguiente">▶▶</button>
+      <button class="player-btn" id="player-stop" type="button" aria-label="Cerrar reproductor">×</button>
+      <span class="player-time" id="player-time">0:00</span>
     </div>
   </section>
 
@@ -1268,7 +1328,7 @@
       if (m.type === "state") setState(m.state);
       else if (m.type === "emotion") setEmotion(m.emotion);
       else if (m.type === "event") firePulse();
-      else if (m.type === "tool_event") { showToolEvent(m); firePulse(); }
+      else if (m.type === "tool_event") { showToolEvent(m); handleMusicCommand(m.music); firePulse(); }
       else if (m.type === "reply_start") startStreamReply();
       else if (m.type === "reply_delta") appendStreamDelta(m.delta);
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
@@ -2349,7 +2409,7 @@
     else if (message.type === "transcript") addLine("TÚ", message.text, "user");
     else if (message.type === "reply_delta") appendStreamDelta(message.delta);
     else if (message.type === "reply_done") finishStreamReply(message.text);
-    else if (message.type === "tool") showToolEvent(message);
+    else if (message.type === "tool") { showToolEvent(message); handleMusicCommand(message.music); }
     else if (message.type === "approval_required") {
       // La decisión vuelve por el mismo canal de voz, no por el de texto.
       pendingApproval = { ...message, channel: "voice" };
@@ -2430,6 +2490,131 @@
       return false;
     }
   }
+
+  // ── Reproductor de música ─────────────────────────────────────────────────
+  //
+  // El audio lo sirve el gateway haciendo de proxy contra Navidrome, así que el
+  // navegador nunca ve las credenciales del servidor de música.
+
+  const playerEl = document.getElementById("player");
+  const playerTitle = document.getElementById("player-title");
+  const playerArtist = document.getElementById("player-artist");
+  const playerCover = document.getElementById("player-cover");
+  const playerQueueEl = document.getElementById("player-queue");
+  const playerProgress = document.getElementById("player-progress");
+  const playerTime = document.getElementById("player-time");
+  const playerToggle = document.getElementById("player-toggle");
+  let musicAudio = null;
+  let musicQueue = [];
+  let musicIndex = 0;
+  let musicConnector = "";
+
+  function musicMediaUrl(kind, id) {
+    const base = gatewayHttpBase();
+    if (!base || !musicConnector || !id) return "";
+    return `${base}/music/${encodeURIComponent(musicConnector)}/${kind}/${encodeURIComponent(id)}`
+      + `?token=${encodeURIComponent(tokenInput.value)}`;
+  }
+
+  function formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+    const total = Math.floor(seconds);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+  }
+
+  function renderNowPlaying() {
+    const song = musicQueue[musicIndex];
+    if (!song) return;
+    playerTitle.textContent = song.title || "—";
+    playerArtist.textContent = [song.artist, song.album].filter(Boolean).join(" · ");
+    playerQueueEl.textContent = musicQueue.length > 1
+      ? `${musicIndex + 1}/${musicQueue.length}` : "";
+    const coverUrl = song.cover_art ? musicMediaUrl("cover", song.cover_art) : "";
+    playerCover.hidden = !coverUrl;
+    if (coverUrl) playerCover.src = coverUrl;
+  }
+
+  function stopMusic({ hide = true } = {}) {
+    if (musicAudio) {
+      musicAudio.onended = null;
+      musicAudio.pause();
+      musicAudio.src = "";
+    }
+    musicAudio = null;
+    if (hide) {
+      playerEl.classList.remove("active");
+      musicQueue = [];
+      musicIndex = 0;
+    }
+  }
+
+  function playMusicAt(index) {
+    if (index < 0 || index >= musicQueue.length) { stopMusic(); return; }
+    musicIndex = index;
+    stopMusic({ hide: false });
+    const url = musicMediaUrl("stream", musicQueue[index].id);
+    if (!url) { addLine("SISTEMA", "No pude construir la URL de la canción.", "system"); return; }
+    musicAudio = new Audio(url);
+    // JARVIS debe poder hablar por encima de la música sin que se pisen.
+    musicAudio.volume = duckedForSpeech() ? 0.18 : 0.85;
+    musicAudio.onended = () => playMusicAt(musicIndex + 1);
+    musicAudio.onerror = () => {
+      addLine("SISTEMA", `No pude reproducir «${musicQueue[index].title}».`, "system");
+      playMusicAt(musicIndex + 1);
+    };
+    musicAudio.ontimeupdate = () => {
+      const ratio = musicAudio.duration ? musicAudio.currentTime / musicAudio.duration : 0;
+      playerProgress.style.width = `${Math.min(100, ratio * 100)}%`;
+      playerTime.textContent = formatTime(musicAudio.currentTime);
+    };
+    musicAudio.play().catch((error) => {
+      addLine("SISTEMA", "El navegador bloqueó la reproducción: " + error.message, "system");
+    });
+    playerToggle.textContent = "❚❚";
+    playerEl.classList.add("active");
+    renderNowPlaying();
+  }
+
+  function duckedForSpeech() {
+    return voiceActive || speechQueueRunning || !!voiceSocket;
+  }
+
+  // Baja la música mientras JARVIS habla y la recupera al terminar. Se consulta
+  // en bucle porque la voz llega por tres caminos distintos (Kokoro, Realtime y
+  // el navegador) y todos acaban moviendo las mismas señales.
+  setInterval(() => {
+    if (!musicAudio) return;
+    const target = duckedForSpeech() ? 0.18 : 0.85;
+    if (Math.abs(musicAudio.volume - target) > 0.01) {
+      musicAudio.volume += (target - musicAudio.volume) * 0.35;
+    }
+  }, 120);
+
+  function handleMusicCommand(music) {
+    if (!music) return;
+    if (music.command === "play") {
+      musicConnector = music.connector || musicConnector;
+      musicQueue = Array.isArray(music.queue) ? music.queue : [];
+      if (!musicQueue.length) return;
+      playMusicAt(0);
+      return;
+    }
+    if (!musicQueue.length) return;
+    if (music.command === "pause") { musicAudio?.pause(); playerToggle.textContent = "▶"; }
+    else if (music.command === "resume") { musicAudio?.play().catch(() => {}); playerToggle.textContent = "❚❚"; }
+    else if (music.command === "next") playMusicAt(musicIndex + 1);
+    else if (music.command === "previous") playMusicAt(musicIndex - 1);
+    else if (music.command === "stop") stopMusic();
+  }
+
+  playerToggle.addEventListener("click", () => {
+    if (!musicAudio) return;
+    if (musicAudio.paused) { musicAudio.play().catch(() => {}); playerToggle.textContent = "❚❚"; }
+    else { musicAudio.pause(); playerToggle.textContent = "▶"; }
+  });
+  document.getElementById("player-next").addEventListener("click", () => playMusicAt(musicIndex + 1));
+  document.getElementById("player-prev").addEventListener("click", () => playMusicAt(musicIndex - 1));
+  document.getElementById("player-stop").addEventListener("click", () => stopMusic());
 
   function stopRecorderVad() {
     if (recorderVadFrame) cancelAnimationFrame(recorderVadFrame);

@@ -285,6 +285,9 @@ class RealtimeConversation:
                 "phase": "completed",
                 "tool": name,
                 "is_error": result.is_error,
+                # Interno: el gateway lo traduce a órdenes para el HUD (por
+                # ejemplo, reproducir música) y lo quita antes de enviarlo.
+                "_result": result,
             }
         )
         await self._reply_tool(call_id, result)
