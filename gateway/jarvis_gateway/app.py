@@ -1451,7 +1451,10 @@ async def workspace_file_content(path: str):
 
 
 @app.get("/workspace/file/raw")
-async def workspace_file_raw(path: str, token: str = ""):
+async def workspace_file_raw(path: str = "", token: str = ""):
+    # `path` sin valor por defecto haría que FastAPI validara los parámetros
+    # antes de llegar aquí, y quien no tiene la llave recibiría un 422 que ya le
+    # cuenta el contrato del endpoint. La llave se comprueba primero.
     if not _valid_api_key(token):
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
     guard = _get_workspace_guard()
