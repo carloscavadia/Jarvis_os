@@ -115,5 +115,38 @@ check("mientras habla no se duerme · el fin de la cola reintentará",
 check("mientras habla tampoco apaga la palabra de activación",
       !harness.calls.includes("stopWake"), harness.calls.join(","));
 
+
+// ── Quién puede interrumpir a JARVIS ─────────────────────────────────────────
+//
+// La escucha automática se abre justo después de que JARVIS habla, así que el
+// micrófono capta su propia voz desde los altavoces. Whisper la transcribe, eso
+// entra como turno nuevo, y el turno nuevo cortaba la voz en curso. De ahí que
+// se interrumpiera siempre. La regla: solo una acción deliberada interrumpe.
+
+const submitSource = js.slice(
+  js.indexOf('document.getElementById("form").addEventListener("submit"'),
+);
+const cancelsOnSubmit = /if \(!automaticTurn\) cancelSpeechQueue\(\);/.test(
+  submitSource.slice(0, 400),
+);
+check("al enviar · solo corta si el turno NO es automático", cancelsOnSubmit);
+
+const beginSource = js.slice(js.indexOf("function beginStreamSpeech()"));
+check("al empezar a hablar · misma regla",
+      /if \(!automaticTurn\) cancelSpeechQueue\(\);/.test(beginSource.slice(0, 200)));
+
+// El motivo de la grabación tiene que sobrevivir hasta que termina.
+check("la grabación recuerda si fue automática",
+      /recorderWasAutomatic = automatic \|\| followUp;/.test(js)
+      && /sendRecordedAudio\(blob, recorderWasAutomatic\)/.test(js));
+check("y se traslada al turno",
+      /async function sendRecordedAudio\(blob, automatic = false\) \{\s*\n\s*automaticTurn = automatic;/.test(js));
+
+// Si no se reinicia, un turno automático dejaría a JARVIS sin poder ser
+// interrumpido nunca más.
+const finishSource = js.slice(js.indexOf("function finishStreamReply("));
+check("el turno automático se cierra al terminar la respuesta",
+      /automaticTurn = false;/.test(finishSource.slice(0, 1600)));
+
 console.log(failures ? `\n${failures} fallos` : "\nEscucha continua correcta");
 process.exit(failures ? 1 : 0);

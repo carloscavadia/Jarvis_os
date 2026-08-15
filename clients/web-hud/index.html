@@ -2465,6 +2465,7 @@
       activeReply = null;
     }
     replyTextComplete = true;
+    automaticTurn = false;
     if (spokenText && !voiceSocket) finishStreamSpeech(spokenText);
     activeReplyText = "";
     streamDirectedToBoard = false;
@@ -2610,7 +2611,9 @@
 
   document.getElementById("form").addEventListener("submit", (e) => {
     e.preventDefault();
-    cancelSpeechQueue(); // Cancelar voz previa al enviar nuevo mensaje del usuario (barge-in)
+    // Barge-in deliberado: cortar es lo correcto cuando el usuario interviene.
+    // Si el turno lo abrió la escucha automática, no.
+    if (!automaticTurn) cancelSpeechQueue();
     const text = messageInput.value.trim();
     if (!text || (busy && !pendingApproval)) return;
     if (pendingApproval) {
@@ -3654,8 +3657,17 @@
   let recorderVadFrame = null;
   let recorderAudioContext = null;
   let recorderDiscard = false;
+  // Se recuerda al arrancar la grabación, no al pararla: para cuando termina,
+  // el motivo por el que se abrió el micrófono ya se ha perdido.
+  let recorderWasAutomatic = false;
   let followUpListening = false;
   let followUpTimer = null;
+  // ¿El turno en curso nació de la escucha automática? Solo una acción
+  // deliberada —escribir, o pulsar el micrófono— debe interrumpir a JARVIS. Un
+  // turno automático puede venir de su propia voz colándose por el micrófono
+  // desde los altavoces, y cortarle por eso era el bucle que hacía que la voz
+  // se interrumpiera siempre.
+  let automaticTurn = false;
   let wakeListening = false;
   let wakeRestartTimer = null;
   let wakeAvailable = false;
@@ -4027,7 +4039,7 @@
   }
 
   function beginStreamSpeech() {
-    cancelSpeechQueue();
+    if (!automaticTurn) cancelSpeechQueue();
     streamSpeechBuffer = "";
     streamSpeechSource = "";
     streamSpeechStarted = false;
@@ -4127,7 +4139,8 @@
       .find((type) => MediaRecorder.isTypeSupported(type)) || "";
   }
 
-  async function sendRecordedAudio(blob) {
+  async function sendRecordedAudio(blob, automatic = false) {
+    automaticTurn = automatic;
     rVoice.textContent = "TRANSCRIBIENDO";
     setBusy(true);
     try {
@@ -4811,6 +4824,7 @@
   }
 
   async function startServerRecording({ automatic = false, followUp = false } = {}) {
+    recorderWasAutomatic = automatic || followUp;
     if (!followUp && !automatic) {
       cancelSpeechQueue(); // Interrupción por voz (Barge-in): silenciar a JARVIS de inmediato si el usuario pulsa manualmente
     }
@@ -4833,7 +4847,7 @@
         if (recorderDiscard || !blob.size) {
           recorderDiscard = false;
           stopConversationFollowUp();
-        } else sendRecordedAudio(blob);
+        } else sendRecordedAudio(blob, recorderWasAutomatic);
       };
       recorder.start(250);
       setMicActive(true, followUp ? "CONTINÚA… 4S" : automatic ? "ESCUCHANDO" : "GRABANDO");
