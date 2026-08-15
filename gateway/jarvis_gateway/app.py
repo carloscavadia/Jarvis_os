@@ -50,6 +50,7 @@ from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
 from jarvis_gateway import realtime_session as realtime_module
+from jarvis_gateway import runtime
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
 from jarvis_gateway.realtime_session import RealtimeConversation
@@ -68,12 +69,14 @@ GATEWAY_FEATURES = frozenset(
     {"wakeword", "realtime_conversation", "music_stream", "music_cover"}
 )
 
-settings = Settings.from_env()
-sessions = SessionManager(settings)
-mqtt_bridge = MqttBridge(settings, sessions)
-notifier = Notifier(mqtt_bridge)
-voice_runtime = VoiceRuntime(settings)
-realtime_voice = RealtimeVoiceBroker(settings)
+# Reexportados desde runtime.py: son los mismos objetos, así que el código
+# existente y los tests que parchean `gateway_module.settings` siguen valiendo.
+settings = runtime.settings
+sessions = runtime.sessions
+mqtt_bridge = runtime.mqtt_bridge
+notifier = runtime.notifier
+voice_runtime = runtime.voice_runtime
+realtime_voice = runtime.realtime_voice
 # Escuchas de activación abiertas. Cada una carga su propio detector, así que el
 # límite acota tanto la memoria como la CPU dedicada a la escucha permanente.
 _wake_streams = 0
@@ -82,21 +85,8 @@ _wake_streams = 0
 _realtime_sessions = 0
 
 
-def _valid_api_key(candidate: str | None) -> bool:
-    return bool(
-        settings.gateway_api_key
-        and candidate
-        and hmac.compare_digest(candidate, settings.gateway_api_key)
-    )
-
-
-def _valid_connector_key(candidate: str | None) -> bool:
-    return bool(
-        settings.connectors_enabled
-        and len(settings.n8n_webhook_token) >= 32
-        and candidate
-        and hmac.compare_digest(candidate, settings.n8n_webhook_token)
-    )
+_valid_api_key = runtime.valid_api_key
+_valid_connector_key = runtime.valid_connector_key
 
 
 def _approval_summary(name: str, arguments: dict[str, object]) -> str:
@@ -291,24 +281,10 @@ def _python_preview(name: str, arguments: dict[str, object]) -> str | None:
         return None
 
 
-async def require_api_key(
-    x_jarvis_key: str | None = Header(default=None, alias="X-Jarvis-Key"),
-) -> None:
-    """Autentica clientes REST sin registrar ni devolver el secreto."""
-    if not _valid_api_key(x_jarvis_key):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+require_api_key = runtime.require_api_key
 
 
-async def require_connector_key(
-    x_connector_key: str | None = Header(
-        default=None, alias="X-Jarvis-Connector-Token"
-    ),
-) -> None:
-    """Autentica n8n sin concederle la clave maestra del gateway."""
-    if not _valid_connector_key(x_connector_key):
-        raise HTTPException(
-            status_code=401, detail="Credenciales de conector inválidas."
-        )
+require_connector_key = runtime.require_connector_key
 
 
 async def _on_task_fire(task: Task) -> str:
