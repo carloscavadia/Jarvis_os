@@ -406,6 +406,41 @@
 
   @media (max-width: 1120px) { .console { width: min(720px, 72vw); min-width: 0; } }
 
+  /* ── Adaptación Responsiva para Pantallas de Kiosko (800x480 y pantallas pequeñas) ── */
+  @media (max-width: 900px) {
+    .console {
+      width: min(580px, calc(100vw - 40px));
+      min-width: 0;
+      bottom: 12px;
+    }
+    .inputbar {
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    .inputbar input {
+      font-size: 13px;
+      padding: 3px 0;
+    }
+    .voice-btn {
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
+      font-size: 13px;
+    }
+  }
+
+  @media (max-height: 520px) {
+    .console {
+      bottom: 10px;
+    }
+    .inputbar {
+      padding: 5px 12px;
+    }
+    .log {
+      max-height: 110px;
+    }
+  }
+
   /* ── HUD Dock — 3 botones esquina inferior izquierda ── */
   .hud-dock {
     position: fixed; left: 24px; bottom: 28px;
