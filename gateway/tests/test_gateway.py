@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from typing import ClassVar
 
 import pytest
@@ -1003,3 +1004,102 @@ def test_a_broken_workspace_reports_the_failure_instead_of_looking_empty(
         response = client.get("/workspace/tree", headers={"X-Jarvis-Key": "ci-test-key"})
     assert response.status_code == 500
     assert "RuntimeError" in response.json()["detail"]
+
+
+# ── Endpoints de tareas ──────────────────────────────────────────────────────
+#
+# Estos faltaban, y por eso pasó desapercibido que `POST /tasks` referenciaba
+# `math` y `time` sin importarlos: el endpoint reventaba con NameError y ningún
+# test lo tocaba. Un endpoint sin test es un endpoint que nadie ha ejecutado.
+
+
+@pytest.fixture()
+def task_store(tmp_path, monkeypatch):
+    from jarvis_core.tasks.store import TaskStore
+
+    store = TaskStore(str(tmp_path / "tareas.db"))
+    monkeypatch.setattr(gateway_module.sessions, "tasks", store)
+    return store
+
+
+def test_creating_a_task_over_http_works_and_validates(task_store):
+    with TestClient(gateway_module.app) as client:
+        headers = {"X-Jarvis-Key": "ci-test-key"}
+        created = client.post(
+            "/tasks", headers=headers,
+            json={"title": "Llamar", "prompt": "Recuérdaselo",
+                  "next_run": time.time() + 3600},
+        )
+        assert created.status_code == 200
+        assert created.json()["task_id"] == 1
+
+        # El POST se saltaba las validaciones que sí hace la herramienta.
+        past = client.post(
+            "/tasks", headers=headers,
+            json={"title": "Ayer", "prompt": "…", "next_run": time.time() - 3600},
+        )
+        assert past.status_code == 422
+
+        tight = client.post(
+            "/tasks", headers=headers,
+            json={"title": "Bucle", "prompt": "…",
+                  "next_run": time.time() + 60, "interval_seconds": 1},
+        )
+        assert tight.status_code == 422
+
+
+def test_pausing_and_resuming_over_http(task_store):
+    task_store.add("Ruidosa", "…", next_run=time.time() + 3600)
+    with TestClient(gateway_module.app) as client:
+        headers = {"X-Jarvis-Key": "ci-test-key"}
+        paused = client.post("/tasks/1/control", headers=headers,
+                             json={"action": "pause"})
+        assert paused.status_code == 200
+        assert paused.json()["task"]["status"] == "paused"
+
+        resumed = client.post("/tasks/1/control", headers=headers,
+                              json={"action": "resume"})
+        assert resumed.json()["task"]["status"] == "pending"
+
+        # Reanudar dos veces no tiene sentido y debe decirlo.
+        assert client.post("/tasks/1/control", headers=headers,
+                           json={"action": "resume"}).status_code == 409
+
+
+def test_rescheduling_over_http_refuses_the_past(task_store):
+    task_store.add("Mover", "…", next_run=time.time() + 3600)
+    with TestClient(gateway_module.app) as client:
+        headers = {"X-Jarvis-Key": "ci-test-key"}
+        assert client.post(
+            "/tasks/1/control", headers=headers,
+            json={"action": "reschedule", "next_run": time.time() - 60},
+        ).status_code == 422
+        moved = client.post(
+            "/tasks/1/control", headers=headers,
+            json={"action": "reschedule", "next_run": time.time() + 7200},
+        )
+        assert moved.status_code == 200
+
+
+def test_the_task_list_exposes_the_state_the_hud_needs(task_store):
+    task_store.add("Con estado", "…", next_run=time.time() + 60)
+    with TestClient(gateway_module.app) as client:
+        body = client.get("/tasks", headers={"X-Jarvis-Key": "ci-test-key"}).json()
+    task = body["tasks"][0]
+    for field in ("status", "priority", "runs", "failures", "last_error", "last_result"):
+        assert field in task
+    assert body["stats"]["active"] == 1
+
+
+def test_the_history_endpoint_reports_what_happened(task_store):
+    task_store.add("Ejecutada", "…", next_run=time.time() - 1)
+    task = task_store.get(1)
+    task_store.finish_run(task, task_store.begin_run(task), True, "Todo en orden.")
+
+    with TestClient(gateway_module.app) as client:
+        body = client.get(
+            "/tasks/history", headers={"X-Jarvis-Key": "ci-test-key"}
+        ).json()
+    assert body["runs"][0]["ok"] is True
+    assert body["runs"][0]["detail"] == "Todo en orden."
+    assert client.get("/tasks/history").status_code == 401
