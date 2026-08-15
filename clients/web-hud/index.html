@@ -617,37 +617,75 @@
 
   .explorer-body { display: flex; flex: 1; min-height: 0; }
   .explorer-main { flex: 1; overflow-y: auto; padding: 14px; scrollbar-width: thin; scrollbar-color: var(--hairline-2) transparent; }
-  .explorer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
-  .explorer-grid.list-mode { display: flex; flex-direction: column; gap: 5px; }
-  
-  .file-card {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 12px 8px; border: 1px solid var(--hairline); border-radius: 9px;
-    background: rgba(8, 20, 31, 0.45); cursor: pointer; text-align: center;
-    transition: transform .18s, border-color .18s, background .18s, box-shadow .18s;
-    user-select: none;
+  /* ── Explorador Futurista de Diagrama de Nodos (Estilo Rama/Circuito) ── */
+  .explorer-grid {
+    display: flex; flex-direction: column; gap: 10px; padding-left: 24px;
+    position: relative; border-left: 2px solid rgba(53,230,255,0.35);
+    box-shadow: -3px 0 14px rgba(53,230,255,0.2); margin-left: 12px; margin-top: 6px;
   }
-  .file-card:hover {
-    transform: translateY(-2px); border-color: var(--core);
-    background: rgba(14, 34, 50, 0.65); box-shadow: 0 0 16px rgba(53,230,255,0.12);
-  }
-  .file-card.selected {
-    border-color: var(--core-bright); background: rgba(20, 45, 65, 0.85);
-    box-shadow: 0 0 20px rgba(53,230,255,0.25);
-  }
-  .file-card.up-folder { border-style: dashed; opacity: 0.8; }
-  .file-card.up-folder:hover { opacity: 1; border-style: solid; border-color: var(--core); }
-  .file-card .icon { font-size: 26px; margin-bottom: 6px; line-height: 1; }
-  .file-card .name {
-    font-family: var(--mono); font-size: 10.5px; color: var(--text);
-    width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .file-card .sub { font-family: var(--mono); font-size: 8.5px; color: var(--muted); margin-top: 3px; }
 
-  .explorer-grid.list-mode .file-card {
-    flex-direction: row; justify-content: flex-start; text-align: left; padding: 7px 12px; gap: 12px;
+  .file-card {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 11px 16px; border: 1px solid rgba(53, 230, 255, 0.22); border-radius: 12px;
+    background: linear-gradient(135deg, rgba(6, 18, 30, 0.85), rgba(4, 12, 21, 0.92));
+    backdrop-filter: blur(18px); cursor: pointer; text-align: left;
+    transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1), border-color .2s, background .2s, box-shadow .2s;
+    user-select: none; position: relative;
   }
-  .explorer-grid.list-mode .file-card .icon { font-size: 18px; margin-bottom: 0; }
+
+  /* Conector lateral de rama a la tarjeta */
+  .file-card::before {
+    content: ""; position: absolute; left: -24px; top: 50%; width: 24px; height: 2px;
+    background: linear-gradient(90deg, rgba(53,230,255,0.6), rgba(53,230,255,0.25));
+    box-shadow: 0 0 8px rgba(53,230,255,0.4);
+  }
+  .file-card::after {
+    content: ""; position: absolute; left: -26px; top: calc(50% - 3px); width: 6px; height: 6px;
+    border-radius: 50%; background: var(--core); box-shadow: 0 0 8px var(--core-bright);
+  }
+
+  .file-card:hover {
+    transform: translateX(6px); border-color: var(--core);
+    background: linear-gradient(135deg, rgba(10, 30, 48, 0.9), rgba(6, 20, 34, 0.95));
+    box-shadow: 0 0 25px rgba(53, 230, 255, 0.25), inset 0 0 14px rgba(53, 230, 255, 0.1);
+  }
+
+  .file-card.selected {
+    border-color: var(--core-bright);
+    background: linear-gradient(135deg, rgba(14, 40, 62, 0.95), rgba(8, 26, 42, 0.95));
+    box-shadow: 0 0 30px rgba(53, 230, 255, 0.35), inset 0 0 20px rgba(53, 230, 255, 0.15);
+  }
+
+  .file-card .node-icon-box {
+    width: 38px; height: 38px; border-radius: 9px;
+    border: 1px solid rgba(53, 230, 255, 0.38);
+    background: rgba(53, 230, 255, 0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; flex: none; transition: transform .2s, box-shadow .2s;
+    box-shadow: inset 0 0 10px rgba(53,230,255,0.15);
+  }
+  .file-card:hover .node-icon-box {
+    transform: scale(1.06); box-shadow: 0 0 16px rgba(53,230,255,0.35), inset 0 0 12px rgba(53,230,255,0.25);
+  }
+
+  .file-card .node-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .file-card .node-title {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: #fff;
+    letter-spacing: 0.06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .file-card .node-sub { font-family: var(--mono); font-size: 8.5px; color: var(--muted); letter-spacing: 0.08em; }
+
+  .file-card .node-tag-box { display: flex; align-items: center; gap: 8px; flex: none; }
+  .cyber-tag {
+    font-size: 7px; font-family: var(--mono); letter-spacing: 0.14em; padding: 2px 6px;
+    border-radius: 4px; border: 1px solid; text-transform: uppercase; font-weight: bold;
+  }
+  .cyber-tag.folder { color: var(--core); border-color: rgba(53,230,255,0.35); background: rgba(53,230,255,0.08); }
+  .cyber-tag.file { color: #60eca8; border-color: rgba(96,236,168,0.35); background: rgba(96,236,168,0.08); }
+  .cyber-tag.up { color: #ffb460; border-color: rgba(255,180,96,0.35); background: rgba(255,180,96,0.08); }
+
+  .cyber-arrow { color: var(--core); font-size: 11px; transition: transform .2s; }
+  .file-card:hover .cyber-arrow { transform: translateX(3px); color: var(--core-bright); }
   .explorer-grid.list-mode .file-card .name { flex: 1; }
 
   .explorer-preview {
@@ -2701,83 +2739,111 @@
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
   });
 
-  // ── Hologram projection drawing ──
+  // ── Rama Holográfica Ciberpunk (Cybernetic Neural Branch) ──
   function drawHologramProjection(cx, cy, panelRect, rgbCol, t) {
     if (!panelRect || panelRect.width === 0) return;
     const px = panelRect.left + panelRect.width / 2;
     const py = panelRect.top;
-    const pLeft = panelRect.left;
-    const pRight = panelRect.right;
+    const pLeft = panelRect.left + 16;
+    const pRight = panelRect.right - 16;
     
     const ageSec = (Date.now() - (explorerOpenTime || 0)) / 1000;
     const isOpening = ageSec < 1.2;
-    const boost = isOpening ? (1.2 - ageSec) * 1.5 : 0;
+    const grow = isOpening ? Math.min(1, ageSec / 0.8) : 1;
+    const boost = isOpening ? (1.2 - ageSec) * 1.8 : 0;
     
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    
-    // Beam cone fill
-    const grad = ctx.createLinearGradient(cx, cy, px, py);
-    grad.addColorStop(0, `rgba(${rgbCol}, ${0.35 + boost * 0.4})`);
-    grad.addColorStop(0.65, `rgba(${rgbCol}, ${0.12 + boost * 0.2})`);
-    grad.addColorStop(1, `rgba(${rgbCol}, 0.02)`);
-    
-    ctx.fillStyle = grad;
+
+    // 1. Nodo Raíz en el Núcleo
+    ctx.fillStyle = `rgb(${rgbCol})`;
+    ctx.globalAlpha = 0.8 + boost * 0.2;
+    ctx.beginPath(); ctx.arc(cx, cy, 6 + boost * 4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(${rgbCol}, 0.5)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(cx, cy, 14 + boost * 10 + Math.sin(t * 8) * 3, 0, Math.PI * 2); ctx.stroke();
+
+    // Tronco principal: curva Bezier desde el núcleo hasta el punto medio de bifurcación
+    const splitX = cx + (px - cx) * 0.55 * grow;
+    const splitY = cy + (py - cy) * 0.55 * grow;
+    const ctrlX1 = cx + (px - cx) * 0.1;
+    const ctrlY1 = cy + (py - cy) * 0.45;
+
+    // Dibujar Tronco Principal con resplandor neón
+    ctx.shadowColor = `rgb(${rgbCol})`;
+    ctx.shadowBlur = 14 + boost * 10;
+
+    ctx.strokeStyle = `rgba(${rgbCol}, ${0.85 + boost * 0.15})`;
+    ctx.lineWidth = 3.5 + boost * 2;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.lineTo(pLeft, py);
-    ctx.lineTo(pRight, py);
-    ctx.closePath();
-    ctx.fill();
+    ctx.quadraticCurveTo(ctrlX1, ctrlY1, splitX, splitY);
+    ctx.stroke();
 
-    // Laser rays
-    ctx.lineWidth = 1.2 + boost * 0.8;
-    const rayCoords = [
-      pLeft,
-      pLeft + panelRect.width * 0.2,
-      pLeft + panelRect.width * 0.4,
-      px,
-      pLeft + panelRect.width * 0.6,
-      pLeft + panelRect.width * 0.8,
-      pRight
-    ];
-    for (let i = 0; i < rayCoords.length; i++) {
-      const rx = rayCoords[i];
-      const flick = 0.6 + 0.4 * Math.sin(t * 14 + i * 1.8);
-      ctx.globalAlpha = (0.35 + boost * 0.3) * flick;
-      ctx.strokeStyle = `rgb(${rgbCol})`;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      const midX = (cx + rx) / 2 + Math.sin(t * 4 + i) * (8 + boost * 4);
-      const midY = (cy + py) / 2;
-      ctx.quadraticCurveTo(midX, midY, rx, py);
-      ctx.stroke();
+    // 2. Sub-Ramas (Bifurcación hacia 5 anclajes del panel)
+    if (grow > 0.4) {
+      const branchProgress = Math.min(1, (grow - 0.4) / 0.6);
+      const anchors = [
+        pLeft,
+        pLeft + panelRect.width * 0.25,
+        px,
+        pLeft + panelRect.width * 0.75,
+        pRight
+      ];
+
+      for (let i = 0; i < anchors.length; i++) {
+        const ax = splitX + (anchors[i] - splitX) * branchProgress;
+        const ay = splitY + (py - splitY) * branchProgress;
+        const bCtrlX = splitX + Math.sin(t * 3 + i * 1.5) * 15;
+        const bCtrlY = (splitY + ay) / 2;
+
+        const alpha = (0.55 + 0.3 * Math.sin(t * 6 + i * 1.2)) * branchProgress;
+        ctx.globalAlpha = Math.min(1, alpha + boost * 0.3);
+        ctx.strokeStyle = `rgb(${rgbCol})`;
+        ctx.lineWidth = 1.6 + (i === 2 ? 1 : 0);
+
+        ctx.beginPath();
+        ctx.moveTo(splitX, splitY);
+        ctx.quadraticCurveTo(bCtrlX, bCtrlY, ax, ay);
+        ctx.stroke();
+
+        // Nodos de anclaje en el panel
+        if (branchProgress >= 0.95) {
+          ctx.fillStyle = `rgb(${rgbCol})`;
+          ctx.beginPath(); ctx.arc(anchors[i], py, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
     }
 
-    // Energy rings traveling from core to panel
-    const ringCount = isOpening ? 5 : 3;
-    const speed = isOpening ? 1.4 : 0.8;
-    for (let r = 0; r < ringCount; r++) {
-      const progress = ((t * speed + r / ringCount) % 1);
-      const rx = cx + (px - cx) * progress;
-      const ry = cy + (py - cy) * progress;
-      const w = progress * (panelRect.width * 0.65);
-      const h = progress * 16;
-      ctx.globalAlpha = (1 - progress) * (0.5 + boost * 0.3);
-      ctx.strokeStyle = `rgb(${rgbCol})`;
-      ctx.lineWidth = 1 + boost;
-      ctx.beginPath();
-      ctx.ellipse(rx, ry, Math.max(2, w / 2), Math.max(1, h / 2), 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+    // 3. Impulsos de Energía Fluyendo por la Rama (Sparks)
+    const sparkCount = isOpening ? 8 : 4;
+    for (let s = 0; s < sparkCount; s++) {
+      const p = ((t * 1.2 + s / sparkCount) % 1) * grow;
+      let sx, sy;
+      if (p <= 0.55) {
+        // En el tronco
+        const tp = p / 0.55;
+        const inv = 1 - tp;
+        sx = inv * inv * cx + 2 * inv * tp * ctrlX1 + tp * tp * splitX;
+        sy = inv * inv * cy + 2 * inv * tp * ctrlY1 + tp * tp * splitY;
+      } else {
+        // En las sub-ramas
+        const bp = (p - 0.55) / 0.45;
+        const targetX = pLeft + panelRect.width * ((s % 5) / 4);
+        sx = splitX + (targetX - splitX) * bp;
+        sy = splitY + (py - splitY) * bp;
+      }
 
-    if (isOpening) {
-      const scanX = pLeft + (panelRect.width * ((t * 2) % 1));
-      ctx.globalAlpha = boost * 0.8;
+      ctx.globalAlpha = Math.sin(p * Math.PI) * 0.95;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath(); ctx.arc(sx, sy, 2.5 + boost, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = `rgb(${rgbCol})`;
+      ctx.shadowBlur = 12;
       ctx.fillStyle = `rgb(${rgbCol})`;
-      ctx.fillRect(scanX - 30, py - 1, 60, 3);
+      ctx.beginPath(); ctx.arc(sx, sy, 4.5 + boost, 0, Math.PI * 2); ctx.fill();
     }
-    
+
+    ctx.shadowBlur = 0;
     ctx.restore();
   }
 
@@ -2874,10 +2940,17 @@
       const parentPath = parts.join("/") || ".";
       const upCard = document.createElement("div");
       upCard.className = "file-card up-folder";
-      const icon = document.createElement("div"); icon.className = "icon"; icon.textContent = "📁";
-      const name = document.createElement("div"); name.className = "name"; name.textContent = "..";
-      const sub = document.createElement("div"); sub.className = "sub"; sub.textContent = "SUBIR NIVEL";
-      upCard.append(icon, name, sub);
+      upCard.innerHTML = `
+        <div class="node-icon-box">◀</div>
+        <div class="node-info">
+          <div class="node-title">..</div>
+          <div class="node-sub">SUBIR AL NIVEL ANTERIOR</div>
+        </div>
+        <div class="node-tag-box">
+          <span class="cyber-tag up">VOLVER</span>
+          <span class="cyber-arrow">▲</span>
+        </div>
+      `;
       upCard.onclick = () => loadExplorerFiles(parentPath);
       explorerGrid.appendChild(upCard);
     }
@@ -2893,17 +2966,32 @@
     for (const item of filtered) {
       const card = document.createElement("div");
       card.className = `file-card${selectedFileItem?.path === item.path ? " selected" : ""}`;
-      const icon = document.createElement("div");
-      icon.className = "icon";
-      icon.textContent = getFileIcon(item);
-      const name = document.createElement("div");
-      name.className = "name";
-      name.textContent = item.name;
-      const sub = document.createElement("div");
-      sub.className = "sub";
-      sub.textContent = item.is_dir ? "CARPETA" : formatBytes(item.size);
+      
+      const iconBox = document.createElement("div");
+      iconBox.className = "node-icon-box";
+      iconBox.textContent = getFileIcon(item);
 
-      card.append(icon, name, sub);
+      const info = document.createElement("div");
+      info.className = "node-info";
+      const title = document.createElement("div");
+      title.className = "node-title";
+      title.textContent = item.name;
+      const sub = document.createElement("div");
+      sub.className = "node-sub";
+      sub.textContent = item.is_dir ? "NODO CARPETA" : formatBytes(item.size);
+      info.append(title, sub);
+
+      const tagBox = document.createElement("div");
+      tagBox.className = "node-tag-box";
+      const tag = document.createElement("span");
+      tag.className = `cyber-tag ${item.is_dir ? "folder" : "file"}`;
+      tag.textContent = item.is_dir ? "CARPETA" : (item.extension.toUpperCase().replace(".", "") || "ARCHIVO");
+      const arrow = document.createElement("span");
+      arrow.className = "cyber-arrow";
+      arrow.textContent = item.is_dir ? "❯" : "➜";
+      tagBox.append(tag, arrow);
+
+      card.append(iconBox, info, tagBox);
       card.onclick = () => {
         if (item.is_dir) {
           loadExplorerFiles(item.path);
