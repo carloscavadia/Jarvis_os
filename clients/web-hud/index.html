@@ -2766,17 +2766,16 @@
 
   function updateConnectorHelp() {
     const type = document.getElementById("connector-type").value;
-    const help = {
-      home_assistant: [
-        "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa.",
-        "URL base de Home Assistant, normalmente http://IP:8123.",
-      ],
-    }[type] || [
-      "n8n funciona como puente para Gmail, Outlook, WhatsApp y otros servicios.",
-      "Webhook único de n8n que recibe las acciones de JARVIS.",
-    ];
-    document.getElementById("connector-help").textContent = help[0];
-    document.getElementById("connector-url-help").textContent = help[1];
+    const tokenInput = document.getElementById("connector-token");
+    if (type === "home_assistant") {
+      document.getElementById("connector-help").textContent = "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa.";
+      document.getElementById("connector-url-help").textContent = "URL base de Home Assistant, normalmente http://IP:8123.";
+      if (tokenInput) tokenInput.placeholder = "Long-Lived Access Token de Home Assistant";
+    } else {
+      document.getElementById("connector-help").textContent = "n8n funciona como bus de automatización. Soporta JWT Token (Authorization: Bearer <token>) y Header Auth.";
+      document.getElementById("connector-url-help").textContent = "Webhook de n8n (ej: https://n8n.example.com/webhook/jarvis).";
+      if (tokenInput) tokenInput.placeholder = "Token JWT / Key (ej: eyJhbGci... o Bearer ...)";
+    }
   }
 
   function applyConnectorPreset(type) {

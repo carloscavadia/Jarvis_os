@@ -118,16 +118,23 @@ class ConnectorRuntime:
         self, record: ConnectorRecord, action: str, payload: dict[str, Any]
     ) -> ToolResult:
         url = validate_connector_url(str(record.config.get("url", "")))
-        token = str(record.config["_secrets"].get("token", ""))
+        token = str(record.config["_secrets"].get("token", "")).strip()
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json,text/plain",
+            "User-Agent": "JARVIS-OS/0.3 connector-module",
+            "X-Jarvis-Connector-Token": token,
+        }
+        
+        if token:
+            auth_val = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+            headers["Authorization"] = auth_val
+
         return self._request(
             url,
             method="POST",
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json,text/plain",
-                "User-Agent": "JARVIS-OS/0.3 connector-module",
-                "X-Jarvis-Connector-Token": token,
-            },
+            headers=headers,
             payload={
                 "action": action,
                 "payload": payload,
