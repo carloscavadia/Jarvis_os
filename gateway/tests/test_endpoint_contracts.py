@@ -61,8 +61,35 @@ EXPECTED_WEBSOCKETS = {
 }
 
 
+def _walk(routes):
+    """Recorre las rutas resolviendo los routers incluidos.
+
+    FastAPI no vuelca las rutas de un `include_router` en `app.routes`: deja un
+    marcador y las resuelve al enrutar. Mirar solo `app.routes` hacía parecer
+    que un dominio extraído a su router había perdido sus rutas cuando en
+    realidad se servían igual, y ese falso negativo es peor que no medir nada:
+    da por rota una refactorización correcta.
+    """
+    for route in routes:
+        if isinstance(route, (APIRoute, APIWebSocketRoute)):
+            yield route
+        else:
+            # El marcador de inclusión guarda el router original; el nombre
+            # del atributo depende de la versión de FastAPI.
+            inner = getattr(route, "original_router", None) or getattr(
+                route, "router", None
+            )
+            if inner is not None:
+                yield from _walk(inner.routes)
+
+
+def verb(route):
+    """Método principal de una ruta, ignorando los que añade FastAPI sola."""
+    return min(route.methods - {"HEAD", "OPTIONS"})
+
+
 def http_routes():
-    return [r for r in gateway_module.app.routes if isinstance(r, APIRoute)]
+    return [r for r in _walk(gateway_module.app.routes) if isinstance(r, APIRoute)]
 
 
 def test_every_expected_route_is_registered():
@@ -88,7 +115,8 @@ def test_new_routes_are_declared_here_on_purpose():
 
 def test_the_three_websockets_are_registered():
     registered = {
-        r.path for r in gateway_module.app.routes if isinstance(r, APIWebSocketRoute)
+        r.path for r in _walk(gateway_module.app.routes)
+        if isinstance(r, APIWebSocketRoute)
     }
     assert EXPECTED_WEBSOCKETS <= registered
 
@@ -96,14 +124,14 @@ def test_the_three_websockets_are_registered():
 @pytest.mark.parametrize(
     "route",
     [
-        pytest.param(r, id=f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}")
+        pytest.param(r, id=f"{verb(r)} {r.path}")
         for r in http_routes()
         if r.path not in PUBLIC | TOKEN_IN_QUERY | CONNECTOR_KEY
     ],
 )
 def test_every_private_endpoint_rejects_a_request_without_the_key(route):
     """Un endpoint sin llave es una fuga que no se nota hasta que la encuentran."""
-    method = sorted(route.methods - {"HEAD", "OPTIONS"})[0]
+    method = verb(route)
     # Los parámetros de ruta se rellenan con algo inofensivo: lo que importa es
     # que la autenticación corte antes de llegar a mirarlos.
     path = route.path.replace("{task_id}", "1").replace("{goal_id}", "1")
