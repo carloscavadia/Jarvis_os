@@ -2827,6 +2827,10 @@
       document.getElementById("connector-help").textContent = "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa.";
       document.getElementById("connector-url-help").textContent = "URL base de Home Assistant, normalmente http://IP:8123.";
       if (tokenInput) tokenInput.placeholder = "Long-Lived Access Token de Home Assistant";
+    } else if (type === "mcp") {
+      document.getElementById("connector-help").textContent = "Model Context Protocol (MCP): ejecuta herramientas externas via npx/subproceso o endpoint SSE.";
+      document.getElementById("connector-url-help").textContent = "Comando CLI (ej: npx -y @modelcontextprotocol/server-github) o URL SSE (http://...).";
+      if (tokenInput) tokenInput.placeholder = "Env vars en JSON (ej: {\"GITHUB_PERSONAL_ACCESS_TOKEN\":\"ghp_...\"}) o Token";
     } else {
       document.getElementById("connector-help").textContent = "n8n funciona como bus de automatización. Soporta JWT Token (Authorization: Bearer <token>) y Header Auth.";
       document.getElementById("connector-url-help").textContent = "Webhook de n8n (ej: https://n8n.example.com/webhook/jarvis).";
@@ -2839,7 +2843,6 @@
     document.getElementById("connector-type").value = type;
     if (type === "telegram") {
       document.getElementById("connector-name").value = "telegram";
-      // La URL por defecto es la API pública; el token del bot va en CLAVE.
       document.getElementById("connector-url").placeholder = "https://api.telegram.org";
       document.getElementById("connector-url").value = "https://api.telegram.org";
       document.getElementById("connector-services").value = "telegram";
@@ -2851,6 +2854,14 @@
       document.getElementById("connector-services").value = "homeassistant";
       document.getElementById("connector-read").value = "homeassistant.entities, homeassistant.state";
       document.getElementById("connector-write").value = "homeassistant.service";
+    } else if (type === "mcp") {
+      document.getElementById("connector-name").value = "github";
+      document.getElementById("connector-url").placeholder = "npx -y @modelcontextprotocol/server-github";
+      document.getElementById("connector-url").value = "npx -y @modelcontextprotocol/server-github";
+      document.getElementById("connector-token").placeholder = "{\"GITHUB_PERSONAL_ACCESS_TOKEN\": \"ghp_...\"}";
+      document.getElementById("connector-services").value = "mcp, github";
+      document.getElementById("connector-read").value = "mcp_github_search, mcp_github_get_issue";
+      document.getElementById("connector-write").value = "mcp_github_create_issue";
     } else {
       document.getElementById("connector-name").value = "automatizaciones";
       document.getElementById("connector-url").placeholder = "https://n8n.example.com/webhook/jarvis";
@@ -2891,6 +2902,47 @@
   }
 
   async function saveConnectorModule(body) {
+    if (body.type === "mcp") {
+      let transport = "stdio";
+      let command = "";
+      let args = [];
+      let url = "";
+      let env = {};
+
+      if (body.url.startsWith("http://") || body.url.startsWith("https://")) {
+        transport = "sse";
+        url = body.url;
+      } else {
+        transport = "stdio";
+        const parts = body.url.split(/\s+/).filter(Boolean);
+        command = parts[0] || "npx";
+        args = parts.slice(1);
+      }
+
+      if (body.token) {
+        try {
+          env = JSON.parse(body.token);
+        } catch {
+          env = { MCP_SERVER_TOKEN: body.token };
+        }
+      }
+
+      const mcpPayload = {
+        name: body.name,
+        transport,
+        command,
+        args,
+        env,
+        url,
+        enabled: body.enabled !== false,
+      };
+
+      await connectorRequest(`/mcp/servers/${encodeURIComponent(body.name)}`, {
+        method: "PUT", headers: connectorApiHeaders(true), body: JSON.stringify(mcpPayload),
+      });
+      return;
+    }
+
     await connectorRequest(`/connector-modules/${encodeURIComponent(body.name)}`, {
       method: "PUT", headers: connectorApiHeaders(true), body: JSON.stringify(body),
     });
