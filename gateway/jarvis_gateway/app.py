@@ -1952,8 +1952,13 @@ async def _handle_voice_command(
 
 @app.websocket("/ws/{session_id}")
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
-    # Los navegadores no permiten cabeceras WebSocket arbitrarias; el HUB usa ?token=.
-    if not _valid_api_key(websocket.query_params.get("token")):
+    token = websocket.query_params.get("token") or websocket.query_params.get("key")
+    if not _valid_api_key(token):
+        logger.warning(
+            "WebSocket rechazado para sesión '%s': token recibido '%s...' no coincide con JARVIS_GATEWAY_API_KEY",
+            session_id,
+            str(token)[:8] if token else "vacío",
+        )
         await websocket.close(code=1008, reason="Credenciales inválidas")
         return
     if not _SESSION_RE.fullmatch(session_id):

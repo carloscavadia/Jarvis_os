@@ -37,11 +37,11 @@ realtime_voice = RealtimeVoiceBroker(settings)
 
 
 def valid_api_key(candidate: str | None) -> bool:
-    return bool(
-        settings.gateway_api_key
-        and candidate
-        and hmac.compare_digest(candidate, settings.gateway_api_key)
-    )
+    if not settings.gateway_api_key or not candidate:
+        return False
+    c_clean = str(candidate).strip().strip('"').strip("'")
+    k_clean = str(settings.gateway_api_key).strip().strip('"').strip("'")
+    return bool(k_clean and c_clean and hmac.compare_digest(c_clean, k_clean))
 
 
 def valid_connector_key(candidate: str | None) -> bool:

@@ -374,7 +374,7 @@ class Settings:
             max_history_items=max(
                 10, int(os.environ.get("JARVIS_MAX_HISTORY_ITEMS", "80"))
             ),
-            gateway_api_key=os.environ.get("JARVIS_GATEWAY_API_KEY", ""),
+            gateway_api_key=os.environ.get("JARVIS_GATEWAY_API_KEY", "").strip().strip('"').strip("'"),
             gateway_max_message_chars=max(
                 1, int(os.environ.get("JARVIS_GATEWAY_MAX_MESSAGE_CHARS", "16000"))
             ),
