@@ -989,6 +989,35 @@
     box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 20px rgba(53,230,255,0.25);
   }
   .memory-inspector.active { display: block; animation: toast-slide-in 0.25s ease-out; }
+
+  /* ── Modal AI Web Operator ── */
+  .web-op-modal {
+    display: none; position: fixed; z-index: 10; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(720px, calc(100vw - 36px));
+    height: min(75vh, 580px); padding: 18px 22px; border: 1px solid rgba(53, 230, 255, 0.32); border-radius: 16px;
+    background: linear-gradient(135deg, rgba(4, 15, 26, 0.94), rgba(2, 9, 18, 0.96));
+    backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 35px rgba(53,230,255,0.18);
+    font-family: var(--mono); color: var(--text); flex-direction: column; gap: 12px;
+  }
+  .web-op-modal.active { display: flex; animation: workspace-in 0.25s ease-out; }
+  .web-op-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--hairline); padding-bottom: 10px; }
+  .web-op-title { font-size: 11px; letter-spacing: 0.16em; color: var(--core-bright); font-weight: bold; }
+  .web-op-url-bar { display: flex; gap: 10px; }
+  .web-op-url-bar input {
+    flex: 1; background: rgba(0, 4, 9, 0.7); border: 1px solid var(--hairline); border-radius: 8px;
+    padding: 7px 12px; color: var(--text); font: 11px var(--mono); outline: none;
+  }
+  .web-op-url-bar input:focus { border-color: var(--core); box-shadow: 0 0 12px rgba(53,230,255,0.2); }
+  .web-op-url-bar button {
+    border: 1px solid var(--hairline-2); border-radius: 8px; background: rgba(12, 30, 46, 0.8);
+    color: var(--core); padding: 0 16px; cursor: pointer; font: 10px var(--mono); font-weight: bold;
+    letter-spacing: 0.08em; transition: .18s ease;
+  }
+  .web-op-url-bar button:hover { border-color: var(--core); color: #fff; background: rgba(53,230,255,0.2); }
+  .web-op-viewport {
+    flex: 1; border: 1px solid var(--hairline); border-radius: 10px; background: rgba(2, 8, 15, 0.8);
+    overflow-y: auto; padding: 14px; position: relative; font-size: 11px; line-height: 1.6;
+  }
   .config-modal {
     display: none; position: fixed; z-index: 9; inset: 50% auto auto 50%;
     transform: translate(-50%,-50%); width: min(420px, calc(100vw - 36px));
@@ -1143,6 +1172,9 @@
     <button class="dock-btn" id="memory-toggle-btn" type="button" title="Red Neuronal de Memoria">
       <span class="dock-icon">🧠</span> MEMORIA
     </button>
+    <button class="dock-btn" id="web-op-open" type="button" title="AI Web Operator">
+      <span class="dock-icon">🌐</span> NAVEGADOR
+    </button>
   </div>
 
   <!-- Modal Reproductor Navidrome -->
@@ -1175,6 +1207,21 @@
     </div>
     <div class="ha-grid" id="ha-grid">
       <div class="preview-empty">Cargando dispositivos de Home Assistant...</div>
+    </div>
+  </div>
+
+  <!-- Modal AI Web Operator -->
+  <div class="web-op-modal" id="web-op-modal">
+    <div class="web-op-head">
+      <span class="web-op-title">🌐 AI WEB OPERATOR · LIVE SCREENCAST</span>
+      <button class="action-close" id="web-op-close" type="button">×</button>
+    </div>
+    <div class="web-op-url-bar">
+      <input id="web-op-input" type="text" placeholder="https://google.com o ingresar sitio web..." autocomplete="off" />
+      <button id="web-op-go" type="button">NAVEGAR →</button>
+    </div>
+    <div class="web-op-viewport" id="web-op-viewport">
+      <div class="preview-empty">Ingresa una URL para iniciar la navegación autónoma de JARVIS...</div>
     </div>
   </div>
 
@@ -5158,8 +5205,88 @@
     ctx.restore();
   }
 
-  // Detección de intenciones por voz/prompt para abrir matriz domótica o reproductor
-  const originalFormSubmit = document.getElementById("form").onsubmit;
+  // ── 4. AI Web Operator & Live Screencast ──
+  const webOpModal = document.getElementById("web-op-modal");
+  const webOpClose = document.getElementById("web-op-close");
+  const webOpOpenBtn = document.getElementById("web-op-open");
+  const webOpInput = document.getElementById("web-op-input");
+  const webOpGo = document.getElementById("web-op-go");
+  const webOpViewport = document.getElementById("web-op-viewport");
+
+  async function openWebOperator(url = "") {
+    if (webOpModal) webOpModal.classList.add("active");
+    if (url) {
+      if (webOpInput) webOpInput.value = url;
+      await navigateWebOperator(url);
+    }
+  }
+
+  function closeWebOperator() {
+    if (webOpModal) webOpModal.classList.remove("active");
+  }
+
+  async function navigateWebOperator(targetUrl) {
+    if (!targetUrl) return;
+    if (webOpViewport) {
+      webOpViewport.innerHTML = `<div class="preview-empty">Navegando a ${targetUrl} con IA autónoma…</div>`;
+    }
+    try {
+      const data = await connectorRequest("/web/navigate", {
+        method: "POST",
+        headers: connectorApiHeaders(true),
+        body: JSON.stringify({ url: targetUrl })
+      });
+      if (data.success && data.data) {
+        if (webOpViewport) {
+          webOpViewport.innerHTML = `
+            <div style="font-weight: bold; font-size: 13px; color: var(--core-bright); margin-bottom: 8px;">
+              🌐 ${data.data.title}
+            </div>
+            <div style="font-size: 9px; color: var(--muted); margin-bottom: 12px; font-family: var(--mono);">
+              URL: ${data.data.url}
+            </div>
+            <div style="background: rgba(4, 16, 28, 0.7); padding: 12px; border-radius: 8px; border: 1px solid var(--hairline);">
+              ${data.data.preview_text}
+            </div>
+          `;
+        }
+        showHudNotification({ title: "AI WEB OPERATOR", message: `Navegación exitosa: ${data.data.title}`, type: "system" });
+      } else {
+        if (webOpViewport) webOpViewport.innerHTML = `<div class="preview-empty">Error al cargar ${targetUrl}</div>`;
+      }
+    } catch (e) {
+      if (webOpViewport) webOpViewport.innerHTML = `<div class="preview-empty">ERROR · ${e.message}</div>`;
+    }
+  }
+
+  if (webOpGo) webOpGo.onclick = () => navigateWebOperator(webOpInput.value);
+  if (webOpInput) {
+    webOpInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") navigateWebOperator(webOpInput.value);
+    });
+  }
+  if (webOpOpenBtn) webOpOpenBtn.onclick = () => openWebOperator();
+  if (webOpClose) webOpClose.onclick = () => closeWebOperator();
+
+
+  // ── 5. Self-Healing Server & Auto-Repair Routine ──
+  async function checkServerSelfHealing() {
+    try {
+      const data = await connectorRequest("/server/health", { headers: connectorApiHeaders() });
+      if (data.status === "DEGRADED" && data.issues && data.issues.length) {
+        showHudNotification({ title: "SELF-HEALING ACTIVO", message: `Auto-reparando: ${data.issues.join(", ")}`, type: "alert" });
+        await connectorRequest("/server/heal", { method: "POST", headers: connectorApiHeaders(true) });
+      }
+    } catch (e) {
+      console.warn("Auto-healing check error:", e);
+    }
+  }
+
+  // Ejecutar diagnóstico de auto-reparación cada 45s
+  setInterval(checkServerSelfHealing, 45000);
+
+
+  // Detección de intenciones por voz/prompt
   document.getElementById("form").addEventListener("submit", () => {
     const text = (messageInput.value || "").toLowerCase();
     if (text.includes("dispositivos") || text.includes("luces") || text.includes("matriz") || text.includes("hogar")) {
@@ -5167,6 +5294,11 @@
     }
     if (text.includes("musica") || text.includes("música") || text.includes("cancion") || text.includes("navidrome")) {
       setTimeout(openMusicPlayer, 300);
+    }
+    if (text.includes("navega") || text.includes("busca en la web") || text.includes("sitio web") || text.includes("google")) {
+      const match = text.match(/(?:navega a|busca en la web|sitio web)\s+([^\s]+)/i);
+      const url = match ? match[1] : "https://google.com";
+      setTimeout(() => openWebOperator(url), 300);
     }
   });
 
