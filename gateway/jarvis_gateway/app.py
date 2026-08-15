@@ -977,6 +977,186 @@ async def music_cover(cover_id: str, token: str = "", size: int = 256):
     )
 
 
+# ── Endpoints adicionales de Música (Navidrome) ──
+
+@app.get("/music/status", dependencies=[Depends(require_api_key)])
+async def music_status():
+    client = build_navidrome_client(settings)
+    if client is None:
+        return {"enabled": False, "version": None}
+    try:
+        ver = await asyncio.to_thread(client.ping)
+        return {"enabled": True, "version": ver}
+    except Exception as exc:
+        return {"enabled": False, "error": str(exc)}
+
+
+@app.get("/music/playlists", dependencies=[Depends(require_api_key)])
+async def music_playlists():
+    client = build_navidrome_client(settings)
+    if client is None:
+        return {"playlists": []}
+    try:
+        items = await asyncio.to_thread(client.playlists)
+        return {"playlists": items}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/music/playlist/{playlist_id}", dependencies=[Depends(require_api_key)])
+async def music_playlist(playlist_id: str):
+    client = build_navidrome_client(settings)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Música no configurada.")
+    try:
+        data = await asyncio.to_thread(client.playlist, playlist_id)
+        return data
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/music/search", dependencies=[Depends(require_api_key)])
+async def music_search(query: str = "", limit: int = 20):
+    client = build_navidrome_client(settings)
+    if client is None:
+        return {"songs": []}
+    try:
+        songs = await asyncio.to_thread(client.search, query, limit)
+        return {"songs": songs}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get("/music/random", dependencies=[Depends(require_api_key)])
+async def music_random(limit: int = 20):
+    client = build_navidrome_client(settings)
+    if client is None:
+        return {"songs": []}
+    try:
+        songs = await asyncio.to_thread(client.random, limit)
+        return {"songs": songs}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ── Endpoints de Home Assistant Táctil ──
+
+@app.get("/homeassistant/entities", dependencies=[Depends(require_api_key)])
+async def ha_entities():
+    db_path = getattr(settings, "connector_db", "data/jarvis_connectors.db")
+    try:
+        from jarvis_core.connectors.storage import ConnectorStorage
+        storage = ConnectorStorage(db_path)
+        modules = storage.list_modules()
+        ha_module = next((m for m in modules if m.connector_type == "home_assistant"), None)
+        if ha_module:
+            url = ha_module.config.get("url", "").rstrip("/")
+            token = ha_module.config.get("api_key", "") or ha_module.config.get("token", "")
+            if url and token:
+                req = urllib.request.Request(
+                    f"{url}/api/states",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+                )
+                def fetch_ha():
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                        return json.loads(resp.read().decode())
+                data = await asyncio.to_thread(fetch_ha)
+                filtered = []
+                for item in data:
+                    entity_id = item.get("entity_id", "")
+                    domain = entity_id.split(".")[0]
+                    if domain in ("light", "switch", "climate", "media_player", "sensor", "fan"):
+                        filtered.append({
+                            "entity_id": entity_id,
+                            "name": item.get("attributes", {}).get("friendly_name") or entity_id,
+                            "domain": domain,
+                            "state": item.get("state"),
+                            "unit": item.get("attributes", {}).get("unit_of_measurement", "")
+                        })
+                return {"success": True, "entities": filtered}
+    except Exception as exc:
+        logger.warning("Error consultando Home Assistant: %s", exc)
+    return {"success": False, "entities": [], "message": "No hay conector de Home Assistant activo."}
+
+
+class HAToggleRequest(BaseModel):
+    entity_id: str
+
+
+@app.post("/homeassistant/toggle", dependencies=[Depends(require_api_key)])
+async def ha_toggle(req: HAToggleRequest):
+    db_path = getattr(settings, "connector_db", "data/jarvis_connectors.db")
+    try:
+        from jarvis_core.connectors.storage import ConnectorStorage
+        storage = ConnectorStorage(db_path)
+        modules = storage.list_modules()
+        ha_module = next((m for m in modules if m.connector_type == "home_assistant"), None)
+        if ha_module:
+            url = ha_module.config.get("url", "").rstrip("/")
+            token = ha_module.config.get("api_key", "") or ha_module.config.get("token", "")
+            if url and token:
+                domain = req.entity_id.split(".")[0]
+                service = "toggle"
+                service_url = f"{url}/api/services/{domain}/{service}"
+                body_bytes = json.dumps({"entity_id": req.entity_id}).encode("utf-8")
+                request = urllib.request.Request(
+                    service_url,
+                    data=body_bytes,
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    method="POST"
+                )
+                def exec_ha():
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    with urllib.request.urlopen(request, timeout=10, context=ctx) as resp:
+                        return json.loads(resp.read().decode())
+                res = await asyncio.to_thread(exec_ha)
+                return {"success": True, "result": res}
+    except Exception as exc:
+        logger.warning("Error ejecutando toggle en HA: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    raise HTTPException(status_code=404, detail="Home Assistant no disponible.")
+
+
+# ── Endpoint de Red Neuronal de Memoria ──
+
+@app.get("/memory/graph", dependencies=[Depends(require_api_key)])
+async def memory_graph():
+    return {
+        "nodes": [
+            {"id": "user", "label": "USUARIO", "category": "core", "info": "Carlos Sanchez - Administrador de JARVIS OS"},
+            {"id": "system", "label": "JARVIS OS", "category": "core", "info": "Sistema Agéntico Autónomo en Ubuntu + Docker"},
+            {"id": "proxmox", "label": "PROXMOX VE", "category": "server", "info": "Nodo 192.168.68.201:8006 (Monitor Activo)"},
+            {"id": "homeassistant", "label": "HOME ASSISTANT", "category": "domotics", "info": "Matriz Táctil de Dispositivos del Hogar"},
+            {"id": "navidrome", "label": "NAVIDROME", "category": "media", "info": "Servidor Hi-Fi de Música & Visualizador FFT"},
+            {"id": "tasks", "label": "TAREAS & CRON", "category": "automation", "info": "Gestor de Tareas y Eventos Proactivos"},
+        ],
+        "links": [
+            {"source": "user", "target": "system"},
+            {"source": "system", "target": "proxmox"},
+            {"source": "system", "target": "homeassistant"},
+            {"source": "system", "target": "navidrome"},
+            {"source": "system", "target": "tasks"},
+        ]
+    }
+
+
+# ── Endpoint de Enjambre de Subagentes ──
+
+@app.get("/agents/swarm", dependencies=[Depends(require_api_key)])
+async def agents_swarm():
+    return {
+        "active_count": 1,
+        "agents": [
+            {"id": "agent-core", "role": "JARVIS NÚCLEO", "status": "active", "task": "Supervisión de Telemetría & Asistente de Voz"}
+        ]
+    }
+
+
 class WorkspaceCreateRequest(BaseModel):
     path: str
     is_dir: bool = False

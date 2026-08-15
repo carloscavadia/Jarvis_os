@@ -913,13 +913,82 @@
   @keyframes toast-slide-out {
     to { opacity: 0; transform: translateX(16px) scale(0.95); filter: blur(3px); }
   }
-  @keyframes toast-pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.03); border-color: var(--core-bright); }
-    100% { transform: scale(1); }
+  
+  /* ── Modal de Configuración de Conexión ── */
+  .config-modal {
+    display: none; position: fixed; z-index: 9; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(420px, calc(100vw - 36px));
   }
 
-  /* ── Modal de Configuración de Conexión ── */
+  /* ── Reproductor Navidrome Holográfico ── */
+  .music-modal {
+    display: none; position: fixed; z-index: 10; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(420px, calc(100vw - 36px));
+    padding: 18px 20px; border: 1px solid rgba(53, 230, 255, 0.32); border-radius: 16px;
+    background: linear-gradient(135deg, rgba(4, 15, 26, 0.94), rgba(2, 9, 18, 0.96));
+    backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 30px rgba(53,230,255,0.15);
+    font-family: var(--mono); color: var(--text);
+  }
+  .music-modal.active { display: block; animation: workspace-in 0.25s ease-out; }
+  .music-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .music-head-title { font-size: 11px; letter-spacing: 0.16em; color: var(--core-bright); font-weight: bold; }
+  .music-body { display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+  .music-cover-box {
+    width: 130px; height: 130px; border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(53, 230, 255, 0.4); box-shadow: 0 0 25px rgba(53, 230, 255, 0.25);
+    background: rgba(8, 24, 38, 0.8); display: flex; align-items: center; justify-content: center; font-size: 48px;
+  }
+  .music-cover-box img { width: 100%; height: 100%; object-fit: cover; }
+  .music-info { width: 100%; }
+  .music-track-name { font-size: 13px; font-weight: bold; color: #fff; letter-spacing: 0.05em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .music-artist-name { font-size: 10px; color: var(--core); margin-top: 3px; letter-spacing: 0.08em; }
+  .music-controls { display: flex; align-items: center; gap: 14px; margin-top: 8px; }
+  .music-ctrl-btn {
+    border: 1px solid var(--hairline-2); border-radius: 50%; width: 40px; height: 40px;
+    background: rgba(12, 30, 46, 0.8); color: var(--core); cursor: pointer;
+    font-size: 16px; display: flex; align-items: center; justify-content: center; transition: .18s ease;
+  }
+  .music-ctrl-btn:hover { border-color: var(--core); color: #fff; background: rgba(53, 230, 255, 0.2); transform: scale(1.08); }
+  .music-ctrl-btn.play-btn { width: 48px; height: 48px; font-size: 20px; border-color: var(--core); background: rgba(53, 230, 255, 0.15); box-shadow: 0 0 15px rgba(53, 230, 255, 0.3); }
+
+  /* ── Matriz Domótica Táctil de Home Assistant ── */
+  .ha-modal {
+    display: none; position: fixed; z-index: 10; inset: 50% auto auto 50%;
+    transform: translate(-50%,-50%); width: min(680px, calc(100vw - 36px));
+    max-height: min(80vh, 640px); padding: 18px 22px; border: 1px solid rgba(53, 230, 255, 0.32); border-radius: 16px;
+    background: linear-gradient(135deg, rgba(4, 15, 26, 0.94), rgba(2, 9, 18, 0.96));
+    backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,0.7), 0 0 35px rgba(53,230,255,0.18);
+    font-family: var(--mono); color: var(--text); overflow-y: auto; scrollbar-width: thin;
+  }
+  .ha-modal.active { display: block; animation: workspace-in 0.25s ease-out; }
+  .ha-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 1px solid var(--hairline); padding-bottom: 10px; }
+  .ha-head-title { font-size: 12px; letter-spacing: 0.16em; color: var(--core-bright); font-weight: bold; }
+  .ha-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-top: 10px; }
+  .ha-device-card {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 14px; border: 1px solid rgba(53, 230, 255, 0.2); border-radius: 12px;
+    background: rgba(8, 24, 38, 0.65); cursor: pointer; transition: .2s ease; user-select: none;
+  }
+  .ha-device-card:hover { transform: translateY(-2px); border-color: var(--core); background: rgba(14, 38, 58, 0.8); box-shadow: 0 0 18px rgba(53,230,255,0.2); }
+  .ha-device-card.on { border-color: rgba(96, 236, 168, 0.5); background: rgba(10, 40, 30, 0.65); box-shadow: 0 0 15px rgba(96,236,168,0.2); }
+  .ha-dev-icon { font-size: 22px; flex: none; }
+  .ha-dev-info { flex: 1; min-width: 0; }
+  .ha-dev-name { font-size: 11px; font-weight: bold; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ha-dev-sub { font-size: 8.5px; color: var(--muted); margin-top: 2px; }
+  .ha-dev-badge {
+    font-size: 7.5px; padding: 2px 6px; border-radius: 4px; font-weight: bold; letter-spacing: 0.1em;
+  }
+  .ha-dev-badge.on { color: #60eca8; background: rgba(96,236,168,0.15); border: 1px solid rgba(96,236,168,0.3); }
+  .ha-dev-badge.off { color: var(--muted); background: rgba(255,255,255,0.05); border: 1px solid var(--hairline); }
+
+  /* ── Inspector de Nodo de Memoria ── */
+  .memory-inspector {
+    display: none; position: fixed; z-index: 15; bottom: 80px; left: 50%; transform: translateX(-50%);
+    width: min(380px, calc(100vw - 40px)); padding: 12px 16px; border: 1px solid var(--core); border-radius: 12px;
+    background: rgba(4, 16, 28, 0.92); backdrop-filter: blur(16px); font-family: var(--mono);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.6), 0 0 20px rgba(53,230,255,0.25);
+  }
+  .memory-inspector.active { display: block; animation: toast-slide-in 0.25s ease-out; }
   .config-modal {
     display: none; position: fixed; z-index: 9; inset: 50% auto auto 50%;
     transform: translate(-50%,-50%); width: min(420px, calc(100vw - 36px));
@@ -1053,7 +1122,7 @@
     <button id="ws-connect">CONECTAR</button>
   </div>
 
-  <!-- Dock de 3 botones — esquina inferior izquierda -->
+  <!-- Dock de Botones — esquina inferior izquierda -->
   <div class="hud-dock" id="hud-dock">
     <button class="dock-btn link-btn" id="dock-link" type="button" title="Conexión al gateway" aria-expanded="false">
       <span class="conn-dot" id="conn-dot"></span>
@@ -1065,6 +1134,54 @@
     <button class="dock-btn" id="explorer-open" type="button" title="Explorador de archivos">
       <span class="dock-icon">&#128193;</span> ARCHIVOS
     </button>
+    <button class="dock-btn" id="music-open" type="button" title="Reproductor Navidrome">
+      <span class="dock-icon">🎵</span> MÚSICA
+    </button>
+    <button class="dock-btn" id="ha-open" type="button" title="Matriz Táctil Home Assistant">
+      <span class="dock-icon">🏡</span> HOGAR
+    </button>
+    <button class="dock-btn" id="memory-toggle-btn" type="button" title="Red Neuronal de Memoria">
+      <span class="dock-icon">🧠</span> MEMORIA
+    </button>
+  </div>
+
+  <!-- Modal Reproductor Navidrome -->
+  <div class="music-modal" id="music-modal">
+    <div class="music-head">
+      <span class="music-head-title">🎵 REPRODUCTOR NAVIDROME</span>
+      <button class="action-close" id="music-close" type="button">×</button>
+    </div>
+    <div class="music-body">
+      <div class="music-cover-box" id="music-cover-box">🎵</div>
+      <div class="music-info">
+        <div class="music-track-name" id="music-track-name">Selecciona una pista</div>
+        <div class="music-artist-name" id="music-artist-name">NAVIDROME HI-FI STREAM</div>
+      </div>
+      <div class="music-controls">
+        <button class="music-ctrl-btn" id="music-prev" type="button">⏮</button>
+        <button class="music-ctrl-btn play-btn" id="music-play" type="button">▶</button>
+        <button class="music-ctrl-btn" id="music-next" type="button">⏭</button>
+        <button class="music-ctrl-btn" id="music-random" type="button" title="Aleatorio">🎲</button>
+      </div>
+    </div>
+    <audio id="navidrome-audio" crossorigin="anonymous" preload="none"></audio>
+  </div>
+
+  <!-- Modal Matriz Domótica Táctil Home Assistant -->
+  <div class="ha-modal" id="ha-modal">
+    <div class="ha-head">
+      <span class="ha-head-title">🏡 MATRIZ DOMÓTICA · HOME ASSISTANT</span>
+      <button class="action-close" id="ha-close" type="button">×</button>
+    </div>
+    <div class="ha-grid" id="ha-grid">
+      <div class="preview-empty">Cargando dispositivos de Home Assistant...</div>
+    </div>
+  </div>
+
+  <!-- Inspector de Memoria -->
+  <div class="memory-inspector" id="memory-inspector">
+    <div class="toast-title" id="mem-insp-title">NODO DE MEMORIA</div>
+    <div class="toast-msg" id="mem-insp-body" style="margin-top: 4px;">Información almacenada</div>
   </div>
 
   <!-- Banner modo DEMO -->
@@ -1955,6 +2072,21 @@
       amp = lerp(amp, 0, 0.10);
     }
 
+    // Modulador FFT de audio para Navidrome (Hacer bailar el núcleo de JARVIS)
+    if (musicAnalyser && musicPlaying && musicFreqData) {
+      musicAnalyser.getByteFrequencyData(musicFreqData);
+      let bass = 0, mid = 0, treble = 0;
+      for (let i = 0; i < 10; i++) bass += musicFreqData[i];
+      for (let i = 10; i < 40; i++) mid += musicFreqData[i];
+      for (let i = 40; i < 100; i++) treble += musicFreqData[i];
+      bass = bass / 10 / 255;
+      mid = mid / 30 / 255;
+      treble = treble / 60 / 255;
+      amp = Math.max(amp, bass * 1.3);
+      curTurb = Math.max(curTurb, 0.8 + mid * 1.2);
+      curExpand = Math.max(curExpand, treble * 0.45);
+    }
+
     rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
 
     const cx = W / 2, cy = H * 0.46;
@@ -1968,6 +2100,9 @@
     drawEnvironment(cx, cy, R, rgbCol, activity, pulse);
     paintSprite(col.r, col.g, col.b);
     drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
+
+    // Red Neuronal de Memoria en Canvas
+    drawMemoryNeuralGraph(cx, cy, R, rgbCol, t);
 
     // ── enjambre: posiciones (con profundidad + arranque) + halos ──
     ctx.globalCompositeOperation = "lighter";
@@ -4725,6 +4860,316 @@
   });
 
   // Conexión automática: con config.js, guardando/recuperando clave Y url.
+  // ── 1. Navidrome Player & Web Audio API Visualizer ──
+  const musicModal = document.getElementById("music-modal");
+  const musicClose = document.getElementById("music-close");
+  const musicOpenBtn = document.getElementById("music-open");
+  const musicAudio = document.getElementById("navidrome-audio");
+  const musicPlayBtn = document.getElementById("music-play");
+  const musicTrackName = document.getElementById("music-track-name");
+  const musicArtistName = document.getElementById("music-artist-name");
+  const musicCoverBox = document.getElementById("music-cover-box");
+  const musicPrevBtn = document.getElementById("music-prev");
+  const musicNextBtn = document.getElementById("music-next");
+  const musicRandomBtn = document.getElementById("music-random");
+
+  let musicQueue = [];
+  let currentMusicIdx = 0;
+  let musicAudioCtx = null;
+  let musicAnalyser = null;
+  let musicFreqData = null;
+  let musicPlaying = false;
+
+  function initMusicAudioContext() {
+    if (musicAudioCtx || !musicAudio) return;
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      musicAudioCtx = new AudioContextClass();
+      musicAnalyser = musicAudioCtx.createAnalyser();
+      musicAnalyser.fftSize = 256;
+      musicFreqData = new Uint8Array(musicAnalyser.frequencyBinCount);
+      const source = musicAudioCtx.createMediaElementSource(musicAudio);
+      source.connect(musicAnalyser);
+      musicAnalyser.connect(musicAudioCtx.destination);
+    } catch (e) {
+      console.warn("Web Audio API no soportado para el visualizador:", e);
+    }
+  }
+
+  async function openMusicPlayer() {
+    if (musicModal) musicModal.classList.add("active");
+    if (!musicQueue.length) {
+      await loadRandomMusic();
+    }
+  }
+
+  function closeMusicPlayer() {
+    if (musicModal) musicModal.classList.remove("active");
+  }
+
+  async function loadRandomMusic() {
+    try {
+      if (musicTrackName) musicTrackName.textContent = "Cargando biblioteca Navidrome…";
+      const data = await connectorRequest("/music/random?limit=15", { headers: connectorApiHeaders() });
+      if (data.songs && data.songs.length) {
+        musicQueue = data.songs;
+        currentMusicIdx = 0;
+        playTrack(musicQueue[0]);
+      } else {
+        if (musicTrackName) musicTrackName.textContent = "Sin canciones en Navidrome";
+        if (musicArtistName) musicArtistName.textContent = "Configura JARVIS_NAVIDROME_URL en .env";
+      }
+    } catch (err) {
+      if (musicTrackName) musicTrackName.textContent = "Sin conexión a Navidrome";
+      if (musicArtistName) musicArtistName.textContent = err.message;
+    }
+  }
+
+  function playTrack(song) {
+    if (!song || !musicAudio) return;
+    initMusicAudioContext();
+    if (musicAudioCtx && musicAudioCtx.state === "suspended") {
+      musicAudioCtx.resume();
+    }
+    if (musicTrackName) musicTrackName.textContent = song.title || "Pista sin título";
+    if (musicArtistName) musicArtistName.textContent = (song.artist || "Artista desconocido") + (song.album ? ` · ${song.album}` : "");
+    if (musicCoverBox) {
+      if (song.cover_art) {
+        const coverUrl = `${gatewayHttpBase()}/music/cover/${encodeURIComponent(song.cover_art)}?token=${encodeURIComponent(hubKey())}`;
+        musicCoverBox.innerHTML = `<img src="${coverUrl}" alt="Album cover" />`;
+      } else {
+        musicCoverBox.innerHTML = "🎵";
+      }
+    }
+    const streamUrl = `${gatewayHttpBase()}/music/stream/${encodeURIComponent(song.id)}?token=${encodeURIComponent(hubKey())}`;
+    musicAudio.src = streamUrl;
+    musicAudio.play().then(() => {
+      musicPlaying = true;
+      if (musicPlayBtn) musicPlayBtn.textContent = "⏸";
+      showHudNotification({ title: "REPRODUCIENDO NAVIDROME", message: song.title, type: "task" });
+    }).catch(() => {
+      musicPlaying = false;
+      if (musicPlayBtn) musicPlayBtn.textContent = "▶";
+    });
+  }
+
+  if (musicPlayBtn) {
+    musicPlayBtn.onclick = () => {
+      if (!musicAudio.src) {
+        if (musicQueue.length) playTrack(musicQueue[currentMusicIdx]);
+        else loadRandomMusic();
+        return;
+      }
+      if (musicAudio.paused) {
+        musicAudio.play();
+        musicPlaying = true;
+        musicPlayBtn.textContent = "⏸";
+      } else {
+        musicAudio.pause();
+        musicPlaying = false;
+        musicPlayBtn.textContent = "▶";
+      }
+    };
+  }
+
+  if (musicNextBtn) {
+    musicNextBtn.onclick = () => {
+      if (!musicQueue.length) return;
+      currentMusicIdx = (currentMusicIdx + 1) % musicQueue.length;
+      playTrack(musicQueue[currentMusicIdx]);
+    };
+  }
+
+  if (musicPrevBtn) {
+    musicPrevBtn.onclick = () => {
+      if (!musicQueue.length) return;
+      currentMusicIdx = (currentMusicIdx - 1 + musicQueue.length) % musicQueue.length;
+      playTrack(musicQueue[currentMusicIdx]);
+    };
+  }
+
+  if (musicRandomBtn) musicRandomBtn.onclick = () => loadRandomMusic();
+  if (musicOpenBtn) musicOpenBtn.onclick = () => openMusicPlayer();
+  if (musicClose) musicClose.onclick = () => closeMusicPlayer();
+
+  if (musicAudio) {
+    musicAudio.onended = () => {
+      if (musicQueue.length) {
+        currentMusicIdx = (currentMusicIdx + 1) % musicQueue.length;
+        playTrack(musicQueue[currentMusicIdx]);
+      }
+    };
+  }
+
+
+  // ── 2. Matriz Domótica Táctil de Home Assistant ──
+  const haModal = document.getElementById("ha-modal");
+  const haClose = document.getElementById("ha-close");
+  const haOpenBtn = document.getElementById("ha-open");
+  const haGrid = document.getElementById("ha-grid");
+
+  async function openHAMatrix() {
+    if (haModal) haModal.classList.add("active");
+    if (haGrid) haGrid.innerHTML = `<div class="preview-empty">Cargando matriz domótica de Home Assistant…</div>`;
+    try {
+      const data = await connectorRequest("/homeassistant/entities", { headers: connectorApiHeaders() });
+      if (data.success && data.entities && data.entities.length) {
+        renderHAGrid(data.entities);
+      } else {
+        if (haGrid) {
+          haGrid.innerHTML = `
+            <div class="preview-empty" style="grid-column: 1 / -1;">
+              NO HAY DISPOSITIVOS REGISTRADOS<br/>
+              <span style="font-size: 9px; color: var(--muted);">Conecta Home Assistant desde el botón ⚡ CONECTORES</span>
+            </div>
+          `;
+        }
+      }
+    } catch (err) {
+      if (haGrid) haGrid.innerHTML = `<div class="preview-empty" style="grid-column: 1 / -1;">ERROR · ${err.message}</div>`;
+    }
+  }
+
+  function closeHAMatrix() {
+    if (haModal) haModal.classList.remove("active");
+  }
+
+  function renderHAGrid(entities) {
+    if (!haGrid) return;
+    haGrid.replaceChildren();
+    for (const ent of entities) {
+      const card = document.createElement("div");
+      const isOn = ["on", "home", "playing", "open"].includes(String(ent.state || "").toLowerCase());
+      card.className = `ha-device-card${isOn ? " on" : ""}`;
+
+      const iconText = ent.domain === "light" ? "💡" : ent.domain === "switch" ? "🔌" : ent.domain === "climate" ? "🌡️" : ent.domain === "media_player" ? "📺" : ent.domain === "fan" ? "🌀" : "📊";
+      
+      const icon = document.createElement("div"); icon.className = "ha-dev-icon"; icon.textContent = iconText;
+      
+      const info = document.createElement("div"); info.className = "ha-dev-info";
+      const name = document.createElement("div"); name.className = "ha-dev-name"; name.textContent = ent.name;
+      const sub = document.createElement("div"); sub.className = "ha-dev-sub"; sub.textContent = ent.entity_id;
+      info.append(name, sub);
+
+      const badge = document.createElement("span");
+      badge.className = `ha-dev-badge ${isOn ? "on" : "off"}`;
+      badge.textContent = ent.unit ? `${ent.state} ${ent.unit}` : (isOn ? "🟢 ON" : "🔴 OFF");
+
+      card.append(icon, info, badge);
+
+      card.onclick = async () => {
+        card.style.opacity = "0.6";
+        try {
+          await connectorRequest("/homeassistant/toggle", {
+            method: "POST",
+            headers: connectorApiHeaders(true),
+            body: JSON.stringify({ entity_id: ent.entity_id })
+          });
+          showHudNotification({ title: "HOME ASSISTANT", message: `Conmutado ${ent.name}`, type: "task" });
+          setTimeout(openHAMatrix, 600);
+        } catch (e) {
+          showHudNotification({ title: "ERROR DOMÓTICA", message: e.message, type: "alert" });
+        } finally {
+          card.style.opacity = "1";
+        }
+      };
+
+      haGrid.appendChild(card);
+    }
+  }
+
+  if (haOpenBtn) haOpenBtn.onclick = () => openHAMatrix();
+  if (haClose) haClose.onclick = () => closeHAMatrix();
+
+
+  // ── 3. Red Neuronal de Memoria en Canvas ──
+  const memoryToggleBtn = document.getElementById("memory-toggle-btn");
+  const memoryInspector = document.getElementById("memory-inspector");
+  const memInspTitle = document.getElementById("mem-insp-title");
+  const memInspBody = document.getElementById("mem-insp-body");
+
+  let memoryGraphActive = false;
+  let memoryGraphData = { nodes: [], links: [] };
+
+  async function toggleMemoryGraph() {
+    memoryGraphActive = !memoryGraphActive;
+    if (memoryToggleBtn) memoryToggleBtn.classList.toggle("active", memoryGraphActive);
+    if (memoryGraphActive) {
+      showHudNotification({ title: "RED NEURONAL DE MEMORIA", message: "Nodos de conocimiento visibles en Canvas", type: "system" });
+      try {
+        const data = await connectorRequest("/memory/graph", { headers: connectorApiHeaders() });
+        memoryGraphData = data;
+      } catch (e) {
+        console.warn("No se pudo cargar la red de memoria:", e);
+      }
+    } else {
+      if (memoryInspector) memoryInspector.classList.remove("active");
+      showHudNotification({ title: "RED DE MEMORIA", message: "Vista desactivada", type: "system" });
+    }
+  }
+
+  if (memoryToggleBtn) memoryToggleBtn.onclick = () => toggleMemoryGraph();
+
+  function drawMemoryNeuralGraph(cx, cy, R, rgbCol, t) {
+    if (!memoryGraphActive || !memoryGraphData.nodes || !memoryGraphData.nodes.length) return;
+    const nodes = memoryGraphData.nodes;
+    const links = memoryGraphData.links || [];
+    const count = nodes.length;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    const nodeCoords = {};
+    for (let i = 0; i < count; i++) {
+      const node = nodes[i];
+      const angle = (i / count) * Math.PI * 2 + t * 0.15;
+      const dist = R * (0.85 + 0.15 * Math.sin(t * 1.5 + i));
+      const nx = cx + Math.cos(angle) * dist;
+      const ny = cy + Math.sin(angle) * dist * 0.65;
+      nodeCoords[node.id] = { x: nx, y: ny, node };
+    }
+
+    ctx.strokeStyle = `rgba(${rgbCol}, 0.35)`;
+    ctx.lineWidth = 1.2;
+    for (const link of links) {
+      const src = nodeCoords[link.source];
+      const tgt = nodeCoords[link.target];
+      if (src && tgt) {
+        ctx.beginPath();
+        ctx.moveTo(src.x, src.y);
+        ctx.lineTo(tgt.x, tgt.y);
+        ctx.stroke();
+      }
+    }
+
+    for (const id in nodeCoords) {
+      const { x, y, node } = nodeCoords[id];
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = `rgb(${rgbCol})`;
+      ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = `rgb(${rgbCol})`;
+      ctx.font = "9px var(--mono)";
+      ctx.fillText(node.label, x + 8, y + 3);
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // Detección de intenciones por voz/prompt para abrir matriz domótica o reproductor
+  const originalFormSubmit = document.getElementById("form").onsubmit;
+  document.getElementById("form").addEventListener("submit", () => {
+    const text = (messageInput.value || "").toLowerCase();
+    if (text.includes("dispositivos") || text.includes("luces") || text.includes("matriz") || text.includes("hogar")) {
+      setTimeout(openHAMatrix, 300);
+    }
+    if (text.includes("musica") || text.includes("música") || text.includes("cancion") || text.includes("navidrome")) {
+      setTimeout(openMusicPlayer, 300);
+    }
+  });
+
   (function autoConnect() {
     if (CONFIG.hubKey) {
       tokenInput.value = "";
