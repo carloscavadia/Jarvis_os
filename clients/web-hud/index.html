@@ -4199,7 +4199,7 @@
   }
 
   function startConversationFollowUp() {
-    if (!voiceEnabled || busy || !ws || ws.readyState !== WebSocket.OPEN) {
+    if (!voiceEnabled || busy || voiceActive || speechQueueRunning || speechQueue.length > 0 || (canSpeak && speechSynthesis.speaking) || !ws || ws.readyState !== WebSocket.OPEN) {
       scheduleWakeListening();
       return;
     }
@@ -4799,7 +4799,9 @@
   }
 
   async function startServerRecording({ automatic = false, followUp = false } = {}) {
-    cancelSpeechQueue(); // Interrupción por voz (Barge-in): silenciar a JARVIS de inmediato
+    if (!followUp && !automatic) {
+      cancelSpeechQueue(); // Interrupción por voz (Barge-in): silenciar a JARVIS de inmediato si el usuario pulsa manualmente
+    }
     stopWakeListening();
     try {
       recorderStream = await navigator.mediaDevices.getUserMedia({
