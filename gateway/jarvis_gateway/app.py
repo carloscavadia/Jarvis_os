@@ -673,6 +673,58 @@ async def delete_mcp_server(name: str) -> dict[str, object]:
     return {"name": name, "deleted": deleted}
 
 
+class SkillRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    title: str = Field("", max_length=100)
+    trigger: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=500)
+    content: str = Field(..., min_length=1, max_length=20000)
+    skill_type: str = Field("instruction", pattern="^(instruction|python)$")
+    enabled: bool = True
+
+
+@app.get("/skills", dependencies=[Depends(require_api_key)])
+async def list_skills() -> list[dict[str, object]]:
+    return [s.to_dict() for s in sessions.skill_store.list_all()]
+
+
+@app.post("/skills/learn", dependencies=[Depends(require_api_key)])
+async def learn_skill_endpoint(req: SkillRequest) -> dict[str, object]:
+    from jarvis_core.skills.learning_engine import SelfLearningEngine
+    engine = SelfLearningEngine(sessions.skill_store, sessions.skill_manager)
+    record = engine.learn_new_skill(
+        name=req.name,
+        title=req.title,
+        trigger=req.trigger,
+        description=req.description,
+        content=req.content,
+        skill_type=req.skill_type,
+    )
+    await sessions.refresh_tools()
+    return {"name": record.name, "learned": True}
+
+
+@app.post("/skills/{name}/toggle", dependencies=[Depends(require_api_key)])
+async def toggle_skill(name: str) -> dict[str, object]:
+    record = sessions.skill_store.get(name)
+    if not record:
+        raise HTTPException(status_code=404, detail="Habilidad no encontrada.")
+    new_state = not record.enabled
+    sessions.skill_store.set_enabled(name, new_state)
+    sessions.skill_manager.sync_tools()
+    await sessions.refresh_tools()
+    return {"name": name, "enabled": new_state}
+
+
+@app.delete("/skills/{name}", dependencies=[Depends(require_api_key)])
+async def delete_skill(name: str) -> dict[str, object]:
+    deleted = sessions.skill_store.delete(name)
+    if deleted:
+        sessions.skill_manager.sync_tools()
+        await sessions.refresh_tools()
+    return {"name": name, "deleted": deleted}
+
+
 @app.get("/goals/current", dependencies=[Depends(require_api_key)])
 async def current_goal() -> dict[str, object]:
     goal = sessions.goals.current()

@@ -18,6 +18,7 @@ from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.mcp import MCPManager, MCPStore
+from jarvis_core.skills import SkillManager, SkillStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin import build_default_registry
@@ -35,6 +36,8 @@ class SessionManager:
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
         self.mcp_store = MCPStore(getattr(settings, "mcp_db_path", "/app/data/jarvis_mcp.db"))
         self.mcp_manager = MCPManager(self.mcp_store)
+        self.skill_store = SkillStore(getattr(settings, "skills_db_path", "/app/data/jarvis_skills.db"))
+        self.skill_manager = SkillManager(self.skill_store)
         self._sessions: dict[str, Orchestrator] = {}
         # Se conserva el estado emocional de cada sesión para poder rehacer sus
         # herramientas sin perder el color que JARVIS tenga en ese momento.
@@ -65,6 +68,7 @@ class SessionManager:
                     connector_store=self.connector_store,
                     goals=self.goals,
                     mcp_manager=self.mcp_manager,
+                    skill_manager=self.skill_manager,
                 )
                 orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
                 self._sessions[session_id] = orch
@@ -102,6 +106,7 @@ class SessionManager:
             connector_store=self.connector_store,
             goals=self.goals,
             mcp_manager=self.mcp_manager,
+            skill_manager=self.skill_manager,
         )
 
     def reset(self, session_id: str) -> None:

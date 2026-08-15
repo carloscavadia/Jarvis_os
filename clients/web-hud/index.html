@@ -1312,6 +1312,11 @@
         <div class="connector-help">Conecta servidores MCP locales (npx/STDIO) o remotos (SSE/n8n) para extender a JARVIS.</div>
         <div class="module-list" id="mcp-server-list"></div>
       </section>
+      <section class="connector-section">
+        <div class="connector-section-title"><span>🧠 HABILIDADES APRENDIDAS (AUTO-APRENDIZAJE)</span><button id="skills-refresh" type="button">ACTUALIZAR</button></div>
+        <div class="connector-help">Habilidades y conocimientos aprendidos automáticamente por JARVIS o registrados manualmente.</div>
+        <div class="module-list" id="skills-list"></div>
+      </section>
       <section class="connector-section connector-activity">
         <div class="connector-section-title"><span>ACTIVIDAD RECIENTE</span><span>02</span></div>
         <div class="event-list" id="connector-events"></div>
@@ -3001,7 +3006,43 @@
       setConnectorStatus(modules.length ? `${modules.length} CONECTOR(ES) DISPONIBLE(S)` : "SIN CONECTORES · USA UNA PLANTILLA PARA COMENZAR");
       refreshConnectorEvents();
       refreshMCPServers();
+      refreshSkillsList();
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+  }
+
+  async function refreshSkillsList() {
+    const listEl = document.getElementById("skills-list");
+    if (!listEl) return;
+    try {
+      const skills = await connectorRequest("/skills", { headers: connectorApiHeaders() });
+      listEl.replaceChildren();
+      for (const skill of skills) {
+        const card = document.createElement("div"); card.className = `module-card${skill.enabled ? "" : " disabled"}`;
+        const info = document.createElement("div"); info.className = "module-info";
+        const name = document.createElement("div"); name.className = "module-name"; name.textContent = `${skill.enabled ? "●" : "○"} ${skill.name.toUpperCase()} · ${skill.skill_type.toUpperCase()}`;
+        const meta = document.createElement("div"); meta.className = "module-meta";
+        meta.textContent = `Trigger: "${skill.trigger}" · Usos: ${skill.usage_count} · ${skill.description}`;
+        info.append(name, meta);
+        const buttons = document.createElement("div"); buttons.className = "module-buttons";
+        const toggleBtn = document.createElement("button"); toggleBtn.textContent = skill.enabled ? "PAUSAR" : "ACTIVAR";
+        toggleBtn.onclick = async () => {
+          try {
+            await connectorRequest(`/skills/${encodeURIComponent(skill.name)}/toggle`, { method: "POST", headers: connectorApiHeaders() });
+            refreshSkillsList();
+          } catch (e) { alert(`Error: ${e.message}`); }
+        };
+        const removeBtn = document.createElement("button"); removeBtn.textContent = "ELIMINAR";
+        removeBtn.onclick = async () => {
+          if (!confirm(`¿Eliminar la habilidad ${skill.name}?`)) return;
+          try {
+            await connectorRequest(`/skills/${encodeURIComponent(skill.name)}`, { method: "DELETE", headers: connectorApiHeaders() });
+            refreshSkillsList();
+          } catch (e) { alert(`Error: ${e.message}`); }
+        };
+        buttons.append(toggleBtn, removeBtn); card.append(info, buttons); listEl.appendChild(card);
+      }
+      if (!skills.length) listEl.textContent = "SIN HABILIDADES REGISTRADAS · JARVIS APRENDERÁ AL RESOLVER TAREAS";
+    } catch (e) { listEl.textContent = `NO DISPONIBLE · ${e.message}`; }
   }
 
   async function refreshMCPServers() {

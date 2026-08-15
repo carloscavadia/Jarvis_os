@@ -72,6 +72,7 @@ def build_default_registry(
     connector_store: ConnectorStore | None = None,
     goals: GoalStore | None = None,
     mcp_manager: Any = None,
+    skill_manager: Any = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -148,5 +149,18 @@ def build_default_registry(
     if mcp_manager is not None:
         for mcp_tool in mcp_manager.get_registered_tools():
             registry.register(mcp_tool)
+    if skill_manager is not None:
+        from jarvis_core.skills.learning_engine import SelfLearningEngine
+        from jarvis_core.tools.builtin.skill_tools import (
+            ExecuteSkillTool,
+            LearnSkillTool,
+            ListSkillsTool,
+        )
+        engine = SelfLearningEngine(skill_manager.store, skill_manager)
+        registry.register(LearnSkillTool(engine))
+        registry.register(ListSkillsTool(skill_manager.store))
+        registry.register(ExecuteSkillTool(skill_manager))
+        for skill_tool in skill_manager.get_registered_tools():
+            registry.register(skill_tool)
     register_music_tools(registry, build_navidrome_client(settings))
     return registry
