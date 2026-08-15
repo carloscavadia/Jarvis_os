@@ -293,10 +293,13 @@ class ConnectorRuntime:
         record = self.store.get(connector)
         if record is None or not record.enabled:
             return ToolResult("El módulo no existe o está desactivado.", is_error=True)
-        allowed_key = "write_actions" if write else "read_actions"
-        allowed_actions = set(record.config.get(allowed_key, []))
+        read_actions = set(record.config.get("read_actions", []))
+        write_actions = set(record.config.get("write_actions", []))
+        allowed_actions = set(write_actions if write else read_actions)
         if record.connector_type == "home_assistant" and not write:
             allowed_actions.update(self.HOME_ASSISTANT_READ_ACTIONS)
+        if record.connector_type == "n8n":
+            allowed_actions = read_actions | write_actions
         if action not in allowed_actions:
             return ToolResult("Acción no permitida para este módulo.", is_error=True)
         if record.connector_type == "n8n":
