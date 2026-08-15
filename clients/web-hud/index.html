@@ -1239,10 +1239,11 @@
         <div class="connector-presets">
           <button type="button" data-connector-preset="n8n">PLANTILLA N8N</button>
           <button type="button" data-connector-preset="home_assistant">PLANTILLA HOME ASSISTANT</button>
+          <button type="button" data-connector-preset="telegram">PLANTILLA TELEGRAM</button>
         </div>
         <div class="connector-form">
           <label>NOMBRE<input id="connector-name" placeholder="mi_n8n" maxlength="32" /><small>Identificador interno, sin espacios.</small></label>
-          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option></select><small>Define cómo se prueba y ejecuta.</small></label>
+          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="telegram">Telegram</option></select><small>Define cómo se prueba y ejecuta.</small></label>
           <label class="wide">URL DEL ENDPOINT<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /><small id="connector-url-help">Webhook único que recibe las acciones de JARVIS.</small></label>
           <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Obligatorio al crear · vacío conserva la clave al editar" autocomplete="new-password" /><small>Se cifra en el servidor y nunca vuelve al navegador.</small></label>
           <label class="wide">SERVICIOS DISPONIBLES<input id="connector-services" placeholder="gmail, outlook, whatsapp" /><small>Lista descriptiva separada por comas.</small></label>
@@ -2771,7 +2772,15 @@
   function applyConnectorPreset(type) {
     clearConnectorForm();
     document.getElementById("connector-type").value = type;
-    if (type === "home_assistant") {
+    if (type === "telegram") {
+      document.getElementById("connector-name").value = "telegram";
+      // La URL por defecto es la API pública; el token del bot va en CLAVE.
+      document.getElementById("connector-url").placeholder = "https://api.telegram.org";
+      document.getElementById("connector-url").value = "https://api.telegram.org";
+      document.getElementById("connector-services").value = "telegram";
+      document.getElementById("connector-read").value = "telegram.me, telegram.updates";
+      document.getElementById("connector-write").value = "telegram.send";
+    } else if (type === "home_assistant") {
       document.getElementById("connector-name").value = "casa";
       document.getElementById("connector-url").placeholder = "http://homeassistant.local:8123";
       document.getElementById("connector-services").value = "homeassistant";

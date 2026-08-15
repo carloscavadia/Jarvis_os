@@ -414,12 +414,16 @@ class ProactiveDecisionRequest(BaseModel):
 
 class ConnectorModuleRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
-    type: str = Field(pattern=r"^(n8n|home_assistant)$")
+    type: str = Field(pattern=r"^(n8n|home_assistant|telegram)$")
     url: str = Field(min_length=8, max_length=2000)
     token: str = Field(default="", max_length=8192)
     services: list[str] = Field(default_factory=list, max_length=64)
     read_actions: list[str] = Field(default_factory=list, max_length=128)
     write_actions: list[str] = Field(default_factory=list, max_length=128)
+    # Telegram: destino por defecto y lista blanca opcional de chats. La
+    # aprobación humana ya cubre «no envíes esto»; esto cubre «no lo envíes ahí».
+    default_chat_id: str = Field(default="", max_length=64, pattern=r"^-?[0-9]*$")
+    chat_ids: list[str] = Field(default_factory=list, max_length=32)
     enabled: bool = True
 
 
@@ -570,6 +574,9 @@ async def register_connector_module(
             "read_actions": sorted(set(req.read_actions)),
             "write_actions": sorted(set(req.write_actions)),
         }
+        if req.type == "telegram":
+            config["default_chat_id"] = req.default_chat_id
+            config["chat_ids"] = sorted({str(chat) for chat in req.chat_ids if chat})
         store.upsert(
             req.name,
             req.type,

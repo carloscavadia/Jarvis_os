@@ -15,7 +15,7 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
-SUPPORTED_TYPES = {"n8n", "home_assistant"}
+SUPPORTED_TYPES = {"n8n", "home_assistant", "telegram"}
 
 
 @dataclass(frozen=True)
@@ -126,6 +126,8 @@ class ConnectorStore:
             read_actions = list(config.get("read_actions", []))
             if row[1] == "home_assistant" and "homeassistant.entities" not in read_actions:
                 read_actions.append("homeassistant.entities")
+            if row[1] == "telegram" and "telegram.me" not in read_actions:
+                read_actions.append("telegram.me")
             result.append({
                 "name": row[0],
                 "type": row[1],

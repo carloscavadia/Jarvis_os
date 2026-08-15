@@ -217,3 +217,42 @@ JARVIS_CONNECTOR_ALLOWED_USER_HASHES=HASH_SHA256
 Si n8n está fuera de la red privada, usa HTTPS. La URL se configura únicamente en el
 servidor y no puede ser elegida por el modelo; las redirecciones y respuestas demasiado
 grandes se bloquean.
+
+
+## Telegram
+
+Un tipo de módulo nativo, como Home Assistant: no necesita n8n por medio.
+
+### Alta
+
+1. Habla con [@BotFather](https://t.me/BotFather) en Telegram, `/newbot`, y copia
+   el token que te da. Tiene la forma `123456789:AA...`.
+2. Escríbele algo a tu bot desde tu cuenta (un bot no puede iniciar la
+   conversación; hasta que no le escribes, no puede responderte).
+3. En el HUD, **Conectores → PLANTILLA TELEGRAM**, pega el token en CLAVE y
+   guarda. El botón «probar» llama a `getMe` e identifica al bot.
+
+### Acciones
+
+| Acción | Tipo | Para qué |
+|---|---|---|
+| `telegram.me` | lectura | Identifica al bot. Siempre disponible; es la que usa «probar». |
+| `telegram.updates` | lectura | Mensajes recientes recibidos por el bot. `limit` hasta 100. |
+| `telegram.send` | **escritura** | Envía un mensaje. Pide aprobación en el HUD. |
+
+`telegram.send` acepta `chat_id` y `text`. Si el módulo declara un
+`default_chat_id`, puedes omitir `chat_id` y va ahí.
+
+### Dos protecciones que conviene conocer
+
+**El token va en la ruta**, no en una cabecera: así lo define la Bot API. Por eso
+ningún mensaje de error incluye la URL construida —filtraría la credencial en la
+traza del HUD y en el registro— y el token se valida contra su formato
+(`<id>:<secreto>`) antes de usarse, de modo que uno inventado con barras no puede
+colarse como otro tramo de la URL.
+
+**La lista de chats es opcional pero manda.** La aprobación humana cubre «no
+envíes esto»; `chat_ids` cubre «no lo envíes ahí». Con la lista puesta, un
+`telegram.send` a un chat que no esté en ella se rechaza antes de salir a la red.
+Es la diferencia entre revisar el contenido y revisar el destinatario, y con un
+agente que lee páginas web conviene tener las dos.

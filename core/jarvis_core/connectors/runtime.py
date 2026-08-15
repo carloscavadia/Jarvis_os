@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import ssl
 import urllib.error
 import urllib.request
@@ -29,6 +30,13 @@ def validate_connector_url(raw_url: str) -> str:
     return urlunsplit(parsed)
 
 
+#: Formato de un token de bot: `<id numérico>:<secreto>`. Validarlo es lo que
+#: permite ponerlo crudo en la ruta sin codificar —codificar el `:` lo
+#: convertiría en %3A— y a la vez impide que un token inventado con barras se
+#: cuele como otro tramo de la URL.
+_TELEGRAM_TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{20,}$")
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -38,6 +46,10 @@ class ConnectorRuntime:
     HOME_ASSISTANT_READ_ACTIONS: ClassVar[frozenset[str]] = frozenset(
         {"homeassistant.entities"}
     )
+    #: Comprobar la identidad del bot no lee mensajes ni cambia nada, así que
+    #: está siempre disponible: es lo que usa el botón «probar» del panel.
+    TELEGRAM_READ_ACTIONS: ClassVar[frozenset[str]] = frozenset({"telegram.me"})
+    TELEGRAM_API: ClassVar[str] = "https://api.telegram.org"
 
     def __init__(
         self,
@@ -155,6 +167,84 @@ class ConnectorRuntime:
                 "source": "jarvis_os",
             },
         )
+
+    def _telegram(
+        self, record: ConnectorRecord, action: str, payload: dict[str, Any]
+    ) -> ToolResult:
+        """Bot API de Telegram.
+
+        Aquí el token viaja en la ruta (`/bot<token>/metodo`) y no en una
+        cabecera, que es como lo define el protocolo. Por eso la URL construida
+        nunca se incluye en un mensaje de error: sería filtrar la credencial en
+        la traza del HUD y en el registro del servidor.
+        """
+        base = validate_connector_url(
+            str(record.config.get("url", "")) or self.TELEGRAM_API
+        ).rstrip("/")
+        token = str(record.config["_secrets"].get("token", "")).strip()
+        if not token:
+            return ToolResult("Falta el token del bot de Telegram.", is_error=True)
+        if not _TELEGRAM_TOKEN_RE.fullmatch(token):
+            return ToolResult(
+                "El token del bot no tiene el formato de Telegram "
+                "(<id>:<secreto>). Cópialo tal cual te lo da BotFather.",
+                is_error=True,
+            )
+
+        def call(method: str, body: dict[str, Any] | None) -> ToolResult:
+            return self._request(
+                f"{base}/bot{token}/{method}",
+                method="POST" if body is not None else "GET",
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "User-Agent": "JARVIS-OS/0.3 telegram",
+                },
+                payload=body,
+            )
+
+        if action == "telegram.me":
+            return call("getMe", None)
+
+        if action == "telegram.updates":
+            try:
+                limit = max(1, min(int(payload.get("limit", 20)), 100))
+            except (TypeError, ValueError):
+                return ToolResult("limit inválido.", is_error=True)
+            return call("getUpdates", {"limit": limit, "timeout": 0})
+
+        if action == "telegram.send":
+            chat_id = str(payload.get("chat_id", "")).strip()
+            text = str(payload.get("text", "")).strip()
+            if not chat_id:
+                default_chat = str(record.config.get("default_chat_id", "")).strip()
+                if not default_chat:
+                    return ToolResult(
+                        "Falta chat_id y el módulo no declara uno por defecto.",
+                        is_error=True,
+                    )
+                chat_id = default_chat
+            if not text:
+                return ToolResult("El mensaje está vacío.", is_error=True)
+            if len(text) > 4096:
+                # Telegram lo rechazaría con un 400 genérico; decirlo aquí
+                # ahorra el viaje y explica el motivo real.
+                return ToolResult(
+                    "El mensaje supera los 4096 caracteres que admite Telegram.",
+                    is_error=True,
+                )
+            # La lista blanca es opcional, pero cuando existe manda: la
+            # aprobación humana protege de una acción inesperada y esto protege
+            # además de que el destino sea el equivocado.
+            allowed = [str(chat) for chat in record.config.get("chat_ids", [])]
+            if allowed and chat_id not in allowed:
+                return ToolResult(
+                    f"El chat '{chat_id}' no está autorizado en este módulo.",
+                    is_error=True,
+                )
+            return call("sendMessage", {"chat_id": chat_id, "text": text})
+
+        return ToolResult("Acción de Telegram no implementada.", is_error=True)
 
     def _home_assistant(
         self, record: ConnectorRecord, action: str, payload: dict[str, Any]
@@ -298,6 +388,8 @@ class ConnectorRuntime:
         allowed_actions = set(write_actions if write else read_actions)
         if record.connector_type == "home_assistant" and not write:
             allowed_actions.update(self.HOME_ASSISTANT_READ_ACTIONS)
+        if record.connector_type == "telegram" and not write:
+            allowed_actions.update(self.TELEGRAM_READ_ACTIONS)
         if action not in allowed_actions:
             # La separación lectura/escritura es lo que sostiene la aprobación
             # humana: `query_connector_module` no la pide y
@@ -335,6 +427,8 @@ class ConnectorRuntime:
             return self._n8n(record, action, payload)
         if record.connector_type == "home_assistant":
             return self._home_assistant(record, action, payload)
+        if record.connector_type == "telegram":
+            return self._telegram(record, action, payload)
         return ToolResult("Tipo de módulo no soportado.", is_error=True)
 
     async def invoke(
@@ -346,6 +440,9 @@ class ConnectorRuntime:
         record = self.store.get(connector)
         if record is None:
             return ToolResult("Módulo no encontrado.", is_error=True)
+        if record.connector_type == "telegram":
+            # getMe identifica al bot sin leer mensajes ni enviar nada.
+            return await asyncio.to_thread(self._telegram, record, "telegram.me", {})
         if record.connector_type == "home_assistant":
             base = (
                 validate_connector_url(str(record.config.get("url", ""))).rstrip("/")
