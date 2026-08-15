@@ -4203,10 +4203,13 @@
       scheduleWakeListening();
       return;
     }
-    // La escucha se abre cuando JARVIS ha terminado de hablar, no cuando ha
-    // terminado de escribir. Si queda audio sonando o texto por llegar, el
-    // final de la cola volverá a llamar aquí.
-    if (!replyTextComplete || speechQueueRunning || speechQueue.length) return;
+    // El guard de arriba cubre «hay algo sonando ahora mismo». Falta el otro
+    // caso: la cola vacía por una pausa del modelo, con la respuesta a medias.
+    // `runSpeechQueue` llega aquí justo después de poner speechQueueRunning y
+    // voiceActive a falso, así que en una pausa todas esas condiciones ya están
+    // limpias y solo esto distingue una pausa del final de verdad. No se
+    // reprograma la palabra de activación: el final de la cola vuelve a llamar.
+    if (!replyTextComplete) return;
     stopWakeListening();
     stopConversationFollowUp({ sleep: false });
     followUpListening = true;

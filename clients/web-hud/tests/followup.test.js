@@ -36,6 +36,11 @@ const PRELUDE = `
 const WebSocket = { OPEN: 1 };
 let voiceEnabled = true, busy = false;
 let ws = { readyState: 1 };
+// El guard del HUD mira también si hay audio sonando ahora mismo, por las tres
+// vías posibles: Realtime/Kokoro (voiceActive), la cola, y el sintetizador del
+// navegador.
+let voiceActive = false, canSpeak = true;
+const speechSynthesis = { speaking: false };
 let replyTextComplete = true, speechQueueRunning = false, speechQueue = [];
 let serverVoiceAvailable = true, canRecord = true;
 let followUpListening = false, followUpTimer = null, recorder = null;
@@ -48,6 +53,8 @@ function stopConversationFollowUp() { harness.calls.push("stopFollowUp"); }
 function startServerRecording(opts) { harness.calls.push("record:" + JSON.stringify(opts)); }
 harness.set = (state) => {
   if ("replyTextComplete" in state) replyTextComplete = state.replyTextComplete;
+  if ("voiceActive" in state) voiceActive = state.voiceActive;
+  if ("browserSpeaking" in state) speechSynthesis.speaking = state.browserSpeaking;
   if ("speechQueueRunning" in state) speechQueueRunning = state.speechQueueRunning;
   if ("speechQueue" in state) speechQueue = state.speechQueue;
   if ("busy" in state) busy = state.busy;
@@ -68,7 +75,8 @@ function attempt(state) {
   harness.calls = [];
   harness.set({
     replyTextComplete: true, speechQueueRunning: false, speechQueue: [],
-    busy: false, voiceEnabled: true, ...state,
+    busy: false, voiceEnabled: true, voiceActive: false, browserSpeaking: false,
+    ...state,
   });
   harness.startConversationFollowUp();
   return harness.calls.some((call) => call.startsWith("record:"));
@@ -91,6 +99,9 @@ check("pausa del modelo a mitad de respuesta · NO abre el micrófono",
       attempt({ replyTextComplete: false, speechQueue: [] }) === false);
 
 // Y las condiciones que ya existían siguen valiendo.
+check("audio sonando · NO abre el micrófono", attempt({ voiceActive: true }) === false);
+check("sintetizador del navegador hablando · NO abre el micrófono",
+      attempt({ browserSpeaking: true }) === false);
 check("ocupado en otro turno · NO abre el micrófono", attempt({ busy: true }) === false);
 check("voz desactivada · NO abre el micrófono", attempt({ voiceEnabled: false }) === false);
 
