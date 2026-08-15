@@ -2057,8 +2057,9 @@
   function drawEnvironment(cx, cy, R, rgbCol, activity, pulse) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "rgba(4,7,14,0.48)";
+    ctx.fillStyle = "rgba(4,7,14,0.58)";
     ctx.fillRect(0, 0, W, H);
+    if (isLowSpec) return; // En Raspberry Pi omite los gradientes radiales pesados por cuadro
 
     const motion = reduceMotion ? 0 : 1;
     const driftX = Math.sin(t * 0.19) * R * 0.18 * motion;
@@ -2963,7 +2964,7 @@
 
     // Dibujar Tronco Principal con resplandor neón
     ctx.shadowColor = `rgb(${rgbCol})`;
-    ctx.shadowBlur = 14 + boost * 10;
+    ctx.shadowBlur = isLowSpec ? 0 : (14 + boost * 10);
 
     ctx.strokeStyle = `rgba(${rgbCol}, ${0.85 + boost * 0.15})`;
     ctx.lineWidth = 3.5 + boost * 2;
@@ -3030,7 +3031,7 @@
       ctx.fillStyle = "#ffffff";
       ctx.beginPath(); ctx.arc(sx, sy, 2.5 + boost, 0, Math.PI * 2); ctx.fill();
       ctx.shadowColor = `rgb(${rgbCol})`;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = isLowSpec ? 0 : 12;
       ctx.fillStyle = `rgb(${rgbCol})`;
       ctx.beginPath(); ctx.arc(sx, sy, 4.5 + boost, 0, Math.PI * 2); ctx.fill();
     }
