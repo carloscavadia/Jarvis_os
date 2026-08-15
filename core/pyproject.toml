@@ -10,6 +10,7 @@ dependencies = [
     "certifi>=2024.7.4",
     "cryptography>=43.0",
     "mcp>=1.0.0",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]

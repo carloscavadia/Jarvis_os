@@ -1176,28 +1176,41 @@ async def web_navigate(req: WebNavigateRequest):
 
 # ── Self-Healing Server & Log Monitor Endpoints ──
 
+@app.get("/config.js")
+async def get_config_js():
+    return Response(content="// JARVIS OS Dynamic Config\n", media_type="application/javascript")
+
+
 @app.get("/server/health", dependencies=[Depends(require_api_key)])
 async def server_health():
-    import psutil
-    cpu_percent = psutil.cpu_percent(interval=None)
-    ram = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
-    
+    cpu_percent = 0.0
+    ram_percent = 0.0
+    disk_percent = 0.0
     issues = []
-    if ram.percent > 90:
-        issues.append("Uso alto de memoria RAM (>90%)")
-    if disk.percent > 90:
-        issues.append("Espacio en disco bajo (>90% utilizado)")
-    
+
+    try:
+        import psutil
+        cpu_percent = psutil.cpu_percent(interval=None)
+        ram = psutil.virtual_memory()
+        disk = psutil.disk_usage("/")
+        ram_percent = ram.percent
+        disk_percent = disk.percent
+        if ram_percent > 90:
+            issues.append("Uso alto de memoria RAM (>90%)")
+        if disk_percent > 90:
+            issues.append("Espacio en disco bajo (>90% utilizado)")
+    except Exception as exc:
+        logger.debug("psutil no disponible o error al leer métricas: %s", exc)
+
     status_label = "HEALTHY" if not issues else "DEGRADED"
     return {
         "status": status_label,
         "auto_healing_active": True,
         "cpu_percent": cpu_percent,
-        "ram_percent": ram.percent,
-        "disk_percent": disk.percent,
+        "ram_percent": ram_percent,
+        "disk_percent": disk_percent,
         "issues": issues,
-        "timestamp": time.time()
+        "timestamp": time.time(),
     }
 
 
