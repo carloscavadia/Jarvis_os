@@ -100,9 +100,25 @@ services:
       retries: 3
       start_period: 20s
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: jarvis-caddy
+    restart: always
+    ports:
+      - "443:443"
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - gateway
+
 volumes:
   jarvis_data:
   jarvis_workspace:
   jarvis_packages:
   mqtt_data:
   mqtt_log:
+  caddy_data:
+  caddy_config:

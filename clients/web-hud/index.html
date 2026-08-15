@@ -15,9 +15,22 @@
     --core-bright:#c6f6ff;
     --text:       #cfe6f0;
     --muted:      #6b8a99;
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --sans: 'Inter', system-ui, sans-serif;
   }
+
+  /* ── Modo de ultra rendimiento (Raspberry Pi & Pantallas Táctiles ARM) ── */
+  body.lowspec *, body.lowspec *::before, body.lowspec *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  body.lowspec .action-trace, body.lowspec .player, body.lowspec .modal, body.lowspec .hud-dock, body.lowspec .ha-card {
+    background: rgba(4, 12, 21, 0.94) !important;
+    border: 1px solid rgba(53, 230, 255, 0.25) !important;
+  }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
@@ -1918,9 +1931,10 @@
          + Math.sin(a * 19.1 - t * 2.6) * 0.08;
   }
 
-  // ── Partículas: un anillo denso + polvo disperso ──
-  // Anillo orgánico: muchas partículas pequeñas agrupadas en corrientes, sin malla.
-  const RING = 1750, DUST = 320, N = RING + DUST;
+  // ── Partículas: adaptación dinámica para 60 FPS en Raspberry Pi y dispositivos táctiles ──
+  const isLowSpec = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || window.innerWidth <= 800 || location.search.includes("lowspec=1");
+  if (isLowSpec) document.body.classList.add("lowspec");
+  const RING = isLowSpec ? 420 : 1750, DUST = isLowSpec ? 80 : 320, N = RING + DUST;
   const P = new Array(N);
   for (let i = 0; i < N; i++) {
     const ring = i < RING;
@@ -1940,8 +1954,8 @@
     };
   }
 
-  // Esfera central de partículas: densa, volumétrica y sin un punto sólido artificial.
-  const CORE_N = 920;
+  // Esfera central de partículas: ajustada dinámicamente según el hardware
+  const CORE_N = isLowSpec ? 220 : 920;
   const CORE = new Array(CORE_N);
   for (let i = 0; i < CORE_N; i++) {
     const z = Math.random() * 2 - 1;
@@ -2080,17 +2094,23 @@
     ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H);
   }
 
+  let lastFrameTime = performance.now();
   function frame() {
-    t += reduceMotion ? 0.004 : 0.016;
-    bootT = Math.min(1, bootT + 0.010);
+    const now = performance.now();
+    const deltaSeconds = Math.min(0.08, (now - lastFrameTime) / 1000);
+    lastFrameTime = now;
+    const speedFactor = deltaSeconds * 60.0; // 1.0 a 60 FPS, escala proporcionalmente si cae el FPS
+
+    t += (reduceMotion ? 0.004 : 0.016) * speedFactor;
+    bootT = Math.min(1, bootT + 0.010 * speedFactor);
     const boot = easeOut(bootT);
 
     const S = STATES[stateName], E = EMOTIONS[emotionName];
-    col.r = lerp(col.r, E.r, 0.05); col.g = lerp(col.g, E.g, 0.05); col.b = lerp(col.b, E.b, 0.05);
-    curTurb = lerp(curTurb, S.turb, 0.05);
-    curSpin = lerp(curSpin, S.spin, 0.05);
-    curExpand = lerp(curExpand, S.expand, 0.05);
-    curChaos = lerp(curChaos, S.chaos, 0.05);
+    col.r = lerp(col.r, E.r, 0.05 * speedFactor); col.g = lerp(col.g, E.g, 0.05 * speedFactor); col.b = lerp(col.b, E.b, 0.05 * speedFactor);
+    curTurb = lerp(curTurb, S.turb, 0.05 * speedFactor);
+    curSpin = lerp(curSpin, S.spin, 0.05 * speedFactor);
+    curExpand = lerp(curExpand, S.expand, 0.05 * speedFactor);
+    curChaos = lerp(curChaos, S.chaos, 0.05 * speedFactor);
     refreshDot();
 
     const measured = measuredVoiceEnergy();
@@ -2099,13 +2119,13 @@
       amp = lerp(amp, voiceEnergy, voiceEnergy > amp ? 0.54 : 0.14);
     } else if (voiceActive) {
       // El sintetizador nativo del navegador no expone su señal: usa pulsos de palabra.
-      speakClock += 0.42;
+      speakClock += 0.42 * speedFactor;
       const fallback = Math.max(voiceEnergy, 0.24 + 0.22 * Math.abs(Math.sin(speakClock)));
-      voiceEnergy = lerp(voiceEnergy, 0, 0.12);
-      amp = lerp(amp, fallback, 0.28);
+      voiceEnergy = lerp(voiceEnergy, 0, 0.12 * speedFactor);
+      amp = lerp(amp, fallback, 0.28 * speedFactor);
     } else {
-      voiceEnergy = lerp(voiceEnergy, 0, 0.18);
-      amp = lerp(amp, 0, 0.10);
+      voiceEnergy = lerp(voiceEnergy, 0, 0.18 * speedFactor);
+      amp = lerp(amp, 0, 0.10 * speedFactor);
     }
 
     // Modulador FFT de audio para Navidrome (Hacer bailar el núcleo de JARVIS)
@@ -2123,7 +2143,7 @@
       curExpand = Math.max(curExpand, treble * 0.45);
     }
 
-    rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016;
+    rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016 * speedFactor;
 
     const cx = W / 2, cy = H * 0.46;
     const R = Math.min(W, H) * 0.30;
@@ -5335,6 +5355,13 @@
   });
 
   (function autoConnect() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramToken = urlParams.get("token") || urlParams.get("key");
+    if (paramToken) {
+      rememberHubKey(paramToken);
+      if (tokenInput) tokenInput.value = paramToken;
+    }
+
     if (CONFIG.hubKey) {
       tokenInput.value = "";
       tokenInput.placeholder = "Clave fijada en config.js";
@@ -5345,7 +5372,7 @@
       try { storedUrl = localStorage.getItem(HUB_URL_STORAGE) || ""; } catch {}
       if (storedKey) tokenInput.value = storedKey;
       if (storedUrl && wsUrlInput) wsUrlInput.value = storedUrl;
-      if (!storedKey) return; // sin clave → modo demo, no conectar
+      if (!storedKey && !paramToken) return; // sin clave → modo demo, no conectar
     }
     if (CONFIG.autoConnect !== false) connect(resolvedWsUrl(), hubKey());
   })();
