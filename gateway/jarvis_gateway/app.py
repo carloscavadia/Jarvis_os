@@ -469,9 +469,11 @@ async def serve_hud() -> Response:
     return Response(
         content=path.read_bytes(),
         media_type="text/html; charset=utf-8",
-        # Sin esto el navegador serviría la versión anterior tras cada
-        # actualización, que es justo el problema que este endpoint resuelve.
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 

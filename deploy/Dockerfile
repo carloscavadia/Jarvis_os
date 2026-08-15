@@ -40,7 +40,7 @@ ENV JARVIS_STT_DOWNLOAD_ROOT=/app/data/models
 # Kokoro descarga sus pesos (~330 MB) en HF_HOME durante la primera síntesis.
 ENV JARVIS_TTS_VOICE=em_alex
 ENV JARVIS_HUD_PATH=/app/clients/web-hud/index.html
-ENV JARVIS_WORKSPACE_ROOT=/app/workspace
+ENV JARVIS_WORKSPACE_ROOT=/app
 ENV XDG_CACHE_HOME=/app/data/cache
 ENV HF_HOME=/app/data/huggingface
 ENV PATH=/app/.local/bin:${PATH}
