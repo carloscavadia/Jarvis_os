@@ -406,6 +406,41 @@
 
   @media (max-width: 1120px) { .console { width: min(720px, 72vw); min-width: 0; } }
 
+  /* ── Adaptación Responsiva para Pantallas de Kiosko (800x480 y pantallas pequeñas) ── */
+  @media (max-width: 900px) {
+    .console {
+      width: min(580px, calc(100vw - 40px));
+      min-width: 0;
+      bottom: 12px;
+    }
+    .inputbar {
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+    .inputbar input {
+      font-size: 13px;
+      padding: 3px 0;
+    }
+    .voice-btn {
+      width: 32px;
+      height: 32px;
+      flex: 0 0 32px;
+      font-size: 13px;
+    }
+  }
+
+  @media (max-height: 520px) {
+    .console {
+      bottom: 10px;
+    }
+    .inputbar {
+      padding: 5px 12px;
+    }
+    .log {
+      max-height: 110px;
+    }
+  }
+
   /* ── HUD Dock — 3 botones esquina inferior izquierda ── */
   .hud-dock {
     position: fixed; left: 24px; bottom: 28px;
@@ -2057,8 +2092,9 @@
   function drawEnvironment(cx, cy, R, rgbCol, activity, pulse) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "rgba(4,7,14,0.48)";
+    ctx.fillStyle = "rgba(4,7,14,0.58)";
     ctx.fillRect(0, 0, W, H);
+    if (isLowSpec) return; // En Raspberry Pi omite los gradientes radiales pesados por cuadro
 
     const motion = reduceMotion ? 0 : 1;
     const driftX = Math.sin(t * 0.19) * R * 0.18 * motion;
@@ -2963,7 +2999,7 @@
 
     // Dibujar Tronco Principal con resplandor neón
     ctx.shadowColor = `rgb(${rgbCol})`;
-    ctx.shadowBlur = 14 + boost * 10;
+    ctx.shadowBlur = isLowSpec ? 0 : (14 + boost * 10);
 
     ctx.strokeStyle = `rgba(${rgbCol}, ${0.85 + boost * 0.15})`;
     ctx.lineWidth = 3.5 + boost * 2;
@@ -3030,7 +3066,7 @@
       ctx.fillStyle = "#ffffff";
       ctx.beginPath(); ctx.arc(sx, sy, 2.5 + boost, 0, Math.PI * 2); ctx.fill();
       ctx.shadowColor = `rgb(${rgbCol})`;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = isLowSpec ? 0 : 12;
       ctx.fillStyle = `rgb(${rgbCol})`;
       ctx.beginPath(); ctx.arc(sx, sy, 4.5 + boost, 0, Math.PI * 2); ctx.fill();
     }
