@@ -3852,25 +3852,48 @@
       || spanish[0] || voices[0] || null;
   }
 
-  function prepareSpeechText(text) {
-    return String(text)
-      .replace(/&amp;/gi, " y ")
-      .replace(/&(?:lt|gt|quot|apos);/gi, " ")
-      .replace(/```[\s\S]*?```/g, " ")
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-      .replace(/<https?:\/\/[^>]+>/g, " ")
-      .replace(/https?:\/\/\S+/g, " ")
-      .replace(/`([^`]*)`/g, "$1")
-      .replace(/^\s{0,3}(?:#{1,6}|>|[-+*]|\d+[.)])\s+/gm, "")
-      .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, " ")
-      .replace(/\|/g, ". ")
-      .replace(/[*_~#`]/g, "")
-      .replace(/[{}\[\]\\]/g, " ")
-      .replace(/[•▪◦►▶]+/g, " ")
-      .replace(/\s+/g, " ")
-      .replace(/\s+([,.;:!?])/g, "$1")
-      .trim();
+  function selectEnglishVoice() {
+    const voices = speechSynthesis.getVoices();
+    const english = voices.filter((voice) => /^en([_-]|$)/i.test(voice.lang));
+    return english.find((voice) => /alex|daniel|tom|fred|george|male|mascul/i.test(voice.name))
+      || english.find((voice) => /premium|enhanced|natural/i.test(voice.name))
+      || english[0] || voices[0] || null;
+  }
+
+  function detectSpeechLanguage(text) {
+    if (!text) return "es";
+    const clean = text.toLowerCase().replace(/[^a-z\s]/g, " ");
+    const words = clean.split(/\s+/).filter((w) => w.length >= 2);
+    if (!words.length) return "es";
+
+    const englishCommon = new Set([
+      "the", "be", "to", "of", "and", "a", "in", "that", "have", "it", "for",
+      "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his",
+      "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my",
+      "one", "all", "would", "there", "their", "what", "so", "up", "out", "if",
+      "about", "who", "get", "which", "go", "me", "when", "make", "can", "like",
+      "time", "no", "just", "him", "know", "take", "people", "into", "year", "your",
+      "good", "some", "could", "them", "see", "other", "than", "then", "now", "look",
+      "only", "come", "its", "over", "think", "also", "back", "after", "use", "two",
+      "how", "our", "work", "first", "well", "way", "even", "new", "want", "because",
+      "any", "these", "give", "day", "most", "us", "is", "are", "was", "were", "been"
+    ]);
+
+    const spanishCommon = new Set([
+      "de", "la", "que", "el", "en", "y", "a", "los", "del", "se", "las", "por",
+      "un", "para", "con", "no", "una", "su", "al", "lo", "como", "más", "pero",
+      "sus", "le", "ya", "o", "este", "sí", "porque", "esta", "entre", "cuando",
+      "muy", "sin", "sobre", "también", "me", "hasta", "hay", "donde", "quien",
+      "desde", "todo", "nos", "durante", "todos", "uno", "les", "ni", "contra"
+    ]);
+
+    let engCount = 0, espCount = 0;
+    for (const w of words) {
+      if (englishCommon.has(w)) engCount++;
+      if (spanishCommon.has(w)) espCount++;
+    }
+
+    return (engCount > espCount && engCount >= 2) ? "en" : "es";
   }
 
   function speakInBrowser(text, cancelExisting = false) {
@@ -3878,11 +3901,18 @@
       if (!canSpeak) { rVoice.textContent = "ERROR"; resolve(); return; }
       if (cancelExisting) speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "es-MX";
+      const lang = detectSpeechLanguage(text);
+      if (lang === "en") {
+        utterance.lang = "en-US";
+        const voice = selectEnglishVoice();
+        if (voice) utterance.voice = voice;
+      } else {
+        utterance.lang = "es-MX";
+        const voice = selectSpanishVoice();
+        if (voice) utterance.voice = voice;
+      }
       utterance.rate = 0.96;
       utterance.pitch = 0.82;
-      const voice = selectSpanishVoice();
-      if (voice) utterance.voice = voice;
       utterance.onstart = () => { stopWakeListening(); voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
       utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
       utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; resolve(); };
