@@ -5592,9 +5592,14 @@
   (function autoConnect() {
     const urlParams = new URLSearchParams(window.location.search);
     const paramToken = urlParams.get("token") || urlParams.get("key");
+    const paramWsUrl = urlParams.get("ws") || urlParams.get("wsUrl");
     if (paramToken) {
       rememberHubKey(paramToken);
       if (tokenInput) tokenInput.value = paramToken;
+    }
+    if (paramWsUrl && wsUrlInput) {
+      wsUrlInput.value = paramWsUrl;
+      try { localStorage.setItem(HUB_URL_STORAGE, paramWsUrl); } catch {}
     }
 
     if (CONFIG.hubKey) {
@@ -5605,9 +5610,17 @@
       let storedKey = "", storedUrl = "";
       try { storedKey = localStorage.getItem(HUB_KEY_STORAGE) || ""; } catch {}
       try { storedUrl = localStorage.getItem(HUB_URL_STORAGE) || ""; } catch {}
-      if (storedKey) tokenInput.value = storedKey;
-      if (storedUrl && wsUrlInput) wsUrlInput.value = storedUrl;
-      if (!storedKey && !paramToken) return; // sin clave → modo demo, no conectar
+
+      // Si la URL guardada en localStorage apunta a 127.0.0.1 pero la página se abre desde IP de red, limpiar obsoleta.
+      if (storedUrl && (storedUrl.includes("127.0.0.1") || storedUrl.includes("localhost")) && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
+        storedUrl = defaultWsUrl();
+        if (wsUrlInput) wsUrlInput.value = storedUrl;
+        try { localStorage.removeItem(HUB_URL_STORAGE); } catch {}
+      }
+
+      if (storedKey && !tokenInput.value) tokenInput.value = storedKey;
+      if (storedUrl && wsUrlInput && !wsUrlInput.value) wsUrlInput.value = storedUrl;
+      if (!storedKey && !paramToken) return;
     }
     if (CONFIG.autoConnect !== false) connect(resolvedWsUrl(), hubKey());
   })();
