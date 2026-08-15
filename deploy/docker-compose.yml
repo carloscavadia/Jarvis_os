@@ -28,6 +28,10 @@ services:
     env_file:
       - ../.env
     environment:
+      # Sin zona horaria declarada, el contenedor vive en UTC y «recuérdame a
+      # las 8» suena a las 10 en España.
+      TZ: "${TZ:-Europe/Madrid}"
+      JARVIS_TIMEZONE: "${JARVIS_TIMEZONE:-Europe/Madrid}"
       JARVIS_MQTT_HOST: mqtt
       JARVIS_GATEWAY_HOST: 0.0.0.0
       JARVIS_GATEWAY_PORT: "8080"

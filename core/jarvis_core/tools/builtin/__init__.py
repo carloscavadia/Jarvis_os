@@ -36,13 +36,22 @@ from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import (
     CancelTaskTool,
     ListTasksTool,
+    PauseTaskTool,
+    RescheduleTaskTool,
+    ResumeTaskTool,
     ScheduleTaskTool,
+    TaskHistoryTool,
+    resolve_zone,
 )
 from jarvis_core.tools.builtin.web_tools import register_web_tools
 
 __all__ = [
     "CancelTaskTool",
     "ListTasksTool",
+    "PauseTaskTool",
+    "RescheduleTaskTool",
+    "ResumeTaskTool",
+    "TaskHistoryTool",
     "RecallTool",
     "RememberTool",
     "ScheduleTaskTool",
@@ -71,9 +80,14 @@ def build_default_registry(
     if shell_enabled:
         registry.register(ShellTool(allowlist=settings.shell_allowlist))
     if tasks is not None:
-        registry.register(ScheduleTaskTool(tasks))
-        registry.register(ListTasksTool(tasks))
-        registry.register(CancelTaskTool(tasks))
+        zone = resolve_zone(settings.timezone)
+        registry.register(ScheduleTaskTool(tasks, zone))
+        registry.register(ListTasksTool(tasks, zone))
+        registry.register(CancelTaskTool(tasks, zone))
+        registry.register(PauseTaskTool(tasks, zone))
+        registry.register(ResumeTaskTool(tasks, zone))
+        registry.register(RescheduleTaskTool(tasks, zone))
+        registry.register(TaskHistoryTool(tasks, zone))
     if goals is not None:
         register_goal_tools(registry, goals)
     if emotion is not None:

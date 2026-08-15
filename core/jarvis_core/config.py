@@ -119,6 +119,10 @@ class Settings:
     memory_db_path: str = "data/jarvis_memory.db"
 
     # --- Tareas / proactividad ---
+    # Zona horaria para interpretar «mañana a las 8». Vacío = la del sistema,
+    # que dentro de un contenedor es UTC salvo que se declare TZ: un
+    # recordatorio para las 8:00 sonaría a las 10:00 en España sin esto.
+    timezone: str = ""
     tasks_db_path: str = "data/jarvis_tasks.db"
     goals_db_path: str = "data/jarvis_goals.db"
     scheduler_enabled: bool = True
@@ -357,6 +361,7 @@ class Settings:
             memory_db_path=os.environ.get("JARVIS_MEMORY_DB", "data/jarvis_memory.db"),
             tasks_db_path=os.environ.get("JARVIS_TASKS_DB", "data/jarvis_tasks.db"),
             goals_db_path=os.environ.get("JARVIS_GOALS_DB", "data/jarvis_goals.db"),
+            timezone=os.environ.get("JARVIS_TIMEZONE", "").strip(),
             scheduler_enabled=_get_bool("JARVIS_SCHEDULER_ENABLED", True),
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),
             enable_shell=_get_bool("JARVIS_ENABLE_SHELL", True),
