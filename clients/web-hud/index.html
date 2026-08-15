@@ -2120,8 +2120,8 @@
     }
 
     // Modulador FFT de audio para Navidrome (Hacer bailar el núcleo de JARVIS)
-    if (musicAnalyser && musicPlaying && musicFreqData) {
-      musicAnalyser.getByteFrequencyData(musicFreqData);
+    if (naviAnalyser && naviPlaying && musicFreqData) {
+      naviAnalyser.getByteFrequencyData(musicFreqData);
       let bass = 0, mid = 0, treble = 0;
       for (let i = 0; i < 10; i++) bass += musicFreqData[i];
       for (let i = 10; i < 40; i++) mid += musicFreqData[i];
@@ -4905,144 +4905,143 @@
     tokenInput.scrollIntoView({ behavior: "smooth" });
   });
 
-  // Conexión automática: con config.js, guardando/recuperando clave Y url.
   // ── 1. Navidrome Player & Web Audio API Visualizer ──
-  const musicModal = document.getElementById("music-modal");
-  const musicClose = document.getElementById("music-close");
-  const musicOpenBtn = document.getElementById("music-open");
-  const musicAudio = document.getElementById("navidrome-audio");
-  const musicPlayBtn = document.getElementById("music-play");
-  const musicTrackName = document.getElementById("music-track-name");
-  const musicArtistName = document.getElementById("music-artist-name");
-  const musicCoverBox = document.getElementById("music-cover-box");
-  const musicPrevBtn = document.getElementById("music-prev");
-  const musicNextBtn = document.getElementById("music-next");
-  const musicRandomBtn = document.getElementById("music-random");
+  const naviModal = document.getElementById("music-modal");
+  const naviClose = document.getElementById("music-close");
+  const naviOpenBtn = document.getElementById("music-open");
+  const naviAudioEl = document.getElementById("navidrome-audio");
+  const naviPlayBtn = document.getElementById("music-play");
+  const naviTrackName = document.getElementById("music-track-name");
+  const naviArtistName = document.getElementById("music-artist-name");
+  const naviCoverBox = document.getElementById("music-cover-box");
+  const naviPrevBtn = document.getElementById("music-prev");
+  const naviNextBtn = document.getElementById("music-next");
+  const naviRandomBtn = document.getElementById("music-random");
 
-  let musicQueue = [];
-  let currentMusicIdx = 0;
-  let musicAudioCtx = null;
-  let musicAnalyser = null;
+  let naviQueue = [];
+  let naviCurrentIdx = 0;
+  let naviAudioCtx = null;
+  let naviAnalyser = null;
   let musicFreqData = null;
-  let musicPlaying = false;
+  let naviPlaying = false;
 
   function initMusicAudioContext() {
-    if (musicAudioCtx || !musicAudio) return;
+    if (naviAudioCtx || !naviAudioEl) return;
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      musicAudioCtx = new AudioContextClass();
-      musicAnalyser = musicAudioCtx.createAnalyser();
-      musicAnalyser.fftSize = 256;
-      musicFreqData = new Uint8Array(musicAnalyser.frequencyBinCount);
-      const source = musicAudioCtx.createMediaElementSource(musicAudio);
-      source.connect(musicAnalyser);
-      musicAnalyser.connect(musicAudioCtx.destination);
+      naviAudioCtx = new AudioContextClass();
+      naviAnalyser = naviAudioCtx.createAnalyser();
+      naviAnalyser.fftSize = 256;
+      musicFreqData = new Uint8Array(naviAnalyser.frequencyBinCount);
+      const source = naviAudioCtx.createMediaElementSource(naviAudioEl);
+      source.connect(naviAnalyser);
+      naviAnalyser.connect(naviAudioCtx.destination);
     } catch (e) {
       console.warn("Web Audio API no soportado para el visualizador:", e);
     }
   }
 
   async function openMusicPlayer() {
-    if (musicModal) musicModal.classList.add("active");
-    if (!musicQueue.length) {
+    if (naviModal) naviModal.classList.add("active");
+    if (!naviQueue.length) {
       await loadRandomMusic();
     }
   }
 
   function closeMusicPlayer() {
-    if (musicModal) musicModal.classList.remove("active");
+    if (naviModal) naviModal.classList.remove("active");
   }
 
   async function loadRandomMusic() {
     try {
-      if (musicTrackName) musicTrackName.textContent = "Cargando biblioteca Navidrome…";
+      if (naviTrackName) naviTrackName.textContent = "Cargando biblioteca Navidrome…";
       const data = await connectorRequest("/music/random?limit=15", { headers: connectorApiHeaders() });
       if (data.songs && data.songs.length) {
-        musicQueue = data.songs;
-        currentMusicIdx = 0;
-        playTrack(musicQueue[0]);
+        naviQueue = data.songs;
+        naviCurrentIdx = 0;
+        playTrack(naviQueue[0]);
       } else {
-        if (musicTrackName) musicTrackName.textContent = "Sin canciones en Navidrome";
-        if (musicArtistName) musicArtistName.textContent = "Configura JARVIS_NAVIDROME_URL en .env";
+        if (naviTrackName) naviTrackName.textContent = "Sin canciones en Navidrome";
+        if (naviArtistName) naviArtistName.textContent = "Configura JARVIS_NAVIDROME_URL en .env";
       }
     } catch (err) {
-      if (musicTrackName) musicTrackName.textContent = "Sin conexión a Navidrome";
-      if (musicArtistName) musicArtistName.textContent = err.message;
+      if (naviTrackName) naviTrackName.textContent = "Sin conexión a Navidrome";
+      if (naviArtistName) naviArtistName.textContent = err.message;
     }
   }
 
   function playTrack(song) {
-    if (!song || !musicAudio) return;
+    if (!song || !naviAudioEl) return;
     initMusicAudioContext();
-    if (musicAudioCtx && musicAudioCtx.state === "suspended") {
-      musicAudioCtx.resume();
+    if (naviAudioCtx && naviAudioCtx.state === "suspended") {
+      naviAudioCtx.resume();
     }
-    if (musicTrackName) musicTrackName.textContent = song.title || "Pista sin título";
-    if (musicArtistName) musicArtistName.textContent = (song.artist || "Artista desconocido") + (song.album ? ` · ${song.album}` : "");
-    if (musicCoverBox) {
+    if (naviTrackName) naviTrackName.textContent = song.title || "Pista sin título";
+    if (naviArtistName) naviArtistName.textContent = (song.artist || "Artista desconocido") + (song.album ? ` · ${song.album}` : "");
+    if (naviCoverBox) {
       if (song.cover_art) {
         const coverUrl = `${gatewayHttpBase()}/music/cover/${encodeURIComponent(song.cover_art)}?token=${encodeURIComponent(hubKey())}`;
-        musicCoverBox.innerHTML = `<img src="${coverUrl}" alt="Album cover" />`;
+        naviCoverBox.innerHTML = `<img src="${coverUrl}" alt="Album cover" />`;
       } else {
-        musicCoverBox.innerHTML = "🎵";
+        naviCoverBox.innerHTML = "🎵";
       }
     }
     const streamUrl = `${gatewayHttpBase()}/music/stream/${encodeURIComponent(song.id)}?token=${encodeURIComponent(hubKey())}`;
-    musicAudio.src = streamUrl;
-    musicAudio.play().then(() => {
-      musicPlaying = true;
-      if (musicPlayBtn) musicPlayBtn.textContent = "⏸";
+    naviAudioEl.src = streamUrl;
+    naviAudioEl.play().then(() => {
+      naviPlaying = true;
+      if (naviPlayBtn) naviPlayBtn.textContent = "⏸";
       showHudNotification({ title: "REPRODUCIENDO NAVIDROME", message: song.title, type: "task" });
     }).catch(() => {
-      musicPlaying = false;
-      if (musicPlayBtn) musicPlayBtn.textContent = "▶";
+      naviPlaying = false;
+      if (naviPlayBtn) naviPlayBtn.textContent = "▶";
     });
   }
 
-  if (musicPlayBtn) {
-    musicPlayBtn.onclick = () => {
-      if (!musicAudio.src) {
-        if (musicQueue.length) playTrack(musicQueue[currentMusicIdx]);
+  if (naviPlayBtn) {
+    naviPlayBtn.onclick = () => {
+      if (!naviAudioEl.src) {
+        if (naviQueue.length) playTrack(naviQueue[naviCurrentIdx]);
         else loadRandomMusic();
         return;
       }
-      if (musicAudio.paused) {
-        musicAudio.play();
-        musicPlaying = true;
-        musicPlayBtn.textContent = "⏸";
+      if (naviAudioEl.paused) {
+        naviAudioEl.play();
+        naviPlaying = true;
+        naviPlayBtn.textContent = "⏸";
       } else {
-        musicAudio.pause();
-        musicPlaying = false;
-        musicPlayBtn.textContent = "▶";
+        naviAudioEl.pause();
+        naviPlaying = false;
+        naviPlayBtn.textContent = "▶";
       }
     };
   }
 
-  if (musicNextBtn) {
-    musicNextBtn.onclick = () => {
-      if (!musicQueue.length) return;
-      currentMusicIdx = (currentMusicIdx + 1) % musicQueue.length;
-      playTrack(musicQueue[currentMusicIdx]);
+  if (naviNextBtn) {
+    naviNextBtn.onclick = () => {
+      if (!naviQueue.length) return;
+      naviCurrentIdx = (naviCurrentIdx + 1) % naviQueue.length;
+      playTrack(naviQueue[naviCurrentIdx]);
     };
   }
 
-  if (musicPrevBtn) {
-    musicPrevBtn.onclick = () => {
-      if (!musicQueue.length) return;
-      currentMusicIdx = (currentMusicIdx - 1 + musicQueue.length) % musicQueue.length;
-      playTrack(musicQueue[currentMusicIdx]);
+  if (naviPrevBtn) {
+    naviPrevBtn.onclick = () => {
+      if (!naviQueue.length) return;
+      naviCurrentIdx = (naviCurrentIdx - 1 + naviQueue.length) % naviQueue.length;
+      playTrack(naviQueue[naviCurrentIdx]);
     };
   }
 
-  if (musicRandomBtn) musicRandomBtn.onclick = () => loadRandomMusic();
-  if (musicOpenBtn) musicOpenBtn.onclick = () => openMusicPlayer();
-  if (musicClose) musicClose.onclick = () => closeMusicPlayer();
+  if (naviRandomBtn) naviRandomBtn.onclick = () => loadRandomMusic();
+  if (naviOpenBtn) naviOpenBtn.onclick = () => openMusicPlayer();
+  if (naviClose) naviClose.onclick = () => closeMusicPlayer();
 
-  if (musicAudio) {
-    musicAudio.onended = () => {
-      if (musicQueue.length) {
-        currentMusicIdx = (currentMusicIdx + 1) % musicQueue.length;
-        playTrack(musicQueue[currentMusicIdx]);
+  if (naviAudioEl) {
+    naviAudioEl.onended = () => {
+      if (naviQueue.length) {
+        naviCurrentIdx = (naviCurrentIdx + 1) % naviQueue.length;
+        playTrack(naviQueue[naviCurrentIdx]);
       }
     };
   }
