@@ -54,6 +54,7 @@ from jarvis_gateway import runtime
 from jarvis_gateway.routers import music as music_router
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
+from jarvis_gateway.push import build_telegram_push
 from jarvis_gateway.realtime_session import RealtimeConversation
 from jarvis_gateway.realtime_voice import RealtimeVoiceBroker, RealtimeVoiceError
 from jarvis_gateway.sessions import SessionManager
@@ -315,6 +316,11 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             "Falta JARVIS_GATEWAY_API_KEY; el gateway se niega a arrancar sin autenticación."
         )
+    # El empuje externo necesita el almacén de conectores, que se abre con las
+    # sesiones; por eso se engancha aquí y no al construir el notifier.
+    notifier.push_sink = build_telegram_push(
+        sessions.connector_store, timeout=settings.connector_timeout_seconds
+    )
     mqtt_bridge.start()
     if settings.scheduler_enabled:
         scheduler.start()

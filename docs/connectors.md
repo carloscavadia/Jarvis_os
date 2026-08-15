@@ -256,3 +256,29 @@ envíes esto»; `chat_ids` cubre «no lo envíes ahí». Con la lista puesta, un
 `telegram.send` a un chat que no esté en ella se rechaza antes de salir a la red.
 Es la diferencia entre revisar el contenido y revisar el destinatario, y con un
 agente que lee páginas web conviene tener las dos.
+
+### Avisos proactivos al móvil
+
+Con un módulo de Telegram que declare `default_chat_id`, JARVIS te empuja allí
+todo aviso proactivo: recordatorios que vencen, resultados de tareas y eventos
+de conectores.
+
+Esto cierra un hueco real. El scheduler corre en el servidor y las tareas se
+ejecutan siempre, pero la entrega iba solo a los WebSocket conectados y al topic
+MQTT: con el HUD cerrado —de noche, o desde el móvil— el aviso se ejecutaba, se
+registraba en el historial, y no llegaba a nadie.
+
+No hace falta configurar nada más: en cuanto el módulo está dado de alta y tiene
+chat por defecto, los avisos empiezan a salir. Tampoco hay que reiniciar el
+gateway, porque el destino se resuelve en cada envío.
+
+**Por qué esto no pide aprobación** aunque `telegram.send` sí la pida. La
+aprobación protege de que el modelo decida por su cuenta escribir a terceros.
+Aquí no decide nada el modelo: es el sistema avisando a su dueño, al chat que el
+dueño configuró, con un texto que ya iba a entregarse por los otros canales. El
+destino nunca viaja en la petición —se toma del módulo—, así que ni el modelo ni
+un evento externo pueden redirigirlo.
+
+Un fallo de Telegram queda aislado: el aviso ya entregado al HUD y a MQTT no
+depende de que la red responda, ni la tarea que lo originó se marca como fallida
+por ello.
