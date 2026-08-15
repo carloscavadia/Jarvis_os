@@ -876,42 +876,47 @@
     background: rgba(14, 38, 55, 0.85); box-shadow: 0 0 14px rgba(53,230,255,0.15);
   }
 
-  /* ── Sistema de Notificaciones Toasts de JARVIS ── */
+  /* ── Sistema de Notificaciones Toasts de JARVIS (Anti-Invasivo & Sleek Glass) ── */
   .toast-container {
-    position: fixed; top: 24px; right: 28px; z-index: 10;
-    display: flex; flex-direction: column; gap: 8px;
-    pointer-events: none; width: min(340px, calc(100vw - 56px));
+    position: fixed; top: 60px; right: 20px; z-index: 12;
+    display: flex; flex-direction: column; gap: 6px;
+    pointer-events: none; width: min(280px, calc(100vw - 40px));
   }
   .hud-toast {
-    pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
-    padding: 10px 13px; border: 1px solid var(--hairline-2); border-radius: 10px;
-    background: linear-gradient(135deg, rgba(4, 14, 24, 0.92), rgba(6, 20, 32, 0.85));
-    backdrop-filter: blur(16px) saturate(125%);
-    box-shadow: 0 14px 45px rgba(0,0,0,0.5), 0 0 25px rgba(53,230,255,0.08);
-    font-family: var(--mono); animation: toast-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto; display: flex; align-items: center; gap: 9px;
+    padding: 7px 12px; border: 1px solid rgba(53, 230, 255, 0.25); border-radius: 20px;
+    background: linear-gradient(135deg, rgba(3, 12, 22, 0.88), rgba(5, 18, 30, 0.82));
+    backdrop-filter: blur(14px) saturate(120%);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.45), 0 0 16px rgba(53,230,255,0.1);
+    font-family: var(--mono); animation: toast-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     position: relative; overflow: hidden;
   }
   .hud-toast::before {
     content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
-    background: var(--core); box-shadow: 0 0 10px var(--core);
+    background: var(--core); box-shadow: 0 0 8px var(--core);
   }
-  .hud-toast.tool::before { background: #8496ff; box-shadow: 0 0 10px #8496ff; }
-  .hud-toast.alert::before { background: #ffb460; box-shadow: 0 0 10px #ffb460; }
-  .hud-toast.task::before { background: #60eca8; box-shadow: 0 0 10px #60eca8; }
+  .hud-toast.tool::before { background: #8496ff; box-shadow: 0 0 8px #8496ff; }
+  .hud-toast.alert::before { background: #ffb460; box-shadow: 0 0 8px #ffb460; }
+  .hud-toast.task::before { background: #60eca8; box-shadow: 0 0 8px #60eca8; }
 
-  .hud-toast .toast-icon { font-size: 14px; margin-top: 1px; flex: none; }
+  .hud-toast .toast-icon { font-size: 12px; flex: none; }
   .hud-toast .toast-body { flex: 1; min-width: 0; }
-  .hud-toast .toast-title { font-size: 9px; letter-spacing: 0.15em; color: var(--core-bright); text-transform: uppercase; }
-  .hud-toast .toast-msg { font-size: 10.5px; color: var(--text); margin-top: 3px; word-break: break-word; line-height: 1.35; }
-  .hud-toast .toast-close { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0; margin-left: 4px; }
+  .hud-toast .toast-title { font-size: 8px; letter-spacing: 0.12em; color: var(--core-bright); text-transform: uppercase; font-weight: 600; }
+  .hud-toast .toast-msg { font-size: 9.5px; color: var(--text); margin-top: 1px; word-break: break-word; line-height: 1.3; }
+  .hud-toast .toast-close { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0; margin-left: 4px; line-height: 1; }
   .hud-toast .toast-close:hover { color: var(--core-bright); }
 
   @keyframes toast-slide-in {
-    from { opacity: 0; transform: translateY(-12px) scale(0.95); filter: blur(4px); }
+    from { opacity: 0; transform: translateY(-8px) scale(0.96); filter: blur(3px); }
     to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
   }
   @keyframes toast-slide-out {
-    to { opacity: 0; transform: translateX(20px) scale(0.95); filter: blur(4px); }
+    to { opacity: 0; transform: translateX(16px) scale(0.95); filter: blur(3px); }
+  }
+  @keyframes toast-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.03); border-color: var(--core-bright); }
+    100% { transform: scale(1); }
   }
 
   /* ── Modal de Configuración de Conexión ── */
@@ -1312,29 +1317,13 @@
 
   function setState(next) {
     if (!STATES[next]) return;
-    const prev = stateName;
     stateName = next;
     rState.textContent = STATES[next].label;
-    if (next !== "idle" && next !== prev) {
-      showHudNotification({
-        title: "ESTADO DEL SISTEMA",
-        message: `MODO ${STATES[next].label}`,
-        type: "system"
-      });
-    }
   }
   function setEmotion(next) {
     if (!EMOTIONS[next]) return;
-    const prev = emotionName;
     emotionName = next;
     rEmotion.textContent = EMO_LABEL[next];
-    if (next !== "neutral" && next !== prev) {
-      showHudNotification({
-        title: "EMOCIÓN DEL NÚCLEO",
-        message: `EMOCIÓN: ${EMO_LABEL[next]}`,
-        type: "system"
-      });
-    }
   }
   function firePulse() { pulses.push({ r: 0, life: 1 }); }
 
@@ -3104,11 +3093,36 @@
     });
   });
 
-  // ── Sistema de Notificaciones Toasts de JARVIS ──
+  // ── Sistema de Notificaciones Toasts de JARVIS (Compacto y Anti-Invasivo) ──
   const toastContainer = document.getElementById("hud-toast-container");
   
-  function showHudNotification({ title = "JARVIS OS", message = "", type = "system", duration = 4500 } = {}) {
+  function showHudNotification({ title = "JARVIS OS", message = "", type = "system", duration = 3200 } = {}) {
     if (!toastContainer) return;
+
+    // 1. Buscar si ya existe una notificación con el mismo título para actualizarla en lugar de duplicarla
+    const existing = Array.from(toastContainer.children).find(el => {
+      const titleEl = el.querySelector(".toast-title");
+      return titleEl && titleEl.textContent === title;
+    });
+
+    if (existing) {
+      const msgEl = existing.querySelector(".toast-msg");
+      if (msgEl) msgEl.textContent = message;
+      existing.style.animation = "none";
+      void existing.offsetWidth;
+      existing.style.animation = "toast-pulse 0.3s ease";
+      if (existing._dismissTimer) clearTimeout(existing._dismissTimer);
+      if (duration > 0) {
+        existing._dismissTimer = setTimeout(() => removeToast(existing), duration);
+      }
+      return;
+    }
+
+    // 2. Limitar a un máximo de 2 notificaciones simultáneas
+    while (toastContainer.children.length >= 2) {
+      removeToast(toastContainer.firstElementChild, true);
+    }
+
     const toast = document.createElement("div");
     toast.className = `hud-toast ${type}`;
     
@@ -3127,11 +3141,11 @@
     toastContainer.appendChild(toast);
     
     if (duration > 0) {
-      setTimeout(() => removeToast(toast), duration);
+      toast._dismissTimer = setTimeout(() => removeToast(toast), duration);
     }
   }
 
-  function removeToast(toast) {
+  function removeToast(toast, immediate = false) {
     if (!toast || !toast.parentNode) return;
     toast.style.animation = "toast-slide-out 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards";
     setTimeout(() => {
