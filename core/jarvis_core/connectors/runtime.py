@@ -128,8 +128,14 @@ class ConnectorRuntime:
         }
         
         if token:
-            auth_val = token if token.lower().startswith("bearer ") else f"Bearer {token}"
-            headers["Authorization"] = auth_val
+            if token.lower().startswith("bearer "):
+                headers["Authorization"] = token
+            elif token.count(".") == 2:
+                # Token JWT válido de 3 partes (header.payload.signature)
+                headers["Authorization"] = f"Bearer {token}"
+            else:
+                # Secret Key o token plano (sin anteponer Bearer para no corromper la verificacion en n8n)
+                headers["Authorization"] = token
 
         return self._request(
             url,
