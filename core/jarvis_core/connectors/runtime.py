@@ -128,13 +128,20 @@ class ConnectorRuntime:
         }
         
         if token:
+            # Soporte para especificación explícita de cabecera (ej: X-API-Key: mi_secreto)
+            if ":" in token and not token.lower().startswith(("http://", "https://")):
+                parts = token.split(":", 1)
+                custom_header = parts[0].strip()
+                custom_val = parts[1].strip()
+                if custom_header and custom_val:
+                    headers[custom_header] = custom_val
+            
             if token.lower().startswith("bearer "):
                 headers["Authorization"] = token
             elif token.count(".") == 2:
                 # Token JWT válido de 3 partes (header.payload.signature)
                 headers["Authorization"] = f"Bearer {token}"
             else:
-                # Secret Key o token plano (sin anteponer Bearer para no corromper la verificacion en n8n)
                 headers["Authorization"] = token
 
         return self._request(
