@@ -4763,7 +4763,7 @@
   }
 
   function duckedForSpeech() {
-    return voiceActive || speechQueueRunning || !!voiceSocket;
+    return voiceActive || speechQueueRunning || !!voiceSocket || followUpListening || (recorder && recorder.state === "recording");
   }
 
   // Baja la música mientras JARVIS habla y la recupera al terminar. Se consulta
