@@ -2599,9 +2599,13 @@
       loadCurrentGoal();
       loadPendingProactive();
     };
-    ws.onclose = () => {
-      rLink.textContent = "DESCONECTADO";
+    ws.onclose = (event) => {
+      rLink.textContent = event.code === 1008 ? "CLAVE INVÁLIDA" : "DESCONECTADO";
       setConnStatus("disconnected");
+      if (event.code === 1008) {
+        addLine("SISTEMA", "ERROR 1008: La clave enviada (" + (token ? token.substring(0, 8) + "…" : "vacía") + ") fue RECHAZADA. No coincide con JARVIS_GATEWAY_API_KEY en el archivo .env de tu servidor 192.168.68.100.", "system");
+        setEmotion("concern");
+      }
       clearInterval(window._taskPoll);
       clearInterval(window._proxmoxPoll);
       teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null;
