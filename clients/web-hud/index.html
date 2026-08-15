@@ -1288,10 +1288,11 @@
           <button type="button" data-connector-preset="n8n">PLANTILLA N8N</button>
           <button type="button" data-connector-preset="home_assistant">PLANTILLA HOME ASSISTANT</button>
           <button type="button" data-connector-preset="telegram">PLANTILLA TELEGRAM</button>
+          <button type="button" data-connector-preset="mcp">PLANTILLA MCP (STDIO)</button>
         </div>
         <div class="connector-form">
           <label>NOMBRE<input id="connector-name" placeholder="mi_n8n" maxlength="32" /><small>Identificador interno, sin espacios.</small></label>
-          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="telegram">Telegram</option></select><small>Define cómo se prueba y ejecuta.</small></label>
+          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="telegram">Telegram</option><option value="mcp">MCP / Model Context Protocol</option></select><small>Define cómo se prueba y ejecuta.</small></label>
           <label class="wide">URL DEL ENDPOINT<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /><small id="connector-url-help">Webhook único que recibe las acciones de JARVIS.</small></label>
           <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Obligatorio al crear · vacío conserva la clave al editar" autocomplete="new-password" /><small>Se cifra en el servidor y nunca vuelve al navegador.</small></label>
           <label class="wide">SERVICIOS DISPONIBLES<input id="connector-services" placeholder="gmail, outlook, whatsapp" /><small>Lista descriptiva separada por comas.</small></label>
@@ -1305,6 +1306,11 @@
         <div class="connector-section-title"><span>CONECTORES REGISTRADOS</span><button id="connector-refresh" type="button">ACTUALIZAR</button></div>
         <div class="connector-help">Edita permisos, prueba disponibilidad o elimina un módulo. El token guardado permanece oculto.</div>
         <div class="module-list" id="module-list"></div>
+      </section>
+      <section class="connector-section">
+        <div class="connector-section-title"><span>SERVIDORES MCP (MODEL CONTEXT PROTOCOL)</span><button id="mcp-refresh" type="button">ACTUALIZAR</button></div>
+        <div class="connector-help">Conecta servidores MCP locales (npx/STDIO) o remotos (SSE/n8n) para extender a JARVIS.</div>
+        <div class="module-list" id="mcp-server-list"></div>
       </section>
       <section class="connector-section connector-activity">
         <div class="connector-section-title"><span>ACTIVIDAD RECIENTE</span><span>02</span></div>
@@ -2942,7 +2948,43 @@
       }
       setConnectorStatus(modules.length ? `${modules.length} CONECTOR(ES) DISPONIBLE(S)` : "SIN CONECTORES · USA UNA PLANTILLA PARA COMENZAR");
       refreshConnectorEvents();
+      refreshMCPServers();
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
+  }
+
+  async function refreshMCPServers() {
+    const listEl = document.getElementById("mcp-server-list");
+    if (!listEl) return;
+    try {
+      const servers = await connectorRequest("/mcp/servers", { headers: connectorApiHeaders() });
+      listEl.replaceChildren();
+      for (const server of servers) {
+        const card = document.createElement("div"); card.className = `module-card${server.enabled ? "" : " disabled"}`;
+        const info = document.createElement("div"); info.className = "module-info";
+        const name = document.createElement("div"); name.className = "module-name"; name.textContent = `${server.enabled ? "●" : "○"} ${server.name.toUpperCase()} · MCP ${server.transport.toUpperCase()}`;
+        const meta = document.createElement("div"); meta.className = "module-meta";
+        meta.textContent = server.transport === "stdio" ? `Comando: ${server.command} ${(server.args || []).join(" ")}` : `URL: ${server.url}`;
+        info.append(name, meta);
+        const buttons = document.createElement("div"); buttons.className = "module-buttons";
+        const testBtn = document.createElement("button"); testBtn.textContent = "PROBAR";
+        testBtn.onclick = async () => {
+          try {
+            const res = await connectorRequest(`/mcp/servers/${encodeURIComponent(server.name)}/test`, { method: "POST", headers: connectorApiHeaders() });
+            alert(`MCP ${server.name.toUpperCase()}: ${res.tools_count} herramientas detectadas:\n${(res.tools || []).join(", ")}`);
+          } catch (e) { alert(`Error MCP: ${e.message}`); }
+        };
+        const removeBtn = document.createElement("button"); removeBtn.textContent = "ELIMINAR";
+        removeBtn.onclick = async () => {
+          if (!confirm(`¿Eliminar servidor MCP ${server.name}?`)) return;
+          try {
+            await connectorRequest(`/mcp/servers/${encodeURIComponent(server.name)}`, { method: "DELETE", headers: connectorApiHeaders() });
+            refreshMCPServers();
+          } catch (e) { alert(`Error: ${e.message}`); }
+        };
+        buttons.append(testBtn, removeBtn); card.append(info, buttons); listEl.appendChild(card);
+      }
+      if (!servers.length) listEl.textContent = "SIN SERVIDORES MCP REGISTRADOS";
+    } catch (e) { listEl.textContent = `NO DISPONIBLE · ${e.message}`; }
   }
 
   document.getElementById("connector-open").addEventListener("click", () => {

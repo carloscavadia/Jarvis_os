@@ -40,6 +40,7 @@ from fastapi.responses import StreamingResponse
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
+from jarvis_core.mcp.store import MCPServerRecord
 from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
@@ -322,6 +323,10 @@ async def lifespan(app: FastAPI):
         sessions.connector_store, timeout=settings.connector_timeout_seconds
     )
     mqtt_bridge.start()
+    try:
+        await sessions.mcp_manager.sync_servers()
+    except Exception as exc:
+        logger.warning("No se pudieron sincronizar algunos servidores MCP: %s", exc)
     if settings.scheduler_enabled:
         scheduler.start()
     if settings.voice_enabled and settings.wakeword_enabled:
@@ -606,6 +611,64 @@ async def test_connector_module(req: ConnectorModuleTestRequest) -> dict[str, ob
 async def delete_connector_module(name: str) -> dict[str, object]:
     deleted = _require_connector_store().delete(name)
     if deleted:
+        await sessions.refresh_tools()
+    return {"name": name, "deleted": deleted}
+
+
+class MCPServerRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    transport: str = Field("stdio", pattern="^(stdio|sse)$")
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    url: str = ""
+    enabled: bool = True
+
+
+@app.get("/mcp/servers", dependencies=[Depends(require_api_key)])
+async def list_mcp_servers() -> list[dict[str, object]]:
+    return [r.to_dict() for r in sessions.mcp_store.list_all()]
+
+
+@app.put("/mcp/servers/{name}", dependencies=[Depends(require_api_key)])
+async def register_mcp_server(name: str, req: MCPServerRequest) -> dict[str, object]:
+    record = MCPServerRecord(
+        name=name,
+        transport=req.transport,
+        command=req.command,
+        args=req.args,
+        env=req.env,
+        url=req.url,
+        enabled=req.enabled,
+    )
+    sessions.mcp_store.save(record)
+    await sessions.mcp_manager.sync_servers()
+    await sessions.refresh_tools()
+    return {"name": name, "stored": True}
+
+
+@app.post("/mcp/servers/{name}/test", dependencies=[Depends(require_api_key)])
+async def test_mcp_server(name: str) -> dict[str, object]:
+    record = sessions.mcp_store.get(name)
+    if not record:
+        raise HTTPException(status_code=404, detail="Servidor MCP no encontrado.")
+    try:
+        tools = await sessions.mcp_manager.connect_server(record)
+        return {
+            "name": name,
+            "ok": True,
+            "tools_count": len(tools),
+            "tools": [t.name for t in tools],
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.delete("/mcp/servers/{name}", dependencies=[Depends(require_api_key)])
+async def delete_mcp_server(name: str) -> dict[str, object]:
+    deleted = sessions.mcp_store.delete(name)
+    if deleted:
+        await sessions.mcp_manager.sync_servers()
         await sessions.refresh_tools()
     return {"name": name, "deleted": deleted}
 

@@ -71,6 +71,7 @@ def build_default_registry(
     allow_shell: bool | None = None,
     connector_store: ConnectorStore | None = None,
     goals: GoalStore | None = None,
+    mcp_manager: Any = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -144,5 +145,8 @@ def build_default_registry(
         register_dynamic_connector_tools(
             registry, connector_store, connector_runtime
         )
+    if mcp_manager is not None:
+        for mcp_tool in mcp_manager.get_registered_tools():
+            registry.register(mcp_tool)
     register_music_tools(registry, build_navidrome_client(settings))
     return registry
