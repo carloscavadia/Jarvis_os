@@ -3896,28 +3896,58 @@
     return (engCount > espCount && engCount >= 2) ? "en" : "es";
   }
 
+  function segmentSpeechByLanguage(text) {
+    if (!text) return [];
+    // Divide por comillas, títulos en inglés o cláusulas
+    const rawParts = text.split(/(["'«”`][^"'»”`]+["'«”`])/g);
+    const segments = [];
+    for (const part of rawParts) {
+      if (!part.trim()) continue;
+      const isQuoted = /^["'«”`].*["'«”`]$/.test(part.trim());
+      const clean = part.replace(/["'«”`]/g, "").trim();
+      if (!clean) continue;
+      let lang = detectSpeechLanguage(clean);
+      if (isQuoted && lang !== "es") lang = "en";
+      segments.push({ text: clean, lang });
+    }
+    return segments.length ? segments : [{ text, lang: detectSpeechLanguage(text) }];
+  }
+
   function speakInBrowser(text, cancelExisting = false) {
     return new Promise((resolve) => {
       if (!canSpeak) { rVoice.textContent = "ERROR"; resolve(); return; }
       if (cancelExisting) speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      const lang = detectSpeechLanguage(text);
-      if (lang === "en") {
-        utterance.lang = "en-US";
-        const voice = selectEnglishVoice();
-        if (voice) utterance.voice = voice;
-      } else {
-        utterance.lang = "es-MX";
-        const voice = selectSpanishVoice();
-        if (voice) utterance.voice = voice;
+      const segments = segmentSpeechByLanguage(text);
+      let index = 0;
+
+      function speakNextSegment() {
+        if (index >= segments.length) {
+          voiceActive = false;
+          rVoice.textContent = "LISTA";
+          resolve();
+          return;
+        }
+        const seg = segments[index++];
+        const utterance = new SpeechSynthesisUtterance(seg.text);
+        if (seg.lang === "en") {
+          utterance.lang = "en-US";
+          const voice = selectEnglishVoice();
+          if (voice) utterance.voice = voice;
+        } else {
+          utterance.lang = "es-MX";
+          const voice = selectSpanishVoice();
+          if (voice) utterance.voice = voice;
+        }
+        utterance.rate = 0.96;
+        utterance.pitch = 0.82;
+        utterance.onstart = () => { stopWakeListening(); voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
+        utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
+        utterance.onend = () => speakNextSegment();
+        utterance.onerror = () => speakNextSegment();
+        speechSynthesis.speak(utterance);
       }
-      utterance.rate = 0.96;
-      utterance.pitch = 0.82;
-      utterance.onstart = () => { stopWakeListening(); voiceActive = true; voiceEnergy = 0.35; rVoice.textContent = "HABLANDO"; setState("speaking"); };
-      utterance.onboundary = () => { voiceEnergy = Math.max(voiceEnergy, 0.72); };
-      utterance.onend = () => { voiceActive = false; rVoice.textContent = "LISTA"; resolve(); };
-      utterance.onerror = () => { voiceActive = false; rVoice.textContent = "ERROR"; resolve(); };
-      speechSynthesis.speak(utterance);
+
+      speakNextSegment();
     });
   }
 
