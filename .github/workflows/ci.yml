@@ -41,6 +41,9 @@ jobs:
       - name: Test HUD music player
         run: node clients/web-hud/tests/player.test.js
 
+      - name: Test HUD follow-up listening
+        run: node clients/web-hud/tests/followup.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15

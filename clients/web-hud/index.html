@@ -2383,6 +2383,7 @@
   approvalDeny.addEventListener("click", () => sendApprovalDecision(false));
   function startStreamReply() {
     if (activeReply) finishStreamReply();
+    replyTextComplete = false;
     activeReplyText = "";
     streamDirectedToBoard = false;
     streamTokenIndex = 0;
@@ -2462,6 +2463,7 @@
       renderStructuredText(activeReply.text, displayedText);
       activeReply = null;
     }
+    replyTextComplete = true;
     if (spokenText && !voiceSocket) finishStreamSpeech(spokenText);
     activeReplyText = "";
     streamDirectedToBoard = false;
@@ -3668,6 +3670,11 @@
   let streamSpeechBuffer = "";
   let streamSpeechSource = "";
   let streamSpeechStarted = false;
+  // ¿Ha terminado de llegar el texto de la respuesta? La cola de voz se vacía
+  // en cada pausa del modelo, y una pausa no es el final: sin esto la escucha
+  // se abría a mitad de respuesta, JARVIS seguía hablando con el micrófono
+  // abierto, se oía a sí mismo y el turno resultante cortaba su propia voz.
+  let replyTextComplete = true;
   let audioContext = null;
 
   function connectVoiceVisualizer(audio) {
@@ -3959,7 +3966,14 @@
       if (speechQueue.length) continue;
       // Breve gracia final: evita cerrar WebRTC entre dos frases cercanas.
       await new Promise((resolve) => setTimeout(resolve, 650));
-      if (!speechQueue.length) break;
+      if (speechQueue.length) continue;
+      // Vacía pero con texto aún en camino: es una pausa del modelo, no el
+      // final. Cerrar aquí abría el micrófono mientras JARVIS todavía tenía
+      // frases que decir. Se espera al texto autoritativo; si la conexión cae,
+      // `finishStreamReply` lo marca completo igualmente y esto no se queda
+      // colgado.
+      if (!replyTextComplete) continue;
+      break;
     }
     if (realtimeVoiceSession) {
       closeRealtimeVoiceSession();
@@ -4189,6 +4203,10 @@
       scheduleWakeListening();
       return;
     }
+    // La escucha se abre cuando JARVIS ha terminado de hablar, no cuando ha
+    // terminado de escribir. Si queda audio sonando o texto por llegar, el
+    // final de la cola volverá a llamar aquí.
+    if (!replyTextComplete || speechQueueRunning || speechQueue.length) return;
     stopWakeListening();
     stopConversationFollowUp({ sleep: false });
     followUpListening = true;
