@@ -178,7 +178,10 @@ class Settings:
     # Ruta del HUD servido por el propio gateway. Tenerlo aquí evita que una
     # copia suelta del index.html quede desactualizada respecto al servidor.
     hud_path: str = "clients/web-hud/index.html"
-    workspace_root: str = "."
+    # La raíz del explorador y de las herramientas de archivos. Apuntar a "."
+    # dejaba dentro el código del servidor y data/ —con la memoria y el registro
+    # de conectores—, que no es lo que se quiere administrar desde el HUD.
+    workspace_root: str = "data/workspace"
     workspace_max_file_bytes: int = 256 * 1024
     package_install_enabled: bool = False
     package_install_managers: list[str] = field(default_factory=lambda: ["pip"])
@@ -425,7 +428,7 @@ class Settings:
             hud_path=os.environ.get(
                 "JARVIS_HUD_PATH", "clients/web-hud/index.html"
             ),
-            workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "."),
+            workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
             workspace_max_file_bytes=max(
                 1024,
                 int(os.environ.get("JARVIS_WORKSPACE_MAX_FILE_BYTES", "262144")),

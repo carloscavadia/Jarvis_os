@@ -934,7 +934,7 @@ def test_hud_is_served_by_the_gateway(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     # Sin no-store el navegador seguiría con la versión anterior tras actualizar.
-    assert response.headers["cache-control"] == "no-store"
+    assert "no-store" in response.headers["cache-control"]
     assert 'id="player"' in response.text
 
 
@@ -944,3 +944,62 @@ def test_hud_reports_a_clear_error_when_missing(monkeypatch):
         response = client.get("/hud")
     assert response.status_code == 404
     assert "no/existe.html" in response.json()["detail"]
+
+
+# ── Explorador de archivos ───────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def explorer_workspace(tmp_path, monkeypatch):
+    root = tmp_path / "workspace"
+    (root / "Documentos").mkdir(parents=True)
+    (root / "Documentos" / "reporte_IAG.txt").write_text("informe", encoding="utf-8")
+    (root / "notas.md").write_text("# hola", encoding="utf-8")
+    monkeypatch.setattr(gateway_module.settings, "workspace_root", str(root))
+    monkeypatch.setattr(gateway_module.settings, "agent_control_enabled", True)
+    return root
+
+
+def test_the_workspace_guard_is_built_with_the_setting_that_exists(explorer_workspace):
+    """Con el nombre corto esto lanzaba AttributeError en cada llamada.
+
+    El endpoint lo capturaba y devolvía una carpeta vacía, así que el explorador
+    no mostraba nada y el motivo no aparecía por ningún lado.
+    """
+    guard = gateway_module._get_workspace_guard()
+    assert guard.max_file_bytes == gateway_module.settings.workspace_max_file_bytes
+
+
+def test_the_tree_actually_lists_the_workspace(explorer_workspace):
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/workspace/tree", headers={"X-Jarvis-Key": "ci-test-key"})
+    body = response.json()
+    assert response.status_code == 200
+    assert [item["name"] for item in body["items"]] == ["Documentos", "notas.md"]
+    # Las carpetas primero, y la raíz no ofrece subir a ningún sitio.
+    assert body["items"][0]["is_dir"] is True
+    assert body["parent"] is None
+
+
+def test_entering_a_folder_offers_the_way_back(explorer_workspace):
+    with TestClient(gateway_module.app) as client:
+        body = client.get(
+            "/workspace/tree", params={"path": "Documentos"},
+            headers={"X-Jarvis-Key": "ci-test-key"},
+        ).json()
+    assert [item["name"] for item in body["items"]] == ["reporte_IAG.txt"]
+    assert body["parent"] == "."
+
+
+def test_a_broken_workspace_reports_the_failure_instead_of_looking_empty(
+    explorer_workspace, monkeypatch
+):
+    """Una carpeta vacía y un servidor roto tienen que distinguirse."""
+    def explode():
+        raise RuntimeError("configuración rota")
+
+    monkeypatch.setattr(gateway_module, "_get_workspace_guard", explode)
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/workspace/tree", headers={"X-Jarvis-Key": "ci-test-key"})
+    assert response.status_code == 500
+    assert "RuntimeError" in response.json()["detail"]

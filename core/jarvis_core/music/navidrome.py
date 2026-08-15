@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import secrets
 import ssl
 import urllib.error
@@ -17,6 +18,8 @@ from typing import Any
 from urllib.parse import urlencode, urljoin, urlsplit, urlunsplit
 
 import certifi
+
+logger = logging.getLogger("jarvis.music")
 
 #: Versión del protocolo Subsonic que declara el cliente.
 SUBSONIC_VERSION = "1.16.1"
@@ -202,5 +205,8 @@ def build_navidrome_client(settings: Any) -> NavidromeClient | None:
             settings.navidrome_password,
             timeout=settings.navidrome_timeout_seconds,
         )
-    except NavidromeError:
+    except NavidromeError as exc:
+        # Devolver None en silencio hacía que «no puedo reproducir audio» fuera
+        # indistinguible de un servidor caído.
+        logger.warning("Música desactivada por configuración inválida: %s", exc)
         return None

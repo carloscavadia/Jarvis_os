@@ -443,7 +443,10 @@ async def health() -> dict[str, object]:
         "connectors": "on" if settings.connectors_enabled else "off",
         # Permite detectar de un vistazo que el HUD y el gateway van desparejados,
         # que es la causa típica de que una función "esté" pero no haga nada.
-        "music": "on" if settings.navidrome_url else "off",
+        # Se comprueba que el cliente se construya, no que la URL no esté
+        # vacía: una configuración a medias no registra ninguna herramienta, y
+        # decir "on" ahí enviaba a buscar el fallo justo donde no estaba.
+        "music": "on" if build_navidrome_client(settings) is not None else "off",
         "features": sorted(GATEWAY_FEATURES),
     }
 
@@ -904,12 +907,19 @@ async def synthesize_voice(req: SpeechRequest) -> Response:
 _MEDIA_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
-async def _proxy_media(endpoint: str, params: dict[str, str]):
+async def _proxy_media(
+    endpoint: str, params: dict[str, str], range_header: str | None = None
+):
     """Sirve audio o carátula desde Navidrome sin exponer sus credenciales.
 
     El navegador no puede poner cabeceras en `<audio src>`, así que la
     alternativa sería mandarle la contraseña del servidor de música. Con el proxy
     solo circula la clave del gateway, que es la que el HUD ya tiene.
+
+    La petición de rango se reenvía tal cual y su respuesta se devuelve íntegra:
+    sin eso `<audio>` no conoce la duración —la barra de progreso se queda en
+    cero— ni puede avanzar dentro de una canción, porque saltar a un minuto
+    concreto es exactamente pedir un rango de bytes.
     """
     client = build_navidrome_client(settings)
     if client is None:
@@ -918,16 +928,32 @@ async def _proxy_media(endpoint: str, params: dict[str, str]):
         )
     url = client.endpoint_url(endpoint, params)
 
+    media_headers = {"User-Agent": "JARVIS-OS/0.3 navidrome"}
+    if range_header:
+        media_headers["Range"] = range_header
+
     def fetch():
-        request = urllib.request.Request(
-            url, method="GET", headers={"User-Agent": "JARVIS-OS/0.3 navidrome"}
-        )
+        request = urllib.request.Request(url, method="GET", headers=media_headers)
         return urllib.request.urlopen(
             request, timeout=settings.navidrome_timeout_seconds
         )
 
     try:
         upstream = await asyncio.to_thread(fetch)
+    except urllib.error.HTTPError as exc:
+        # Un rango imposible es una respuesta legítima del protocolo, no un
+        # fallo: traducirlo a 502 acusaría a Navidrome de estar caído.
+        exc.close()
+        if exc.code == 416:
+            raise HTTPException(
+                status_code=416, detail="Rango solicitado no disponible."
+            ) from exc
+        logger.warning(
+            "El servidor de música respondió HTTP %s a %s", exc.code, endpoint
+        )
+        raise HTTPException(
+            status_code=502, detail="El servidor de música no respondió."
+        ) from exc
     except Exception as exc:
         logger.warning("No pude obtener %s del servidor de música: %s", endpoint, exc)
         raise HTTPException(
@@ -935,6 +961,13 @@ async def _proxy_media(endpoint: str, params: dict[str, str]):
         ) from exc
 
     media_type = upstream.headers.get_content_type() or "application/octet-stream"
+    media_response_headers = {"Cache-Control": "private, max-age=300"}
+    # `Accept-Ranges` dice que se puede saltar; `Content-Length` y
+    # `Content-Range`, cuánto dura y qué trozo llega.
+    for header in ("Accept-Ranges", "Content-Length", "Content-Range"):
+        value = upstream.headers.get(header)
+        if value:
+            media_response_headers[header] = value
 
     def chunks():
         # Se transmite por partes: una canción no cabe —ni debe caber— en los
@@ -950,20 +983,25 @@ async def _proxy_media(endpoint: str, params: dict[str, str]):
 
     return StreamingResponse(
         chunks(),
+        status_code=getattr(upstream, "status", 200) or 200,
         media_type=media_type,
-        headers={"Cache-Control": "private, max-age=300"},
+        headers=media_response_headers,
     )
 
 
 @app.get("/music/stream/{song_id}")
-async def music_stream(song_id: str, token: str = ""):
+async def music_stream(
+    song_id: str,
+    token: str = "",
+    range_header: str | None = Header(default=None, alias="Range"),
+):
     # El `<audio>` del navegador no admite cabeceras: la clave viaja por query,
     # igual que ya hace el WebSocket del HUD.
     if not _valid_api_key(token):
         raise HTTPException(status_code=401, detail="Credenciales inválidas.")
     if not _MEDIA_ID_RE.fullmatch(song_id):
         raise HTTPException(status_code=422, detail="Identificador inválido.")
-    return await _proxy_media("stream", {"id": song_id})
+    return await _proxy_media("stream", {"id": song_id}, range_header)
 
 
 @app.get("/music/cover/{cover_id}")
@@ -1242,7 +1280,11 @@ class WorkspaceCreateRequest(BaseModel):
 
 
 def _get_workspace_guard() -> WorkspaceGuard:
-    return WorkspaceGuard(settings.workspace_root, settings.max_file_bytes)
+    # El ajuste se llama workspace_max_file_bytes. Con el nombre corto esto
+    # lanzaba AttributeError en cada llamada y el `except` de más abajo lo
+    # convertía en una carpeta vacía: el explorador no mostraba nada nunca y no
+    # había forma de saber por qué.
+    return WorkspaceGuard(settings.workspace_root, settings.workspace_max_file_bytes)
 
 
 @app.get("/workspace/tree", dependencies=[Depends(require_api_key)])
@@ -1340,10 +1382,25 @@ async def workspace_tree(path: str = "."):
         except Exception:
             disp_path = "."
 
-        return {"path": disp_path, "items": items}
+        parent = None
+        if disp_path != ".":
+            grandparent = str(Path(disp_path).parent)
+            parent = "." if grandparent == "." else grandparent
+
+        return {"path": disp_path, "parent": parent, "items": items}
+    except HTTPException:
+        raise
     except Exception as top_err:
-        logger.error("Error top-level en workspace_tree: %s", top_err, exc_info=True)
-        return {"path": ".", "items": []}
+        # Antes esto devolvía {"items": []} y el explorador salía vacío sin decir
+        # nada: un fallo de configuración era indistinguible de una carpeta sin
+        # archivos. La tolerancia por entrada de arriba sí tiene sentido —un
+        # archivo ilegible no debe tumbar el listado—, pero tragarse el fallo
+        # entero solo esconde la causa.
+        logger.exception("No pude listar el workspace")
+        raise HTTPException(
+            status_code=500,
+            detail=f"No pude listar la carpeta: {type(top_err).__name__}.",
+        ) from top_err
 
 
 @app.get("/workspace/file/content", dependencies=[Depends(require_api_key)])
@@ -1356,7 +1413,7 @@ async def workspace_file_content(path: str):
     if not resolved.is_file():
         raise HTTPException(status_code=404, detail="El archivo no existe.")
     size = resolved.stat().st_size
-    if size > settings.max_file_bytes:
+    if size > settings.workspace_max_file_bytes:
         raise HTTPException(status_code=400, detail="El archivo supera el tamaño máximo permitido.")
     
     mime, _ = mimetypes.guess_type(resolved.name)

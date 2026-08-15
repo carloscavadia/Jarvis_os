@@ -298,10 +298,39 @@ class ConnectorRuntime:
         allowed_actions = set(write_actions if write else read_actions)
         if record.connector_type == "home_assistant" and not write:
             allowed_actions.update(self.HOME_ASSISTANT_READ_ACTIONS)
-        if record.connector_type == "n8n":
-            allowed_actions = read_actions | write_actions
         if action not in allowed_actions:
-            return ToolResult("Acción no permitida para este módulo.", is_error=True)
+            # La separación lectura/escritura es lo que sostiene la aprobación
+            # humana: `query_connector_module` no la pide y
+            # `run_connector_module_action` sí. Unir las dos listas hacía que una
+            # consulta pudiera enviar un correo o abrir una puerta sin
+            # preguntar, así que en vez de ensancharla se dice exactamente qué
+            # falta: el «Acción no permitida» a secas era imposible de arreglar
+            # sin adivinar en qué lista está declarada la acción.
+            declared_as_write = action in write_actions
+            declared_as_read = action in read_actions
+            if write and declared_as_read:
+                detail = (
+                    f"'{action}' está declarada como lectura en '{connector}'. "
+                    "Consúltala con la herramienta de consulta, o declárala en "
+                    "write_actions si de verdad modifica algo."
+                )
+            elif not write and declared_as_write:
+                detail = (
+                    f"'{action}' está declarada como escritura en '{connector}' y "
+                    "requiere aprobación: ejecútala con la herramienta de acción, "
+                    "no con la de consulta."
+                )
+            else:
+                available = sorted(read_actions | write_actions)
+                detail = (
+                    f"'{action}' no está declarada en '{connector}'. "
+                    + (
+                        "Acciones disponibles: " + ", ".join(available[:20])
+                        if available
+                        else "El módulo no declara ninguna acción todavía."
+                    )
+                )
+            return ToolResult(f"Acción no permitida. {detail}", is_error=True)
         if record.connector_type == "n8n":
             return self._n8n(record, action, payload)
         if record.connector_type == "home_assistant":

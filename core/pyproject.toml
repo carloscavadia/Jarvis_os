@@ -32,6 +32,12 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "ruff>=0.6",
+    # La suite cubre voz, palabra de activación y los proveedores compatibles
+    # con OpenAI. Sin numpy pytest ni siquiera colecta esos módulos y aborta
+    # entera, dejando sin ejecutar también los tests del HUD que van después.
+    "numpy>=1.26",
+    "openwakeword>=0.6",
+    "openai>=3.0.0",
 ]
 
 [project.scripts]

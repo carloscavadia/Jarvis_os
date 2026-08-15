@@ -4,6 +4,7 @@ Uso:
     jarvis chat        # conversación interactiva por terminal
     jarvis ask "..."   # una sola pregunta y salir
     jarvis tools       # lista las herramientas disponibles
+    jarvis music-test  # comprueba la conexión con el servidor de música
 """
 
 from __future__ import annotations
@@ -134,6 +135,55 @@ def _wake_test(settings: Settings, paths: list[str]) -> None:
         )
 
 
+def _music_test(settings: Settings) -> None:
+    """Comprueba la cadena de música desde el propio servidor.
+
+    Separa las tres causas que producen el mismo síntoma —«no puedo reproducir
+    audio»—: configuración que no llegó al proceso, servidor inalcanzable y
+    credenciales rechazadas.
+    """
+    from jarvis_core.music.navidrome import NavidromeError, build_navidrome_client
+
+    print("Configuración recibida por este proceso:")
+    print(f"  URL      {settings.navidrome_url or '(vacía)'}")
+    print(f"  usuario  {settings.navidrome_username or '(vacío)'}")
+    print(f"  clave    {'(definida)' if settings.navidrome_password else '(vacía)'}\n")
+
+    if not settings.navidrome_url:
+        print(
+            "JARVIS_NAVIDROME_URL no llegó hasta aquí, así que no se registra\n"
+            "ninguna herramienta de música. Si el valor sí está en tu .env y esto\n"
+            "corre en Docker, arranca con:  docker compose --env-file ../.env up -d"
+        )
+        sys.exit(1)
+
+    client = build_navidrome_client(settings)
+    if client is None:
+        print("La configuración es inválida; el motivo aparece arriba en el registro.")
+        sys.exit(1)
+
+    try:
+        version = client.ping()
+    except NavidromeError as exc:
+        print(f"✗ No pude hablar con el servidor de música:\n  {exc}")
+        sys.exit(1)
+    print(f"✓ Conectado. Protocolo Subsonic {version}.")
+
+    try:
+        songs = client.random(3)
+    except NavidromeError as exc:
+        print(f"✗ Conecté, pero la biblioteca no respondió:\n  {exc}")
+        sys.exit(1)
+
+    if not songs:
+        print("✓ Credenciales correctas, pero la biblioteca está vacía.")
+        return
+    print(f"✓ Biblioteca accesible. Muestra de {len(songs)}:")
+    for song in songs:
+        artist = f" — {song['artist']}" if song.get("artist") else ""
+        print(f"    {song['title']}{artist}")
+
+
 def main() -> None:
     _load_dotenv()
     parser = argparse.ArgumentParser(
@@ -150,6 +200,10 @@ def main() -> None:
         help="Mide la palabra de activación en grabaciones WAV para ajustar el umbral",
     )
     wake_p.add_argument("wav", nargs="+", help="Grabaciones a medir")
+    sub.add_parser(
+        "music-test",
+        help="Comprueba la conexión con el servidor de música y sus credenciales",
+    )
 
     args = parser.parse_args()
     settings = Settings.from_env()
@@ -162,6 +216,8 @@ def main() -> None:
         _tools(settings)
     elif args.command == "wake-test":
         _wake_test(settings, args.wav)
+    elif args.command == "music-test":
+        _music_test(settings)
     else:
         parser.print_help()
         sys.exit(1)

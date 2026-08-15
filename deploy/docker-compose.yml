@@ -54,7 +54,7 @@ services:
       HF_HOME: /app/data/huggingface
       JARVIS_GATEWAY_CORS_ORIGINS: "${JARVIS_GATEWAY_CORS_ORIGINS:-http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:5173,http://localhost:5173}"
       JARVIS_AGENT_CONTROL_ENABLED: "${JARVIS_AGENT_CONTROL_ENABLED:-true}"
-      JARVIS_WORKSPACE_ROOT: "${JARVIS_WORKSPACE_ROOT:-/app}"
+      JARVIS_WORKSPACE_ROOT: "${JARVIS_WORKSPACE_ROOT:-/app/workspace}"
       JARVIS_PACKAGE_INSTALL_ENABLED: "${JARVIS_PACKAGE_INSTALL_ENABLED:-true}"
       JARVIS_PACKAGE_INSTALL_MANAGERS: "${JARVIS_PACKAGE_INSTALL_MANAGERS:-pip}"
       JARVIS_PYTHON_EXECUTION_ENABLED: "${JARVIS_PYTHON_EXECUTION_ENABLED:-true}"
@@ -63,9 +63,13 @@ services:
       JARVIS_WEB_REQUEST_TIMEOUT_SECONDS: "${JARVIS_WEB_REQUEST_TIMEOUT_SECONDS:-15}"
       JARVIS_WEB_MAX_DOWNLOAD_BYTES: "${JARVIS_WEB_MAX_DOWNLOAD_BYTES:-1048576}"
       JARVIS_HUD_WORKSPACE_ENABLED: "${JARVIS_HUD_WORKSPACE_ENABLED:-true}"
-      JARVIS_NAVIDROME_URL: "${JARVIS_NAVIDROME_URL:-}"
-      JARVIS_NAVIDROME_USERNAME: "${JARVIS_NAVIDROME_USERNAME:-}"
-      JARVIS_NAVIDROME_PASSWORD: "${JARVIS_NAVIDROME_PASSWORD:-}"
+      # Navidrome NO se declara aquí a propósito. `environment` gana sobre
+      # `env_file`, y `${JARVIS_NAVIDROME_URL:-}` se interpola desde el shell o
+      # desde --env-file, nunca desde `env_file`. Un `docker compose up` sin
+      # --env-file inyectaba la cadena vacía por encima del valor correcto de
+      # ../.env: el cliente de música no se construía, las herramientas no se
+      # registraban y JARVIS decía «no puedo reproducir audio» con la
+      # configuración bien puesta.
       JARVIS_PROXMOX_URL: "${JARVIS_PROXMOX_URL:-https://192.168.68.201:8006}"
       JARVIS_PROXMOX_TOKEN_ID: "${JARVIS_PROXMOX_TOKEN_ID:-}"
       JARVIS_PROXMOX_TOKEN_SECRET: "${JARVIS_PROXMOX_TOKEN_SECRET:-}"
