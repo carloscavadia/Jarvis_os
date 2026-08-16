@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import Any
@@ -11,6 +10,20 @@ from jarvis_core.mcp.store import MCPServerRecord, MCPStore
 from jarvis_core.tools.base import Tool, ToolResult
 
 logger = logging.getLogger("jarvis.mcp")
+
+#: Variables que un proceso hijo necesita para arrancar. El resto del entorno del
+#: gateway —clave del gateway, master key de conectores, token de Telegram,
+#: credenciales de Navidrome— no se le entrega: un servidor MCP es código de
+#: terceros y no tiene por qué ver los secretos de la casa.
+_ENV_PASSTHROUGH = ("PATH", "HOME", "LANG", "LC_ALL", "TZ", "TMPDIR", "SSL_CERT_FILE")
+
+
+def _child_env(extra: dict[str, str] | None) -> dict[str, str]:
+    env = {k: os.environ[k] for k in _ENV_PASSTHROUGH if k in os.environ}
+    if extra:
+        env.update(extra)
+    return env
+
 
 
 class DynamicMCPTool(Tool):
@@ -32,7 +45,7 @@ class DynamicMCPTool(Tool):
         self.input_schema = input_schema or {"type": "object", "properties": {}}
         self._manager = manager
 
-    async def execute(self, **kwargs: Any) -> ToolResult:
+    async def run(self, **kwargs: Any) -> ToolResult:
         return await self._manager.call_mcp_tool(
             self._server_name, self._mcp_tool_name, kwargs
         )
@@ -88,9 +101,7 @@ class MCPManager:
             if not record.command:
                 raise ValueError("El campo 'command' es obligatorio para transport='stdio'")
 
-            env = dict(os.environ)
-            if record.env:
-                env.update(record.env)
+            env = _child_env(record.env)
 
             params = StdioServerParameters(
                 command=record.command,
@@ -151,9 +162,7 @@ class MCPManager:
             from mcp.client.sse import sse_client
 
             if record.transport == "stdio":
-                env = dict(os.environ)
-                if record.env:
-                    env.update(record.env)
+                env = _child_env(record.env)
                 params = StdioServerParameters(
                     command=record.command,
                     args=record.args or [],

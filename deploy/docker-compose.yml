@@ -79,6 +79,12 @@ services:
       JARVIS_PROXMOX_TOKEN_SECRET: "${JARVIS_PROXMOX_TOKEN_SECRET:-}"
       JARVIS_CONNECTOR_DB: /app/data/jarvis_connectors.db
       JARVIS_PROACTIVE_EVENTS_DB: /app/data/jarvis_proactive_events.db
+      JARVIS_MCP_DB: /app/data/jarvis_mcp.db
+      JARVIS_SKILLS_DB: /app/data/jarvis_skills.db
+      # Habilidades con código Python ejecutable. Apagadas: son código que
+      # escribe el propio modelo, y el resto del sistema le niega esa vía a
+      # propósito. Enciéndelas sólo si de verdad quieres esa capacidad.
+      JARVIS_SKILLS_PYTHON_ENABLED: "${JARVIS_SKILLS_PYTHON_ENABLED:-false}"
     ports:
       - "8080:8080"
     volumes:

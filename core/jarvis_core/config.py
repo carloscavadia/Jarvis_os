@@ -199,6 +199,13 @@ class Settings:
     connectors_enabled: bool = False
     connector_db_path: str = "data/jarvis_connectors.db"
     proactive_events_db_path: str = "data/jarvis_proactive_events.db"
+    mcp_db_path: str = "data/jarvis_mcp.db"
+    skills_db_path: str = "data/jarvis_skills.db"
+    #: Las habilidades de tipo `python` ejecutan código arbitrario en el proceso
+    #: del gateway. Desactivado por defecto: sin esto, `learn_skill` daría al
+    #: modelo una vía de ejecución que el resto del sistema le niega a propósito
+    #: (`allow_shell=False`, workspace confinado, aprobación en conectores).
+    skills_python_enabled: bool = False
     connector_master_key: str = ""
     connector_chat_enabled: bool = False
     connector_allowed_user_hashes: list[str] = field(default_factory=list)
@@ -478,6 +485,9 @@ class Settings:
             proactive_events_db_path=os.environ.get(
                 "JARVIS_PROACTIVE_EVENTS_DB", "data/jarvis_proactive_events.db"
             ),
+            mcp_db_path=os.environ.get("JARVIS_MCP_DB", "data/jarvis_mcp.db"),
+            skills_db_path=os.environ.get("JARVIS_SKILLS_DB", "data/jarvis_skills.db"),
+            skills_python_enabled=_get_bool("JARVIS_SKILLS_PYTHON_ENABLED", False),
             connector_master_key=os.environ.get("JARVIS_CONNECTOR_MASTER_KEY", ""),
             connector_chat_enabled=_get_bool("JARVIS_CONNECTOR_CHAT_ENABLED", False),
             connector_allowed_user_hashes=_get_list(

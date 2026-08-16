@@ -31,10 +31,11 @@ class LearnSkillTool(Tool):
         "required": ["name", "title", "trigger", "description", "content"],
     }
 
-    def __init__(self, engine: SelfLearningEngine) -> None:
+    def __init__(self, engine: SelfLearningEngine, *, allow_python: bool = False) -> None:
         self.engine = engine
+        self.allow_python = allow_python
 
-    async def execute(
+    async def run(
         self,
         name: str,
         title: str,
@@ -44,6 +45,17 @@ class LearnSkillTool(Tool):
         skill_type: str = "instruction",
         **kwargs: Any,
     ) -> ToolResult:
+        if skill_type == "python" and not self.allow_python:
+            # Guardar el código ya sería media ejecución: la habilidad queda
+            # registrada como herramienta y basta con activar la opción para que
+            # corra. Que la decisión de escribir código ejecutable la tome el
+            # dueño desde el panel, no el modelo a mitad de una conversación.
+            return ToolResult(
+                "Las habilidades de tipo 'python' están desactivadas. Guarda el "
+                "procedimiento como 'instruction', o pide al usuario que active "
+                "JARVIS_SKILLS_PYTHON_ENABLED si quiere habilidades ejecutables.",
+                is_error=True,
+            )
         try:
             record = self.engine.learn_new_skill(
                 name=name,
@@ -72,7 +84,7 @@ class ListSkillsTool(Tool):
     def __init__(self, store: SkillStore) -> None:
         self.store = store
 
-    async def execute(self, **kwargs: Any) -> ToolResult:
+    async def run(self, **kwargs: Any) -> ToolResult:
         skills = self.store.list_all()
         if not skills:
             return ToolResult("Aún no hay Habilidades aprendidas registradas.")
@@ -103,6 +115,9 @@ class ExecuteSkillTool(Tool):
 
     def __init__(self, manager: SkillManager) -> None:
         self.manager = manager
+        # Acepta cualquier nombre, así que mientras haya habilidades ejecutables
+        # esta herramienta puede acabar corriendo código: pide permiso igual.
+        self.requires_confirmation = manager.allow_python
 
-    async def execute(self, name: str, params: str = "", **kwargs: Any) -> ToolResult:
+    async def run(self, name: str, params: str = "", **kwargs: Any) -> ToolResult:
         return await self.manager.execute_skill(name, params)

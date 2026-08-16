@@ -22,7 +22,9 @@ from jarvis_gateway import app as gateway_module
 #: Deliberadamente públicas. `/health` y `/ready` las consulta el healthcheck de
 #: Docker antes de que exista ninguna sesión, y `/hud` sirve el propio HUD, que
 #: sin él no podría ni pedir la clave.
-PUBLIC = {"/health", "/ready", "/hud"}
+#: `/config.js` lo carga el propio HUD con un `<script src>` antes de tener
+#: ninguna clave que enviar, y no devuelve nada sensible.
+PUBLIC = {"/health", "/ready", "/hud", "/config.js"}
 
 #: Autentican por `?token=` en vez de por cabecera: el navegador no puede poner
 #: cabeceras en `<audio src>` ni en `<img src>`.
@@ -40,14 +42,16 @@ EXPECTED_ROUTES = {
     "/connector-modules", "/connector-modules/test", "/connector-modules/{name}",
     "/connectors/chat", "/connectors/events",
     "/goals/current", "/goals/{goal_id}/control",
-    "/health", "/hud", "/ready",
+    "/config.js", "/health", "/hud", "/ready",
     "/homeassistant/entities", "/homeassistant/toggle",
+    "/mcp/servers", "/mcp/servers/{name}", "/mcp/servers/{name}/test",
     "/memory/graph",
     "/music/cover/{cover_id}", "/music/playlist/{playlist_id}", "/music/playlists",
     "/music/random", "/music/search", "/music/status", "/music/stream/{song_id}",
     "/proactive/events", "/proactive/events/{event_id}/decision",
     "/proxmox/status",
     "/server/heal", "/server/health",
+    "/skills", "/skills/learn", "/skills/{name}", "/skills/{name}/toggle",
     "/tasks", "/tasks/history", "/tasks/{task_id}", "/tasks/{task_id}/control",
     "/voice/realtime-token", "/voice/status", "/voice/synthesize",
     "/voice/transcribe",

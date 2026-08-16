@@ -49,11 +49,22 @@ class SkillStore:
 
     def __init__(self, db_path: str | Path = ":memory:") -> None:
         self.db_path = str(db_path)
-        if self.db_path != ":memory:":
+        self._shared: sqlite3.Connection | None = None
+        if self.db_path == ":memory:":
+            # Cada sqlite3.connect(":memory:") abre una base NUEVA y vacía. Si se
+            # abriera una por llamada, la tabla creada aquí desaparecería y todo
+            # lo escrito se perdería en la siguiente consulta. Se conserva una
+            # única conexión para que el modo memoria se comporte como el de
+            # fichero. `with conn:` sólo cierra la transacción, no la conexión.
+            self._shared = sqlite3.connect(self.db_path, check_same_thread=False)
+            self._shared.row_factory = sqlite3.Row
+        else:
             Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:
+        if self._shared is not None:
+            return self._shared
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn

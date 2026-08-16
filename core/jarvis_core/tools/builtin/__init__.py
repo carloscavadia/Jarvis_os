@@ -12,8 +12,10 @@ from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
+from jarvis_core.mcp.manager import MCPManager
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.music.navidrome import build_navidrome_client
+from jarvis_core.skills.manager import SkillManager
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin.connectors import (
@@ -71,8 +73,8 @@ def build_default_registry(
     allow_shell: bool | None = None,
     connector_store: ConnectorStore | None = None,
     goals: GoalStore | None = None,
-    mcp_manager: Any = None,
-    skill_manager: Any = None,
+    mcp_manager: MCPManager | None = None,
+    skill_manager: SkillManager | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -157,7 +159,9 @@ def build_default_registry(
             ListSkillsTool,
         )
         engine = SelfLearningEngine(skill_manager.store, skill_manager)
-        registry.register(LearnSkillTool(engine))
+        registry.register(
+            LearnSkillTool(engine, allow_python=skill_manager.allow_python)
+        )
         registry.register(ListSkillsTool(skill_manager.store))
         registry.register(ExecuteSkillTool(skill_manager))
         for skill_tool in skill_manager.get_registered_tools():

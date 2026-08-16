@@ -34,10 +34,12 @@ class SessionManager:
         self.tasks = TaskStore(settings.tasks_db_path)
         self.goals = GoalStore(settings.goals_db_path)
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
-        self.mcp_store = MCPStore(getattr(settings, "mcp_db_path", "/app/data/jarvis_mcp.db"))
+        self.mcp_store = MCPStore(settings.mcp_db_path)
         self.mcp_manager = MCPManager(self.mcp_store)
-        self.skill_store = SkillStore(getattr(settings, "skills_db_path", "/app/data/jarvis_skills.db"))
-        self.skill_manager = SkillManager(self.skill_store)
+        self.skill_store = SkillStore(settings.skills_db_path)
+        self.skill_manager = SkillManager(
+            self.skill_store, allow_python=settings.skills_python_enabled
+        )
         self._sessions: dict[str, Orchestrator] = {}
         # Se conserva el estado emocional de cada sesión para poder rehacer sus
         # herramientas sin perder el color que JARVIS tenga en ese momento.

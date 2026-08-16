@@ -1954,10 +1954,12 @@ async def _handle_voice_command(
 async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     token = websocket.query_params.get("token") or websocket.query_params.get("key")
     if not _valid_api_key(token):
+        # Sin trozos del token: el log acaba en disco y en `docker logs`, y un
+        # prefijo de la clave real es justo lo que no debe quedar ahí.
         logger.warning(
-            "WebSocket rechazado para sesión '%s': token recibido '%s...' no coincide con JARVIS_GATEWAY_API_KEY",
+            "WebSocket rechazado para sesión '%s': %s no coincide con JARVIS_GATEWAY_API_KEY",
             session_id,
-            str(token)[:8] if token else "vacío",
+            f"token de {len(token)} caracteres" if token else "no llegó token",
         )
         await websocket.close(code=1008, reason="Credenciales inválidas")
         return
