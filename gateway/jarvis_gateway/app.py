@@ -53,6 +53,7 @@ from pydantic import BaseModel, Field
 from jarvis_gateway import realtime_session as realtime_module
 from jarvis_gateway import runtime
 from jarvis_gateway.routers import music as music_router
+from jarvis_gateway.routers import tasks as tasks_router
 from jarvis_gateway.routers import workspace as workspace_router
 from jarvis_gateway.mqtt_bridge import MqttBridge
 from jarvis_gateway.notifier import Notifier
@@ -353,6 +354,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="JARVIS_OS Gateway", version="0.2.0", lifespan=lifespan)
 app.include_router(music_router.router)
+app.include_router(tasks_router.router)
 app.include_router(workspace_router.router)
 app.add_middleware(
     CORSMiddleware,
@@ -426,12 +428,6 @@ class ConnectorModuleRequest(BaseModel):
 
 class ConnectorModuleTestRequest(BaseModel):
     name: str = Field(min_length=2, max_length=32, pattern=r"^[a-z][a-z0-9_-]+$")
-
-
-class TaskControlRequest(BaseModel):
-    action: str = Field(pattern=r"^(pause|resume|reschedule)$")
-    next_run: float | None = None
-    interval_seconds: float | None = None
 
 
 class GoalControlRequest(BaseModel):
@@ -1233,115 +1229,6 @@ async def server_heal():
 
 
 
-class TaskCreateRequest(BaseModel):
-    title: str
-    prompt: str
-    next_run: float | None = None
-    interval_seconds: float | None = None
-
-
-@app.get("/tasks", dependencies=[Depends(require_api_key)])
-async def list_tasks(include_disabled: bool = True):
-    tasks = sessions.tasks.list(include_disabled=include_disabled)
-    return {
-        "tasks": [
-            {
-                "id": t.id,
-                "title": t.title,
-                "prompt": t.prompt,
-                "kind": t.kind,
-                "next_run": t.next_run,
-                "interval_seconds": t.interval_seconds,
-                "enabled": t.enabled,
-                "created_at": t.created_at,
-                "last_run": t.last_run,
-                "status": t.status,
-                "priority": t.priority,
-                "category": t.category,
-                "runs": t.runs,
-                "failures": t.failures,
-                "attempts": t.attempts,
-                "last_error": t.last_error,
-                "last_result": t.last_result,
-            }
-            for t in tasks
-        ],
-        "stats": sessions.tasks.stats(),
-    }
-
-
-@app.post("/tasks", dependencies=[Depends(require_api_key)])
-async def create_task(req: TaskCreateRequest):
-    # El POST se saltaba las comprobaciones que sí hace la herramienta del
-    # agente: aceptaba un momento en el pasado —que se dispara al instante— o un
-    # intervalo de un segundo, que convierte al scheduler en un bucle cerrado.
-    next_run = req.next_run if req.next_run else (time.time() + 60)
-    if not math.isfinite(next_run) or next_run < time.time() - 1:
-        raise HTTPException(
-            status_code=422, detail="La ejecución no puede estar en el pasado."
-        )
-    interval = req.interval_seconds
-    if interval is not None and (not math.isfinite(interval) or interval < 60):
-        raise HTTPException(
-            status_code=422, detail="La repetición mínima es de 60 segundos."
-        )
-    task_id = sessions.tasks.add(
-        title=req.title,
-        prompt=req.prompt,
-        next_run=next_run,
-        interval_seconds=interval,
-    )
-    return {"status": "ok", "task_id": task_id, "message": f"Tarea creada con ID {task_id}"}
-
-
-@app.post("/tasks/{task_id}/control", dependencies=[Depends(require_api_key)])
-async def control_task(task_id: int, req: TaskControlRequest):
-    """Pausa, reanuda o reprograma sin tener que borrar y volver a crear."""
-    if req.action == "pause":
-        ok = sessions.tasks.pause(task_id)
-    elif req.action == "resume":
-        ok = sessions.tasks.resume(task_id)
-    else:
-        if req.next_run is not None and (
-            not math.isfinite(req.next_run) or req.next_run < time.time() - 1
-        ):
-            raise HTTPException(
-                status_code=422, detail="La ejecución no puede estar en el pasado."
-            )
-        ok = sessions.tasks.reschedule(
-            task_id, req.next_run, req.interval_seconds
-        ) is not None
-    if not ok:
-        raise HTTPException(
-            status_code=409,
-            detail="La tarea no existe o no admite esa acción en su estado actual.",
-        )
-    task = sessions.tasks.get(task_id)
-    return {"status": "ok", "task": {"id": task.id, "status": task.status,
-                                     "next_run": task.next_run}}
-
-
-@app.get("/tasks/history", dependencies=[Depends(require_api_key)])
-async def task_history(task_id: int | None = None, limit: int = 50):
-    """Qué pasó de verdad en cada ejecución, no solo cuándo tocó."""
-    return {
-        "runs": [
-            {
-                "id": run.id, "task_id": run.task_id, "title": run.title,
-                "started_at": run.started_at, "finished_at": run.finished_at,
-                "ok": run.ok, "detail": run.detail,
-            }
-            for run in sessions.tasks.history(task_id, limit)
-        ]
-    }
-
-
-@app.delete("/tasks/{task_id}", dependencies=[Depends(require_api_key)])
-async def delete_task(task_id: int):
-    success = sessions.tasks.cancel(task_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="La tarea no existe o ya fue cancelada.")
-    return {"status": "ok", "message": f"Tarea {task_id} cancelada"}
 
 
 @app.get("/proxmox/status", dependencies=[Depends(require_api_key)])
