@@ -166,5 +166,17 @@ def build_default_registry(
         registry.register(ExecuteSkillTool(skill_manager))
         for skill_tool in skill_manager.get_registered_tools():
             registry.register(skill_tool)
+    if settings.smtp_host or settings.smtp_user:
+        from jarvis_core.tools.builtin.email_tool import SendEmailTool
+        registry.register(
+            SendEmailTool(
+                smtp_host=settings.smtp_host,
+                smtp_port=settings.smtp_port,
+                smtp_user=settings.smtp_user,
+                smtp_pass=settings.smtp_pass,
+                default_to=settings.email_to,
+                email_from=settings.email_from,
+            )
+        )
     register_music_tools(registry, build_navidrome_client(settings))
     return registry

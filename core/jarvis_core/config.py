@@ -146,6 +146,14 @@ class Settings:
     gateway_max_sessions: int = 100
     mqtt_max_payload_chars: int = 16000
 
+    # --- Correo SMTP Nativo ---
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    email_from: str = ""
+    email_to: str = ""
+
     # --- Voz local (Whisper + Kokoro) ---
     voice_enabled: bool = False
     stt_model: str = "small"
@@ -390,6 +398,12 @@ class Settings:
             gateway_max_sessions=max(
                 1, int(os.environ.get("JARVIS_GATEWAY_MAX_SESSIONS", "100"))
             ),
+            smtp_host=os.environ.get("JARVIS_SMTP_HOST", "").strip(),
+            smtp_port=int(os.environ.get("JARVIS_SMTP_PORT", "587")),
+            smtp_user=os.environ.get("JARVIS_SMTP_USER", "").strip(),
+            smtp_pass=os.environ.get("JARVIS_SMTP_PASS", "").strip(),
+            email_from=os.environ.get("JARVIS_EMAIL_FROM", "").strip(),
+            email_to=os.environ.get("JARVIS_EMAIL_TO", "").strip(),
             mqtt_max_payload_chars=max(
                 1, int(os.environ.get("JARVIS_MQTT_MAX_PAYLOAD_CHARS", "16000"))
             ),
