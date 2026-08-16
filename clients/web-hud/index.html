@@ -2990,13 +2990,23 @@
     return payload;
   }
 
-  async function testConnector(name) {
+  async function testConnector(name, type = "") {
     setConnectorStatus(`PROBANDO ${name.toUpperCase()}…`);
     try {
-      const result = await connectorRequest("/connector-modules/test", {
-        method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ name }),
-      });
-      setConnectorStatus(`✓ ${result.name.toUpperCase()} CONECTADO · ${result.message}`, "success");
+      // Un servidor MCP no vive en el registro de conectores, así que probarlo
+      // por ahí devolvía «Módulo no encontrado» con el servidor bien guardado:
+      // el mensaje acusaba al guardado, que había funcionado.
+      const result = type === "mcp"
+        ? await connectorRequest(`/mcp/servers/${encodeURIComponent(name)}/test`, {
+            method: "POST", headers: connectorApiHeaders(),
+          })
+        : await connectorRequest("/connector-modules/test", {
+            method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify({ name }),
+          });
+      const detalle = type === "mcp"
+        ? `${result.tools_count} herramientas: ${(result.tools || []).join(", ") || "ninguna"}`
+        : result.message;
+      setConnectorStatus(`✓ ${name.toUpperCase()} CONECTADO · ${detalle}`, "success");
       return true;
     } catch (error) {
       setConnectorStatus(`GUARDADO, PERO LA PRUEBA FALLÓ · ${error.message}`, "error");
@@ -3205,7 +3215,7 @@
       await saveConnectorModule(body);
       document.getElementById("connector-token").value = "";
       await refreshConnectorModules();
-      await testConnector(body.name);
+      await testConnector(body.name, body.type);
     } catch (error) { setConnectorStatus(`ERROR · ${error.message}`, "error"); }
   });
 
