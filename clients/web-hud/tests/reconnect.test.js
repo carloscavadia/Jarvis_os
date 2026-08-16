@@ -35,14 +35,14 @@ function extractFunction(name) {
   return js.slice(match.index, index + 1) + `\nharness.${name} = ${name};`;
 }
 
-const NAMES = ["reconnectDelay", "shouldReconnect", "defaultWsUrl"];
+const NAMES = ["reconnectDelay", "shouldReconnect", "closeLabel", "defaultWsUrl"];
 const harness = {};
 new Function("harness", "location", NAMES.map(extractFunction).join("\n"))(
   harness,
   { protocol: "http:", host: "x", hostname: "x", port: "", pathname: "/" },
 );
 
-const { reconnectDelay, shouldReconnect } = harness;
+const { reconnectDelay, shouldReconnect, closeLabel } = harness;
 
 // ── La espera entre intentos ────────────────────────────────────────────────
 
@@ -69,6 +69,16 @@ assert.strictEqual(shouldReconnect(1008), false, "una clave rechazada no se rein
 assert.strictEqual(shouldReconnect(1006), true, "un servidor aún no levantado se reintenta");
 assert.strictEqual(shouldReconnect(1001), true, "un gateway que se reinicia se reintenta");
 assert.strictEqual(shouldReconnect(1000), true, "un cierre limpio del servidor se reintenta");
+
+// ── Qué se le dice a la persona al caerse ───────────────────────────────────
+
+// Un 1011 es el gateway aceptando la clave y reventando al preparar la sesión.
+// Verlo como "CLAVE INVÁLIDA" manda a buscar el fallo al sitio equivocado: pasó
+// de verdad, y costó revisar una y otra vez una credencial que estaba bien.
+assert.notStrictEqual(closeLabel(1011), closeLabel(1008),
+  "un error del servidor no puede leerse igual que una clave rechazada");
+assert.strictEqual(closeLabel(1008), "CLAVE INVÁLIDA");
+assert.strictEqual(closeLabel(1006), "DESCONECTADO");
 
 // ── La URL que se adivina cuando nadie la ha escrito ────────────────────────
 

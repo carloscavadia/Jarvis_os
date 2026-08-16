@@ -1161,3 +1161,26 @@ def test_the_raw_endpoint_checks_the_key_before_anything_else(explorer_workspace
         )
     assert sin_llave.status_code == 401
     assert mal.status_code == 401
+
+
+def test_a_broken_session_closes_with_a_reason_instead_of_a_500(monkeypatch):
+    """Montar la sesión construye el LLM y todas las herramientas, así que
+    cualquier error de configuración sale por ahí. Si sube sin que nadie haya
+    aceptado la conexión, el navegador solo ve «handshake: unexpected response
+    code: 500» y no hay forma de distinguirlo de una clave rechazada.
+
+    Ocurrió de verdad: las herramientas del Sistema de Habilidades definían
+    `execute` en vez de `run`, no se podían instanciar, y el HUD llevaba días
+    sin poder conectar sin decir por qué.
+    """
+    async def explode(session_id):
+        raise TypeError("Can't instantiate abstract class LearnSkillTool")
+
+    monkeypatch.setattr(gateway_module.sessions, "get", explode)
+    with TestClient(gateway_module.app) as client:
+        with pytest.raises(WebSocketDisconnect) as caught:
+            with client.websocket_connect("/ws/hub-test?token=ci-test-key"):
+                pass
+    # 1011 es «error interno», distinto del 1008 de credenciales: el HUD puede
+    # decirle a la persona que el problema no es su clave.
+    assert caught.value.code == 1011

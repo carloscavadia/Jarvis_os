@@ -2586,6 +2586,16 @@
     return closeCode !== 1008;
   }
 
+  //: Qué se lee en el indicador de enlace. Un 1011 —el gateway acepta la clave y
+  //: revienta preparando la sesión— no puede verse igual que un rechazo de
+  //: credenciales: manda a buscar el fallo al sitio equivocado.
+  function closeLabel(closeCode) {
+    if (closeCode === 1008) return "CLAVE INVÁLIDA";
+    if (closeCode === 1011) return "ERROR DEL SERVIDOR";
+    if (closeCode === 1013) return "SERVIDOR SATURADO";
+    return "DESCONECTADO";
+  }
+
   function clearReconnectTimer() {
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -2655,13 +2665,18 @@
       loadPendingProactive();
     };
     ws.onclose = (event) => {
-      rLink.textContent = event.code === 1008 ? "CLAVE INVÁLIDA" : "DESCONECTADO";
+      rLink.textContent = closeLabel(event.code);
       setConnStatus("disconnected");
       if (event.code === 1008) {
         // Sin trozos de la clave: acaba en el historial visible del HUD.
         addLine("SISTEMA", "ERROR 1008: la clave fue rechazada. No coincide con JARVIS_GATEWAY_API_KEY del .env de tu servidor. Ábrela con el botón CONECTAR y corrígela.", "system");
         setEmotion("concern");
         if (connModal) connModal.classList.add("open");
+      } else if (event.code === 1011) {
+        // El servidor aceptó la clave y reventó preparando la sesión. Decirlo
+        // evita la búsqueda equivocada: el problema no está en la credencial.
+        addLine("SISTEMA", "ERROR 1011: la clave es correcta, pero el gateway falló al preparar la sesión. Revisa el servidor con: docker compose logs --tail 50 gateway", "system");
+        setEmotion("concern");
       }
       clearInterval(window._taskPoll);
       clearInterval(window._proxmoxPoll);

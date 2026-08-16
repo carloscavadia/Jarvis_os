@@ -1607,6 +1607,15 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
     except RuntimeError:
         await websocket.close(code=1013, reason="Límite de sesiones alcanzado")
         return
+    except Exception:
+        # Montar la sesión construye el LLM y todas las herramientas, así que
+        # cualquier error de configuración aparece aquí. Sin este `except`, la
+        # excepción subía sin que nadie hubiera aceptado la conexión y el
+        # navegador solo veía «handshake: unexpected response code: 500»: un
+        # mensaje que no dice qué pasó ni permite distinguirlo de una clave mala.
+        logger.exception("No pude preparar la sesión '%s'", session_id)
+        await websocket.close(code=1011, reason="Error interno del gateway")
+        return
 
     await websocket.accept()
     notifier.add_ws(websocket)
