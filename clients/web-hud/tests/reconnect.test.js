@@ -35,14 +35,14 @@ function extractFunction(name) {
   return js.slice(match.index, index + 1) + `\nharness.${name} = ${name};`;
 }
 
-const NAMES = ["reconnectDelay", "shouldReconnect", "closeLabel", "defaultWsUrl"];
+const NAMES = ["reconnectDelay", "shouldReconnect", "closeLabel", "sameHost", "servedByGateway", "defaultWsUrl"];
 const harness = {};
 new Function("harness", "location", NAMES.map(extractFunction).join("\n"))(
   harness,
   { protocol: "http:", host: "x", hostname: "x", port: "", pathname: "/" },
 );
 
-const { reconnectDelay, shouldReconnect, closeLabel } = harness;
+const { reconnectDelay, shouldReconnect, closeLabel, sameHost } = harness;
 
 // ── La espera entre intentos ────────────────────────────────────────────────
 
@@ -84,7 +84,8 @@ assert.strictEqual(closeLabel(1006), "DESCONECTADO");
 
 function urlDesde(loc) {
   const h = {};
-  new Function("harness", "location", extractFunction("defaultWsUrl"))(h, loc);
+  new Function("harness", "location",
+    extractFunction("servedByGateway") + "\n" + extractFunction("defaultWsUrl"))(h, loc);
   return h.defaultWsUrl();
 }
 
@@ -109,4 +110,70 @@ assert.strictEqual(
   "wss://jarvis.example/ws/hub-test",
 );
 
+// ── Que el HUD no acabe hablando con dos origenes ───────────────────────────
+//
+// Abriendo por el tunel (127.0.0.1:8080) con una URL de red guardada de antes
+// (192.168.68.100:8080), el WebSocket seguia conectando —no pasa por CORS— pero
+// cada fetch salia al otro origen y el navegador lo bloqueaba. Paso de verdad:
+// el enlace decia EN LINEA y las tareas, Proxmox y el estado del servidor
+// fallaban en silencio.
+
+assert.strictEqual(
+  sameHost("ws://192.168.68.100:8080/ws/hub-test", "127.0.0.1:8080"), false,
+  "una URL guardada de otro host debe detectarse como obsoleta",
+);
+assert.strictEqual(
+  sameHost("ws://127.0.0.1:8080/ws/hub-test", "127.0.0.1:8080"), true,
+  "la misma maquina y puerto es el mismo destino aunque la ruta difiera",
+);
+// El puerto forma parte del destino: mismo host y distinto puerto es otro sitio.
+assert.strictEqual(sameHost("ws://127.0.0.1:9000/ws/x", "127.0.0.1:8080"), false);
+// Una URL rota no puede hacerse pasar por valida.
+assert.strictEqual(sameHost("no-es-una-url", "127.0.0.1:8080"), false);
+
 console.log("reconnect.test.js OK");
+
+// ── De dónde salen las URLs HTTP ────────────────────────────────────────────
+
+function baseDesde(loc, wsGuardada) {
+  const h = {};
+  new Function(
+    "harness", "location", "resolvedWsUrl",
+    extractFunction("servedByGateway") + "\n" + extractFunction("gatewayHttpBase"),
+  )(h, loc, () => wsGuardada);
+  return h.gatewayHttpBase();
+}
+
+// Servido por el gateway: siempre su propio origen. Aunque haya guardada una URL
+// de otro host, las peticiones van al servidor que tenemos delante y no cruzan
+// ningún límite de origen.
+assert.strictEqual(
+  baseDesde(
+    { protocol: "http:", host: "127.0.0.1:8080", hostname: "127.0.0.1", port: "8080",
+      pathname: "/hud", origin: "http://127.0.0.1:8080" },
+    "ws://192.168.68.100:8080/ws/hub-test",
+  ),
+  "http://127.0.0.1:8080",
+  "el HUD servido por el gateway debe pedir a su propio origen",
+);
+
+// Abierto como fichero suelto, no hay origen del que fiarse: se deriva del
+// WebSocket, que es lo único que apunta al gateway.
+assert.strictEqual(
+  baseDesde(
+    { protocol: "file:", host: "", hostname: "", port: "", pathname: "/index.html", origin: "null" },
+    "ws://192.168.68.100:8080/ws/hub-test",
+  ),
+  "http://192.168.68.100:8080",
+);
+
+// Y en HTTPS el esquema derivado tiene que ser https, no http.
+assert.strictEqual(
+  baseDesde(
+    { protocol: "file:", host: "", hostname: "", port: "", pathname: "/index.html", origin: "null" },
+    "wss://jarvis.example/ws/hub-test",
+  ),
+  "https://jarvis.example",
+);
+
+console.log("gatewayHttpBase OK");

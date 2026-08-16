@@ -2784,12 +2784,28 @@
 
   const CONFIG = window.JARVIS_CONFIG || {};
 
+  //: ¿Es el propio gateway quien sirve esta página? Se nota en la ruta `/hud`.
+  //: Cuando lo es, su host es el correcto para todo —WebSocket y REST— por muy
+  //: guardado que esté otro: es el servidor que tenemos delante.
+  function servedByGateway() {
+    return (
+      (location.protocol === "http:" || location.protocol === "https:") &&
+      location.pathname.replace(/\/+$/, "").endsWith("/hud")
+    );
+  }
+
+  //: ¿Apunta esta URL de WebSocket al host indicado? Comparar el texto entero no
+  //: sirve: `ws://host:8080/ws/hub-test` y `host:8080` son el mismo destino.
+  function sameHost(wsUrl, host) {
+    try { return new URL(wsUrl).host === host; } catch { return false; }
+  }
+
   // Auto-detectar URL del gateway: si el HUD es servido por el propio gateway
   // o por cualquier host con puerto 8080 conocido, usar ese host.
   function defaultWsUrl() {
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
     // Si servido desde el gateway (ruta /hud)
-    if (location.pathname.replace(/\/+$/, "").endsWith("/hud")) {
+    if (servedByGateway()) {
       return `${scheme}//${location.host}/ws/hub-test`;
     }
     // Si se abre desde un host real (IP, dominio, localhost) — usar ese mismo host
@@ -3991,6 +4007,16 @@
   }
 
   function gatewayHttpBase() {
+    // Si el gateway sirve esta página, sus rutas son del mismo origen: sin CORS,
+    // sin preflight, y funciona igual por un túnel SSH o detrás de un proxy.
+    //
+    // Derivarlo siempre de la URL del WebSocket rompía justo ese caso. Abriendo
+    // el HUD por el túnel (127.0.0.1:8080) con una URL de red guardada de antes
+    // (192.168.68.100:8080), el enlace seguía en pie —los WebSocket no pasan por
+    // CORS— pero cada `fetch` salía hacia el otro origen y el navegador los
+    // bloqueaba: tareas, Proxmox y estado del servidor fallaban con la conexión
+    // aparentemente correcta.
+    if (servedByGateway()) return location.origin;
     try {
       const url = new URL(resolvedWsUrl());
       const protocol = url.protocol === "wss:" ? "https:" : "http:";
@@ -5689,8 +5715,11 @@
       try { storedKey = localStorage.getItem(HUB_KEY_STORAGE) || ""; } catch {}
       try { storedUrl = localStorage.getItem(HUB_URL_STORAGE) || ""; } catch {}
 
-      // Si la URL guardada en localStorage apunta a 127.0.0.1 pero la página se abre desde IP de red, limpiar obsoleta.
-      if (storedUrl && (storedUrl.includes("127.0.0.1") || storedUrl.includes("localhost")) && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
+      // Una URL guardada que apunte a otro host que el que sirve esta página ya
+      // no vale: pasa al abrir por el túnel una que se guardó por IP de red, y
+      // al revés. Antes sólo se limpiaba la dirección de localhost, así que el
+      // caso contrario sobrevivía y dejaba el HUD hablando con dos orígenes.
+      if (storedUrl && servedByGateway() && !sameHost(storedUrl, location.host)) {
         storedUrl = defaultWsUrl();
         if (wsUrlInput) wsUrlInput.value = storedUrl;
         try { localStorage.removeItem(HUB_URL_STORAGE); } catch {}
