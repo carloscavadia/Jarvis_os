@@ -609,6 +609,9 @@ class MCPServerRequest(BaseModel):
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
     url: str = ""
+    #: Sólo para SSE: un servidor remoto se autentica por cabecera, no por
+    #: entorno. Home Assistant, por ejemplo, exige `Authorization: Bearer ...`.
+    headers: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
 
 
@@ -626,6 +629,7 @@ async def register_mcp_server(name: str, req: MCPServerRequest) -> dict[str, obj
         args=req.args,
         env=req.env,
         url=req.url,
+        headers=req.headers,
         enabled=req.enabled,
     )
     sessions.mcp_store.save(record)

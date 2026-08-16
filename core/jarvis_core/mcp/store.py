@@ -18,6 +18,10 @@ class MCPServerRecord:
     args: list[str] = field(default_factory=list)  # e.g. ["-y", "@modelcontextprotocol/server-github"]
     env: dict[str, str] = field(default_factory=dict)  # e.g. {"GITHUB_PERSONAL_ACCESS_TOKEN": "..."}
     url: str = ""  # e.g. "http://localhost:8000/sse" for transport="sse"
+    #: Cabeceras HTTP para transport="sse". Un servidor SSE se autentica por
+    #: cabecera, no por entorno: Home Assistant, por ejemplo, exige
+    #: `Authorization: Bearer <token>` y sin esto no habia forma de dársela.
+    headers: dict[str, str] = field(default_factory=dict)
     enabled: bool = True
     created_at: float = field(default_factory=time.time)
 
@@ -35,6 +39,8 @@ class MCPServerRecord:
         """
         data = asdict(self)
         data["env"] = {key: "••••" for key in self.env}
+        # `Authorization` lleva el token entero: se oculta igual que `env`.
+        data["headers"] = {key: "••••" for key in self.headers}
         return data
 
     @classmethod
@@ -46,6 +52,7 @@ class MCPServerRecord:
             args=list(data.get("args") or []),
             env=dict(data.get("env") or {}),
             url=str(data.get("url", "")),
+            headers=dict(data.get("headers") or {}),
             enabled=bool(data.get("enabled", True)),
             created_at=float(data.get("created_at") or time.time()),
         )
@@ -87,11 +94,20 @@ class MCPStore:
                     args TEXT NOT NULL DEFAULT '[]',
                     env TEXT NOT NULL DEFAULT '{}',
                     url TEXT NOT NULL DEFAULT '',
+                    headers TEXT NOT NULL DEFAULT '{}',
                     enabled INTEGER NOT NULL DEFAULT 1,
                     created_at REAL NOT NULL
                 );
                 """
             )
+            # Las bases creadas antes de que existieran las cabeceras siguen ahi:
+            # añadir la columna evita que actualizar el gateway rompa el registro
+            # de servidores que ya funcionaban.
+            columnas = {fila[1] for fila in conn.execute("PRAGMA table_info(mcp_servers)")}
+            if "headers" not in columnas:
+                conn.execute(
+                    "ALTER TABLE mcp_servers ADD COLUMN headers TEXT NOT NULL DEFAULT '{}'"
+                )
             conn.commit()
 
     def list_all(self) -> list[MCPServerRecord]:
@@ -107,6 +123,7 @@ class MCPStore:
                         args=json.loads(row["args"]),
                         env=json.loads(row["env"]),
                         url=row["url"],
+                        headers=json.loads(row["headers"] or "{}"),
                         enabled=bool(row["enabled"]),
                         created_at=float(row["created_at"]),
                     )
@@ -125,6 +142,7 @@ class MCPStore:
                 args=json.loads(row["args"]),
                 env=json.loads(row["env"]),
                 url=row["url"],
+                headers=json.loads(row["headers"] or "{}"),
                 enabled=bool(row["enabled"]),
                 created_at=float(row["created_at"]),
             )
@@ -133,14 +151,15 @@ class MCPStore:
         with self._get_conn() as conn:
             conn.execute(
                 """
-                INSERT INTO mcp_servers (name, transport, command, args, env, url, enabled, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO mcp_servers (name, transport, command, args, env, url, headers, enabled, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(name) DO UPDATE SET
                     transport = excluded.transport,
                     command = excluded.command,
                     args = excluded.args,
                     env = excluded.env,
                     url = excluded.url,
+                    headers = excluded.headers,
                     enabled = excluded.enabled,
                     created_at = excluded.created_at;
                 """,
@@ -151,6 +170,7 @@ class MCPStore:
                     json.dumps(record.args),
                     json.dumps(record.env),
                     record.url,
+                    json.dumps(record.headers),
                     1 if record.enabled else 0,
                     record.created_at,
                 ),

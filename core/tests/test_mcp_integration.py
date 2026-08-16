@@ -107,3 +107,110 @@ def test_the_public_view_of_a_server_hides_its_credentials():
     # Y la vista interna sigue entregando el valor real, que es la que lanza el
     # proceso.
     assert record.to_dict()["env"]["GITHUB_TOKEN"] == "ghp_12345"
+
+
+# ── Autenticación de un servidor SSE ────────────────────────────────────────
+#
+# Un servidor remoto no se autentica por entorno —el proceso es suyo, no
+# nuestro— sino por cabecera. Home Assistant expone su MCP por SSE y exige
+# `Authorization: Bearer <token>`: sin cabeceras no había forma de conectarlo.
+
+
+def test_an_sse_server_remembers_its_headers():
+    store = MCPStore(":memory:")
+    store.save(MCPServerRecord(
+        name="homeassistant", transport="sse",
+        url="http://192.168.68.50:8123/mcp_server/sse",
+        headers={"Authorization": "Bearer token-larga-duracion"},
+    ))
+    recuperado = store.get("homeassistant")
+    assert recuperado.headers == {"Authorization": "Bearer token-larga-duracion"}
+    assert store.list_all()[0].headers["Authorization"].endswith("duracion")
+
+
+def test_the_listing_never_returns_the_authorization_header():
+    """`Authorization` lleva el token entero, igual que `env`."""
+    record = MCPServerRecord(
+        name="homeassistant", transport="sse",
+        headers={"Authorization": "Bearer token-que-no-debe-salir"},
+    )
+    publico = record.to_public_dict()
+    assert "token-que-no-debe-salir" not in str(publico)
+    assert "Authorization" in publico["headers"]
+    # La vista interna sí lo entrega: es la que abre la conexión.
+    assert record.to_dict()["headers"]["Authorization"].endswith("salir")
+
+
+def test_a_database_from_before_headers_existed_keeps_working(tmp_path):
+    """Actualizar el gateway no puede romper los servidores ya registrados."""
+    import sqlite3
+
+    ruta = tmp_path / "viejo.db"
+    antigua = sqlite3.connect(str(ruta))
+    antigua.execute(
+        "CREATE TABLE mcp_servers (name TEXT PRIMARY KEY, transport TEXT, command TEXT,"
+        " args TEXT, env TEXT, url TEXT, enabled INTEGER, created_at REAL)"
+    )
+    antigua.execute(
+        "INSERT INTO mcp_servers VALUES ('viejo','stdio','npx','[]','{}','',1,1.0)"
+    )
+    antigua.commit()
+    antigua.close()
+
+    store = MCPStore(str(ruta))  # migra al abrir
+    recuperado = store.get("viejo")
+    assert recuperado is not None
+    assert recuperado.command == "npx"
+    assert recuperado.headers == {}
+
+
+@pytest.mark.asyncio
+async def test_the_headers_actually_reach_the_connection(monkeypatch):
+    """Guardarlas y no enviarlas daría el mismo 401 con la config correcta."""
+    import contextlib
+
+    recibido = {}
+
+    @contextlib.asynccontextmanager
+    async def fake_sse_client(url, headers=None, **kwargs):
+        recibido["url"] = url
+        recibido["headers"] = headers
+        raise RuntimeError("hasta aquí basta: ya sabemos qué se envió")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr("mcp.client.sse.sse_client", fake_sse_client)
+
+    store = MCPStore(":memory:")
+    manager = MCPManager(store, timeout=5)
+    record = MCPServerRecord(
+        name="homeassistant", transport="sse",
+        url="http://192.168.68.50:8123/mcp_server/sse",
+        headers={"Authorization": "Bearer token-larga-duracion"},
+    )
+    with pytest.raises(RuntimeError):
+        await manager.connect_server(record)
+
+    assert recibido["url"] == "http://192.168.68.50:8123/mcp_server/sse"
+    assert recibido["headers"] == {"Authorization": "Bearer token-larga-duracion"}
+
+
+@pytest.mark.asyncio
+async def test_without_headers_nothing_spurious_is_sent(monkeypatch):
+    import contextlib
+
+    recibido = {}
+
+    @contextlib.asynccontextmanager
+    async def fake_sse_client(url, headers=None, **kwargs):
+        recibido["headers"] = headers
+        raise RuntimeError("suficiente")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr("mcp.client.sse.sse_client", fake_sse_client)
+
+    manager = MCPManager(MCPStore(":memory:"), timeout=5)
+    with pytest.raises(RuntimeError):
+        await manager.connect_server(
+            MCPServerRecord(name="abierto", transport="sse", url="http://x/sse")
+        )
+    assert recibido["headers"] is None

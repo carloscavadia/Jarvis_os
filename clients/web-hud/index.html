@@ -3022,10 +3022,18 @@
         args = parts.slice(1);
       }
 
+      let headers = {};
       if (body.token) {
-        try {
-          env = JSON.parse(body.token);
-        } catch {
+        let parsed = null;
+        try { parsed = JSON.parse(body.token); } catch {}
+        if (parsed && typeof parsed === "object") {
+          // JSON explícito: va donde toque según el transporte.
+          if (transport === "sse") headers = parsed; else env = parsed;
+        } else if (transport === "sse") {
+          // Un servidor SSE se autentica por cabecera, no por entorno: el
+          // proceso es suyo, no nuestro. Es lo que espera Home Assistant.
+          headers = { Authorization: `Bearer ${body.token}` };
+        } else {
           env = { MCP_SERVER_TOKEN: body.token };
         }
       }
@@ -3037,6 +3045,7 @@
         args,
         env,
         url,
+        headers,
         enabled: body.enabled !== false,
       };
 

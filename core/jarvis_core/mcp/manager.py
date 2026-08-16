@@ -153,7 +153,7 @@ class MCPManager:
             if not record.url:
                 raise ValueError("El campo 'url' es obligatorio para transport='sse'")
 
-            async with sse_client(record.url) as (read, write):
+            async with sse_client(record.url, headers=record.headers or None) as (read, write):
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     mcp_tools_res = await session.list_tools()
@@ -226,7 +226,7 @@ class MCPManager:
                         return ToolResult(output, is_error=getattr(res, "isError", False))
 
             elif record.transport == "sse":
-                async with sse_client(record.url) as (read, write):
+                async with sse_client(record.url, headers=record.headers or None) as (read, write):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         res = await session.call_tool(tool_name, arguments=arguments)
