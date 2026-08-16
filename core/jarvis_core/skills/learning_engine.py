@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from jarvis_core.skills.manager import SkillManager
 from jarvis_core.skills.store import SkillRecord, SkillStore

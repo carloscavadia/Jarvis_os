@@ -114,8 +114,8 @@ class MCPManager:
     async def _connect(self, record: MCPServerRecord) -> list[DynamicMCPTool]:
         try:
             from mcp import ClientSession
-            from mcp.client.stdio import StdioServerParameters, stdio_client
             from mcp.client.sse import sse_client
+            from mcp.client.stdio import StdioServerParameters, stdio_client
         except ImportError:
             logger.warning("Librería 'mcp' no instalada. Instala 'mcp' para activar MCP.")
             return []
@@ -202,8 +202,8 @@ class MCPManager:
         server_name = record.name
         try:
             from mcp import ClientSession
-            from mcp.client.stdio import StdioServerParameters, stdio_client
             from mcp.client.sse import sse_client
+            from mcp.client.stdio import StdioServerParameters, stdio_client
 
             if record.transport == "stdio":
                 env = _child_env(record.env)

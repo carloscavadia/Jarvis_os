@@ -16,8 +16,8 @@ from jarvis_core.connectors.events import ProactiveEventStore
 from jarvis_core.connectors.store import ConnectorStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
-from jarvis_core.memory.store import MemoryStore
 from jarvis_core.mcp import MCPManager, MCPStore
+from jarvis_core.memory.store import MemoryStore
 from jarvis_core.skills import SkillManager, SkillStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry

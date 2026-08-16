@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from jarvis_core.agent.emotion import EmotionState, VALID_EMOTIONS
+from jarvis_core.agent.emotion import VALID_EMOTIONS, EmotionState
 from jarvis_core.tools.base import Tool, ToolResult
 
 
