@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -54,8 +55,12 @@ class DynamicMCPTool(Tool):
 class MCPManager:
     """Orquestador de servidores y herramientas MCP (Model Context Protocol)."""
 
-    def __init__(self, store: MCPStore) -> None:
+    def __init__(self, store: MCPStore, *, timeout: float = 20.0) -> None:
         self.store = store
+        #: Sin tope, un servidor que no responde cuelga a quien le hable. Y como
+        #: `sync_servers` corre al arrancar el gateway, un `npx` que se queda
+        #: descargando dejaba al servicio entero sin llegar nunca a estar listo.
+        self.timeout = timeout
         self._active_sessions: dict[str, Any] = {}
         self._active_tools: dict[str, DynamicMCPTool] = {}
 
@@ -79,6 +84,17 @@ class MCPManager:
                     "tools_count": len(tools),
                     "tools": [t.name for t in tools],
                 }
+            except TimeoutError:
+                logger.error(
+                    "El servidor MCP '%s' no respondió en %.0f s; se deja fuera.",
+                    record.name,
+                    self.timeout,
+                )
+                results[record.name] = {
+                    "status": "error",
+                    "error": f"sin respuesta en {self.timeout:.0f} s",
+                    "tools_count": 0,
+                }
             except Exception as exc:
                 logger.error("Error conectando a servidor MCP %s: %s", record.name, exc)
                 results[record.name] = {"status": "error", "error": str(exc), "tools_count": 0}
@@ -86,7 +102,16 @@ class MCPManager:
         return results
 
     async def connect_server(self, record: MCPServerRecord) -> list[DynamicMCPTool]:
-        """Prueba e inspecciona las herramientas de un servidor MCP específico."""
+        """Prueba e inspecciona las herramientas de un servidor MCP específico.
+
+        Con tope de tiempo: un `npx` que se queda descargando, o un servidor SSE
+        que acepta la conexión y no contesta, colgaba indefinidamente a quien
+        llamara —incluido el arranque del gateway, que sincroniza los servidores
+        guardados antes de aceptar peticiones—.
+        """
+        return await asyncio.wait_for(self._connect(record), timeout=self.timeout)
+
+    async def _connect(self, record: MCPServerRecord) -> list[DynamicMCPTool]:
         try:
             from mcp import ClientSession
             from mcp.client.stdio import StdioServerParameters, stdio_client
@@ -156,6 +181,25 @@ class MCPManager:
                 f"El servidor MCP '{server_name}' no existe o está desactivado.", is_error=True
             )
 
+        try:
+            return await asyncio.wait_for(
+                self._call(record, tool_name, arguments), timeout=self.timeout
+            )
+        except TimeoutError:
+            # Mismo motivo que en `connect_server`, un piso más abajo: sin tope,
+            # una herramienta que no vuelve deja el turno del agente colgado.
+            logger.error(
+                "La herramienta MCP '%s/%s' no respondió en %.0f s.",
+                server_name, tool_name, self.timeout,
+            )
+            return ToolResult(
+                f"El servidor MCP '{server_name}' no respondió a tiempo.", is_error=True
+            )
+
+    async def _call(
+        self, record: MCPServerRecord, tool_name: str, arguments: dict[str, Any]
+    ) -> ToolResult:
+        server_name = record.name
         try:
             from mcp import ClientSession
             from mcp.client.stdio import StdioServerParameters, stdio_client

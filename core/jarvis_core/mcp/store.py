@@ -24,6 +24,19 @@ class MCPServerRecord:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    def to_public_dict(self) -> dict[str, Any]:
+        """Lo mismo, pero sin los valores de `env`.
+
+        Ahí es donde va el token de un servidor MCP —el propio ejemplo de este
+        fichero es `GITHUB_PERSONAL_ACCESS_TOKEN`—, así que devolverlo tal cual
+        en el listado lo pondría en pantalla y en el historial del navegador. Se
+        conservan los nombres de las variables: al editar hace falta saber
+        cuáles están puestas, no cuánto valen.
+        """
+        data = asdict(self)
+        data["env"] = {key: "••••" for key in self.env}
+        return data
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MCPServerRecord:
         return cls(

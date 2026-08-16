@@ -627,7 +627,7 @@ class MCPServerRequest(BaseModel):
 
 @app.get("/mcp/servers", dependencies=[Depends(require_api_key)])
 async def list_mcp_servers() -> list[dict[str, object]]:
-    return [r.to_dict() for r in sessions.mcp_store.list_all()]
+    return [r.to_public_dict() for r in sessions.mcp_store.list_all()]
 
 
 @app.put("/mcp/servers/{name}", dependencies=[Depends(require_api_key)])
