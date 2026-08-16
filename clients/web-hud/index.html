@@ -2562,8 +2562,59 @@
 
   // ── WebSocket al gateway ──
   let ws = null;
+
+  // Reconexión automática. Sin esto, el primer intento fallido dejaba el HUD en
+  // modo demo para siempre: bastaba abrirlo antes de que el gateway terminase de
+  // arrancar —o que el contenedor se reiniciara, o que el wifi parpadeara— para
+  // tener que recargar a mano. En un kiosko que enciende a la vez que el
+  // servidor, ese primer intento falla casi siempre.
+  let reconnectTimer = null;
+  let reconnectAttempt = 0;
+  let lastTarget = null;
+
+  //: Espera antes del siguiente intento. Crece para no martillear un servidor
+  //: caído, pero arranca corta: lo normal es que el gateway esté a segundos de
+  //: estar listo, y ahí es donde se nota.
+  function reconnectDelay(attempt) {
+    const steps = [1000, 2000, 4000, 8000, 15000];
+    return steps[Math.min(attempt, steps.length - 1)];
+  }
+
+  //: Una clave rechazada no se arregla reintentando: sólo llenaría el registro y
+  //: taparía el aviso. Cualquier otro cierre sí merece otro intento.
+  function shouldReconnect(closeCode) {
+    return closeCode !== 1008;
+  }
+
+  function clearReconnectTimer() {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  function scheduleReconnect() {
+    if (!lastTarget || reconnectTimer) return;
+    const delay = reconnectDelay(reconnectAttempt);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect(lastTarget.url, lastTarget.token);
+    }, delay);
+    return delay;
+  }
+
+  //: Reintento pedido por la persona: vuelve a empezar por la espera corta. El
+  //: contador sólo lo reinicia esto y una conexión que llega a abrirse; si lo
+  //: reiniciase `connect` sin más, cada reintento automático lo pondría a cero y
+  //: la espera no crecería nunca.
+  function connectManually() {
+    reconnectAttempt = 0;
+    connect(resolvedWsUrl(), hubKey());
+  }
+
   function connect(url, token) {
     if (!url) return;
+    clearReconnectTimer();
+    lastTarget = { url, token };
     let target;
     try {
       target = new URL(url);
@@ -2574,8 +2625,12 @@
     } catch (e) { rLink.textContent = "ERROR"; setConnStatus("disconnected"); return; }
     // No mostrar la URL completa: puede contener la credencial del HUB.
     ws.onopen = () => {
+      const volvia = reconnectAttempt > 0;
+      clearReconnectTimer();
+      reconnectAttempt = 0;
       rLink.textContent = "EN LÍNEA";
       rememberHubKey(token);
+      if (volvia) addLine("SISTEMA", "Enlace restablecido.", "system");
       setConnStatus("connected");
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       // Cargar tareas y telemetría de Proxmox ahora que tenemos conexión
@@ -2603,12 +2658,18 @@
       rLink.textContent = event.code === 1008 ? "CLAVE INVÁLIDA" : "DESCONECTADO";
       setConnStatus("disconnected");
       if (event.code === 1008) {
-        addLine("SISTEMA", "ERROR 1008: La clave enviada (" + (token ? token.substring(0, 8) + "…" : "vacía") + ") fue RECHAZADA. No coincide con JARVIS_GATEWAY_API_KEY en el archivo .env de tu servidor 192.168.68.100.", "system");
+        // Sin trozos de la clave: acaba en el historial visible del HUD.
+        addLine("SISTEMA", "ERROR 1008: la clave fue rechazada. No coincide con JARVIS_GATEWAY_API_KEY del .env de tu servidor. Ábrela con el botón CONECTAR y corrígela.", "system");
         setEmotion("concern");
+        if (connModal) connModal.classList.add("open");
       }
       clearInterval(window._taskPoll);
       clearInterval(window._proxmoxPoll);
       teardownWakeListening(); stopConversationFollowUp({ sleep: false }); finishStreamReply(); setBusy(false); ws = null;
+      if (shouldReconnect(event.code)) {
+        const delay = scheduleReconnect();
+        if (delay) rLink.textContent = "RECONECTANDO…";
+      }
     };
     ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
     ws.onmessage = (ev) => {
@@ -2718,9 +2779,11 @@
     }
     // Si se abre desde un host real (IP, dominio, localhost) — usar ese mismo host
     if (location.hostname !== "" && location.hostname !== "null") {
-      // Asumir puerto 8080 si el HUD se abre directamente como HTML
-      const port = location.port || (location.protocol === "https:" ? "443" : "8080");
-      return `${scheme}//${location.hostname}:${port}/ws/hub-test`;
+      // Sin puerto en la URL significa 80 o 443: hay un proxy delante (Caddy) y
+      // el WebSocket pasa por él igual. Añadir :8080 a mano lo mandaría a un
+      // puerto que el proxy no tiene por qué exponer.
+      if (!location.port) return `${scheme}//${location.hostname}/ws/hub-test`;
+      return `${scheme}//${location.hostname}:${location.port}/ws/hub-test`;
     }
     // Fallback para apertura desde filesystem (file:///)
     return "ws://localhost:8080/ws/hub-test";
@@ -5181,12 +5244,12 @@
   document.querySelectorAll("[data-emotion]").forEach((b) => b.addEventListener("click", () => setEmotion(b.dataset.emotion)));
   document.getElementById("pulse")?.addEventListener("click", firePulse);
 
-  document.getElementById("ws-connect").addEventListener("click", () => connect(resolvedWsUrl(), hubKey()));
+  document.getElementById("ws-connect").addEventListener("click", () => connectManually());
   tokenInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(resolvedWsUrl(), hubKey());
+    if (e.key === "Enter") connectManually();
   });
   if (wsUrlInput) wsUrlInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") connect(resolvedWsUrl(), hubKey());
+    if (e.key === "Enter") connectManually();
   });
   // Botón del banner DEMO — hace scroll/focus al panel de conexión
   document.getElementById("demo-banner-connect")?.addEventListener("click", () => {
@@ -5620,7 +5683,13 @@
 
       if (storedKey && !tokenInput.value) tokenInput.value = storedKey;
       if (storedUrl && wsUrlInput && !wsUrlInput.value) wsUrlInput.value = storedUrl;
-      if (!storedKey && !paramToken) return;
+      if (!storedKey && !paramToken) {
+        // Quedarse en demo callando parece una avería. Es la primera vez en este
+        // navegador y sólo falta la clave: dilo y abre dónde ponerla.
+        addLine("SISTEMA", "Falta la clave del gateway (JARVIS_GATEWAY_API_KEY). Pulsa CONECTAR e introdúcela; se recuerda en este navegador.", "system");
+        if (connModal) connModal.classList.add("open");
+        return;
+      }
     }
     if (CONFIG.autoConnect !== false) connect(resolvedWsUrl(), hubKey());
   })();

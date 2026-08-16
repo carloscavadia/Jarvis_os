@@ -44,6 +44,9 @@ jobs:
       - name: Test HUD follow-up listening
         run: node clients/web-hud/tests/followup.test.js
 
+      - name: Test HUD reconnection
+        run: node clients/web-hud/tests/reconnect.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
