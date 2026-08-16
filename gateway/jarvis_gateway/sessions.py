@@ -38,7 +38,7 @@ class SessionManager:
         self.mcp_manager = MCPManager(self.mcp_store)
         self.skill_store = SkillStore(settings.skills_db_path)
         self.skill_manager = SkillManager(
-            self.skill_store, allow_python=settings.skills_python_enabled
+            self.skill_store, allow_python=getattr(settings, "skills_python_enabled", True)
         )
         self._sessions: dict[str, Orchestrator] = {}
         # Se conserva el estado emocional de cada sesión para poder rehacer sus
