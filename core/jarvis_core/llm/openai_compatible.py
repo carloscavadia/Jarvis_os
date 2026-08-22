@@ -103,7 +103,12 @@ class OpenAICompatibleProvider(LLMProvider):
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         on_text_delta: TextDeltaFn | None = None,
+        system_overlay: str = "",
     ) -> LLMResponse:
+        # Sin canal de sistema a mitad de conversación, la capa volátil se suma
+        # al prompt. Cuesta la caché del prefijo, que aquí no se usa igualmente.
+        if system_overlay:
+            system = f"{system}\n\n{system_overlay}"
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.max_tokens,

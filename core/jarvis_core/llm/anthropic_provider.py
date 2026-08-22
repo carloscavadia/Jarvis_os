@@ -12,6 +12,15 @@ from jarvis_core.llm.base import LLMProvider, LLMResponse, TextDeltaFn, ToolCall
 
 NAME = "anthropic"
 
+#: Modelos que aceptan `{"role": "system"}` dentro de `messages`. Sonnet 5 no
+#: está: enviárselo es un error de petición, no una degradación silenciosa.
+_MODELS_WITH_SYSTEM_MESSAGES = (
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
 
 class AnthropicProvider(LLMProvider):
     name = NAME
@@ -33,6 +42,19 @@ class AnthropicProvider(LLMProvider):
         self.model = model
         self.max_tokens = max_tokens
         self.effort = effort
+
+    def _supports_system_messages(self) -> bool:
+        """¿Admite este modelo mensajes de sistema a mitad de conversación?
+
+        Es la familia Opus 5 / 4.8 y Fable/Mythos 5. Sonnet 5 **no**, y mandarle
+        uno sería un error de petición, así que ahí la capa volátil se suma al
+        prompt aunque cueste la caché.
+        """
+        model = self.model.lower()
+        return any(
+            model.startswith(prefijo)
+            for prefijo in _MODELS_WITH_SYSTEM_MESSAGES
+        )
 
     def _to_messages(self, history: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Traduce el historial neutral a mensajes de la API de Anthropic."""
@@ -79,19 +101,53 @@ class AnthropicProvider(LLMProvider):
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         on_text_delta: TextDeltaFn | None = None,
+        system_overlay: str = "",
     ) -> LLMResponse:
+        messages = self._to_messages(history)
+        # Las instrucciones que cambian cada turno viajan como mensaje de sistema
+        # a mitad de conversación, no dentro de `system`. Es el canal previsto
+        # para esto y, sobre todo, deja intacto el prefijo cacheado: metidas
+        # arriba invalidarían la caché en cada turno y el ahorro sería cero.
+        # Debe ir tras un mensaje de usuario y ser la última entrada.
+        if system_overlay and self._supports_system_messages() and messages:
+            if messages[-1].get("role") == "user":
+                messages = [*messages, {"role": "system", "content": system_overlay}]
+            else:
+                system = f"{system}\n\n{system_overlay}"
+        elif system_overlay:
+            system = f"{system}\n\n{system_overlay}"
+
         kwargs: dict[str, Any] = {
             "model": self.model,
             "max_tokens": self.max_tokens,
-            "system": system,
-            "messages": self._to_messages(history),
+            # Un solo punto de caché al final del bloque estable. El orden de
+            # render es tools → system → messages, así que cubre las dos cosas
+            # que se repiten palabra por palabra en cada vuelta del bucle de
+            # herramientas: las definiciones y este prompt.
+            "system": [
+                {
+                    "type": "text",
+                    "text": system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            "messages": messages,
             "thinking": {"type": "adaptive"},
             "output_config": {"effort": self.effort},
         }
         if tools:
             kwargs["tools"] = tools
 
-        response = await self._client.messages.create(**kwargs)
+        # En streaming de verdad, no simulado. Antes se pedía la respuesta
+        # entera y se entregaba de una vez al canal: el HUD la pintaba de golpe
+        # en vez de en karaoke, la voz no podía empezar hasta tenerla completa,
+        # y con max_tokens alto una respuesta larga podía agotar el tiempo de la
+        # petición HTTP.
+        async with self._client.messages.stream(**kwargs) as stream:
+            if on_text_delta is not None:
+                async for chunk in stream.text_stream:
+                    await on_text_delta(chunk)
+            response = await stream.get_final_message()
 
         if response.stop_reason == "refusal":
             return LLMResponse(
@@ -111,20 +167,19 @@ class AnthropicProvider(LLMProvider):
                     ToolCall(id=block.id, name=block.name, input=dict(block.input))
                 )
 
-        text = "\n".join(text_parts).strip()
-        # Fallback compatible: Anthropic conserva por ahora su llamada no streaming,
-        # pero el canal recibe el texto mediante el mismo contrato.
-        if on_text_delta is not None and text:
-            await on_text_delta(text)
-
+        usage = response.usage
         return LLMResponse(
-            text=text,
+            text="\n".join(text_parts).strip(),
             tool_calls=tool_calls,
             stop_reason=response.stop_reason,
             provider=NAME,
             assistant_content=response.content,
             usage={
-                "input_tokens": getattr(response.usage, "input_tokens", 0),
-                "output_tokens": getattr(response.usage, "output_tokens", 0),
+                "input_tokens": getattr(usage, "input_tokens", 0),
+                "output_tokens": getattr(usage, "output_tokens", 0),
+                # Si esto sale cero llamada tras llamada, algo está cambiando el
+                # prefijo y se está pagando entero cada vez.
+                "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+                "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
             },
         )

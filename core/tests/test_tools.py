@@ -145,7 +145,7 @@ class ToolCallingLLM:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def complete(self, system, history, tools, on_text_delta=None):
+    async def complete(self, system, history, tools, on_text_delta=None, system_overlay=""):
         self.calls += 1
         if self.calls == 1:
             return LLMResponse(

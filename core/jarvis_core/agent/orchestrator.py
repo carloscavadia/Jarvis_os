@@ -13,12 +13,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
+from jarvis_core.memory.store import MemoryStore
 from jarvis_core.llm.base import LLMProvider, TextDeltaFn
 from jarvis_core.tools.base import ToolRegistry, ToolResult
 from jarvis_core.tools.clipping import clip_structured
@@ -49,15 +52,24 @@ class Orchestrator:
         settings: Settings,
         confirm: ConfirmFn | None = None,
         emotion: EmotionState | None = None,
+        memory: MemoryStore | None = None,
     ) -> None:
         self._llm = llm
         self._registry = registry
         self._settings = settings
         self._confirm = confirm
         self._emotion = emotion
+        self._memory = memory
+        self._memory_facts = settings.memory_facts_in_prompt
         self._system = settings.system_prompt()
+        self._persona_overlay = settings.persona_extra.strip()
         self._history: list[dict[str, Any]] = []
         self._send_lock = asyncio.Lock()
+        try:
+            self._timezone = ZoneInfo(settings.timezone) if settings.timezone else None
+        except (ZoneInfoNotFoundError, ValueError):
+            logger.warning("Zona horaria inválida: %s", settings.timezone)
+            self._timezone = None
 
     def set_registry(self, registry: ToolRegistry) -> None:
         """Cambia las herramientas disponibles conservando la conversación.
@@ -66,6 +78,60 @@ class Orchestrator:
         de él aparecen o desaparecen sin obligar al usuario a empezar de cero.
         """
         self._registry = registry
+
+    def set_persona(self, overlay: str) -> None:
+        """Ajusta tono y reglas de la casa **sin reiniciar** el gateway.
+
+        El prompt base se congela al construir el orquestador, y hasta ahora era
+        la única vía: cambiar la personalidad exigía reiniciar. Esto va por la
+        capa volátil, así que tampoco invalida el prefijo cacheado.
+        """
+        self._persona_overlay = overlay.strip()
+
+    @property
+    def persona(self) -> str:
+        return self._persona_overlay
+
+    def _remembered_facts(self, user_message: str) -> list[str]:
+        """Hechos de la memoria que merece la pena tener delante este turno.
+
+        Hasta ahora la memoria solo existía como herramienta: JARVIS recordaba
+        algo únicamente si *decidía* llamar a `recall`, así que lo normal era que
+        no recordara nada. Aquí se le ponen delante sin que tenga que pedirlos.
+
+        La selección es por coincidencia de texto y por recencia, no por
+        significado: para eso hacen falta embeddings, que es un paso aparte.
+        """
+        if self._memory is None:
+            return []
+        vistos: dict[str, str] = {}
+        try:
+            relevantes = self._memory.recall(user_message, limit=self._memory_facts)
+            recientes = self._memory.recall("", limit=self._memory_facts)
+        except Exception:
+            logger.warning("No pude leer la memoria para este turno", exc_info=True)
+            return []
+        for hecho in [*relevantes, *recientes]:
+            if hecho.key not in vistos:
+                vistos[hecho.key] = hecho.value
+        lineas = [f"- {clave}: {valor}" for clave, valor in vistos.items()]
+        return lineas[: self._memory_facts]
+
+    def _build_overlay(self, user_message: str) -> str:
+        """Lo que cambia entre turnos, separado de lo que no."""
+        bloques: list[str] = []
+        ahora = datetime.now(self._timezone)
+        bloques.append(f"Fecha y hora actuales: {ahora.strftime('%A %d de %B de %Y, %H:%M')}.")
+        if self._persona_overlay:
+            bloques.append(f"Reglas de la casa vigentes:\n{self._persona_overlay}")
+        hechos = self._remembered_facts(user_message)
+        if hechos:
+            bloques.append(
+                "Lo que ya sabes de tu jefe (memoria a largo plazo; úsalo sin "
+                "anunciar que lo recuerdas, y no vuelvas a preguntar lo que ya "
+                "está aquí):\n" + "\n".join(hechos)
+            )
+        return "\n\n".join(bloques)
 
     def reset(self) -> None:
         """Olvida la conversación actual (no la memoria a largo plazo)."""
@@ -99,6 +165,7 @@ class Orchestrator:
         self._history.append({"role": "user", "content": user_message})
         tools = self._registry.definitions()
         tools_used: list[str] = []
+        overlay = self._build_overlay(user_message)
 
         for _ in range(self._settings.max_tool_iterations):
             try:
@@ -115,6 +182,7 @@ class Orchestrator:
                         history=self._history,
                         tools=tools,
                         on_text_delta=on_text_delta,
+                        system_overlay=overlay,
                     ),
                     timeout=self._settings.llm_timeout_seconds,
                 )

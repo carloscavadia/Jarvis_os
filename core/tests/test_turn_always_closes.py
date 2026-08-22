@@ -56,9 +56,11 @@ class ProveedorQuePideLaHerramienta:
 
     def __init__(self) -> None:
         self.historial_visto: list = []
+        self.overlay_visto = ""
 
-    async def complete(self, *, system, history, tools, on_text_delta=None):
+    async def complete(self, *, system, history, tools, on_text_delta=None, system_overlay=""):
         self.historial_visto = [dict(item) for item in history]
+        self.overlay_visto = system_overlay
         pidio_ya = any(item.get("role") == "tool" for item in history)
         if pidio_ya:
             return LLMResponse(

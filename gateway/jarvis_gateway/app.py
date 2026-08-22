@@ -752,6 +752,22 @@ async def delete_skill(name: str) -> dict[str, object]:
     return {"name": name, "deleted": deleted}
 
 
+class PersonaRequest(BaseModel):
+    overlay: str = Field(default="", max_length=4000)
+
+
+@app.get("/persona", dependencies=[Depends(require_api_key)])
+async def read_persona() -> dict[str, object]:
+    return {"overlay": sessions.persona, "name": settings.persona_name}
+
+
+@app.put("/persona", dependencies=[Depends(require_api_key)])
+async def write_persona(req: PersonaRequest) -> dict[str, object]:
+    """Reglas de la casa en caliente, sin reiniciar el gateway."""
+    await sessions.set_persona(req.overlay)
+    return {"overlay": sessions.persona, "applied": True}
+
+
 @app.get("/goals/current", dependencies=[Depends(require_api_key)])
 async def current_goal() -> dict[str, object]:
     goal = sessions.goals.current()

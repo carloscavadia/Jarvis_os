@@ -80,13 +80,20 @@ class LLMProvider(Protocol):
         history: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         on_text_delta: TextDeltaFn | None = None,
+        system_overlay: str = "",
     ) -> LLMResponse:
         """Ejecuta un turno del modelo a partir del historial neutral.
 
         Args:
-            system: prompt de sistema (personalidad + reglas).
+            system: prompt de sistema estable (personalidad base + reglas). Se
+                repite palabra por palabra en cada llamada del turno, así que es
+                lo que un proveedor puede cachear.
             history: historial en formato neutral (ver arriba).
             tools: definiciones de herramientas (name, description, input_schema).
             on_text_delta: receptor opcional para mostrar la respuesta mientras se genera.
+            system_overlay: instrucciones que **cambian** entre turnos —hechos
+                recordados, ajustes de personalidad en caliente, la fecha—. Van
+                aparte precisamente porque mezclarlas con `system` cambiaría el
+                prefijo en cada turno y anularía la caché entera.
         """
         ...

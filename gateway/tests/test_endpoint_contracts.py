@@ -48,6 +48,7 @@ EXPECTED_ROUTES = {
     "/memory/graph",
     "/music/cover/{cover_id}", "/music/playlist/{playlist_id}", "/music/playlists",
     "/music/random", "/music/search", "/music/status", "/music/stream/{song_id}",
+    "/persona",
     "/proactive/events", "/proactive/events/{event_id}/decision",
     "/proxmox/status",
     "/server/heal", "/server/health",

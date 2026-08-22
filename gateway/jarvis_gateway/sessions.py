@@ -50,6 +50,7 @@ class SessionManager:
             else None
         )
         self._lock = asyncio.Lock()
+        self._persona_overlay = self._settings.persona_extra.strip()
 
     async def get(self, session_id: str) -> Orchestrator:
         async with self._lock:
@@ -72,7 +73,10 @@ class SessionManager:
                     mcp_manager=self.mcp_manager,
                     skill_manager=self.skill_manager,
                 )
-                orch = Orchestrator(llm, registry, self._settings, emotion=emotion)
+                orch = Orchestrator(
+                    llm, registry, self._settings, emotion=emotion, memory=self.memory
+                )
+                orch.set_persona(self._persona_overlay)
                 self._sessions[session_id] = orch
                 self._emotions[session_id] = emotion
             return orch
@@ -92,6 +96,22 @@ class SessionManager:
                         self._emotions.setdefault(session_id, EmotionState())
                     )
                 )
+
+    async def set_persona(self, overlay: str) -> None:
+        """Aplica reglas de la casa a todas las sesiones, abiertas y futuras.
+
+        El prompt base se congela al construir cada orquestador, así que hasta
+        ahora cambiar el tono exigía reiniciar el gateway. Esto viaja por la capa
+        volátil, de modo que tampoco invalida el prefijo cacheado.
+        """
+        self._persona_overlay = overlay.strip()
+        async with self._lock:
+            for orch in self._sessions.values():
+                orch.set_persona(self._persona_overlay)
+
+    @property
+    def persona(self) -> str:
+        return self._persona_overlay
 
     def build_registry(self, emotion: EmotionState) -> ToolRegistry:
         """Herramientas para un canal que no usa el orquestador (voz Realtime).

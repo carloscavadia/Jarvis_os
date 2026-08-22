@@ -117,6 +117,11 @@ class Settings:
 
     # --- Memoria ---
     memory_db_path: str = "data/jarvis_memory.db"
+    #: Hechos que se le ponen delante al modelo en cada turno. La memoria solo
+    #: existía como herramienta, asi que JARVIS recordaba algo unicamente si
+    #: decidia llamar a `recall`: lo normal era que no recordara nada. 0 lo
+    #: desactiva y vuelve al comportamiento anterior.
+    memory_facts_in_prompt: int = 12
 
     # --- Tareas / proactividad ---
     # Zona horaria para interpretar «mañana a las 8». Vacío = la del sistema,
@@ -384,6 +389,9 @@ class Settings:
             language=os.environ.get("JARVIS_LANGUAGE", "es"),
             persona_extra=os.environ.get("JARVIS_PERSONA_EXTRA", ""),
             memory_db_path=os.environ.get("JARVIS_MEMORY_DB", "data/jarvis_memory.db"),
+            memory_facts_in_prompt=max(
+                0, int(os.environ.get("JARVIS_MEMORY_FACTS_IN_PROMPT", "12"))
+            ),
             tasks_db_path=os.environ.get("JARVIS_TASKS_DB", "data/jarvis_tasks.db"),
             goals_db_path=os.environ.get("JARVIS_GOALS_DB", "data/jarvis_goals.db"),
             timezone=os.environ.get("JARVIS_TIMEZONE", "").strip(),

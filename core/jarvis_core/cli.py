@@ -62,6 +62,7 @@ def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
         settings,
         confirm=_confirm_terminal,
         emotion=emotion,
+        memory=memory,
     )
     return orchestrator, memory, tasks
 

@@ -18,9 +18,12 @@ desde el coche". Cada fase deja algo usable.
 - [x] Despliegue: docker-compose + systemd + notas Proxmox.
 
 ## Fase 1 — Cerebro sólido
-- [x] Streaming de respuestas (texto incremental) por WebSocket y HUD tipo karaoke.
-- [ ] Prompt de personalidad configurable (nombre, tono, idioma, "reglas de la casa").
-- [ ] Caché de prompt para bajar coste/latencia.
+- [x] Streaming de respuestas (texto incremental) por WebSocket y HUD tipo karaoke,
+      real también con Claude (antes se entregaba la respuesta de una vez).
+- [x] Prompt de personalidad configurable en caliente (`PUT /persona`), sin reiniciar
+      y sin invalidar la caché del modelo.
+- [x] Caché de prompt: el prefijo estable (herramientas + prompt de sistema) se
+      cachea, y lo que cambia cada turno va en una capa aparte.
 - [ ] Proveedor `OllamaProvider` para modelos locales (offline/privacidad).
 - [x] Suite de tests del bucle de agente y del registro de herramientas.
 
@@ -51,7 +54,10 @@ desde el coche". Cada fase deja algo usable.
 ## Fase 5 — Autonomía
 - [x] Tareas programadas / proactivas ("avísame si…", "cada mañana…"), con aviso
       por correo desde `send_email`.
-- [ ] Memoria semántica con embeddings (búsqueda por significado).
+- [x] Los hechos recordados se le ponen delante al modelo en cada turno, sin que
+      tenga que consultarlos.
+- [ ] Memoria semántica con embeddings (búsqueda por significado; hoy es por
+      coincidencia de texto y recencia).
 - [ ] Aprendizaje de preferencias del usuario a lo largo del tiempo.
 - [ ] Panel web de administración.
 
