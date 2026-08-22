@@ -2709,12 +2709,36 @@
   let busy = false;
   let pendingApproval = null;
   let pendingProactive = null;
+  // Todo el desbloqueo del HUD colgaba de que llegara un mensaje concreto: el
+  // frame final `reply`. Si se perdía, `finishStreamReply` no corría nunca y el
+  // HUD quedaba inservible —compositor bloqueado, estado clavado en HABLANDO y
+  // palabra de activación muerta— con la respuesta ya escrita en pantalla,
+  // porque el texto había llegado por streaming. Un turno sin cierre es un
+  // fallo recuperable, no un motivo para dejar de aceptar lo que escribas.
+  const BUSY_WATCHDOG_MS = 45000;
+  let busyWatchdog = null;
+  function armBusyWatchdog() {
+    clearTimeout(busyWatchdog);
+    busyWatchdog = busy ? setTimeout(giveUpOnTurn, BUSY_WATCHDOG_MS) : null;
+  }
+  function giveUpOnTurn() {
+    busyWatchdog = null;
+    if (!busy) return;
+    // Marcarlo completo antes de cerrar: `runSpeechQueue` gira en espera de
+    // esta bandera, y sin ella seguiría dando vueltas sin volver a reposo.
+    replyTextComplete = true;
+    addLine("SISTEMA", "El servidor no cerró el turno. Puedes volver a escribir; "
+      + "si se repite, revisa: docker compose logs --tail 50 gateway", "system");
+    finishStreamReply();
+    setBusy(false);
+  }
   function setBusy(next) {
     busy = next;
     if (next) { stopWakeListening(); stopConversationFollowUp({ sleep: false }); }
     messageInput.disabled = next;
     messageInput.placeholder = next ? "JARVIS está respondiendo…" : "Habla con JARVIS…";
     if (!next) { messageInput.focus(); scheduleWakeListening(); }
+    armBusyWatchdog();
   }
   async function sendApprovalDecision(approved) {
     if (pendingProactive) {
@@ -2995,6 +3019,17 @@
     ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
+      handleGatewayMessage(m);
+    };
+  }
+
+  // El despachador del canal de texto, con nombre propio como el de voz
+  // (`handleVoiceMessage`). Estaba en linea dentro de `connect`, y eso hacia
+  // imposible reproducir una secuencia de mensajes en un test: los fallos de
+  // orden entre aprobaciones, respuestas y voz solo se veian usando el HUD.
+  function handleGatewayMessage(m) {
+      // Actividad del servidor: el turno sigue vivo aunque tarde.
+      armBusyWatchdog();
       if (m.type === "state") setState(m.state);
       else if (m.type === "emotion") setEmotion(m.emotion);
       else if (m.type === "event") firePulse();
@@ -3037,14 +3072,18 @@
       }
       else if (m.type === "approval_resolved") {
         approvalActions.hidden = true;
-        if (pendingApproval?.approval_id === m.approval_id) {
+        const esperabamosEsta = pendingApproval?.approval_id === m.approval_id;
+        if (esperabamosEsta) {
           if (!m.approved) showToolEvent({ phase: "denied", tool: pendingApproval.tool, arguments: pendingApproval.arguments });
           pendingApproval = null;
         }
         addLine("SISTEMA", m.approved ? "Permiso concedido." : "Permiso denegado.", "system");
-        setBusy(true);
+        // Volver a bloquear solo si es la aprobación que este canal esperaba.
+        // Una resolución tardía —o la de una aprobación que se decidió por el
+        // canal de voz— llegaba después de la respuesta y volvía a bloquear el
+        // compositor cuando ya no quedaba ningún turno que esperar.
+        if (esperabamosEsta) setBusy(true);
       }
-    };
   }
 
   // ── Demo local ──
@@ -4639,11 +4678,17 @@
     });
   }
 
+  //: Rondas de ~1 s que la cola espera a un turno que no se cierra antes de
+  //: volver a reposo por su cuenta.
+  const MAX_WAITING_ROUNDS = 12;
+
   async function runSpeechQueue() {
     if (speechQueueRunning) return;
     speechQueueRunning = true;
+    let waitingRounds = 0;
     while (true) {
       while (speechQueue.length) {
+        waitingRounds = 0;
         const item = speechQueue.shift();
         if (item.session !== speechSession || !voiceEnabled) continue;
         try {
@@ -4674,10 +4719,17 @@
       if (speechQueue.length) continue;
       // Vacía pero con texto aún en camino: es una pausa del modelo, no el
       // final. Cerrar aquí abría el micrófono mientras JARVIS todavía tenía
-      // frases que decir. Se espera al texto autoritativo; si la conexión cae,
-      // `finishStreamReply` lo marca completo igualmente y esto no se queda
-      // colgado.
-      if (!replyTextComplete) continue;
+      // frases que decir, así que se espera al texto autoritativo.
+      //
+      // Pero la espera tiene tope. Si el turno no se cierra —un frame `reply`
+      // perdido—, `replyTextComplete` no llega nunca y este bucle giraba
+      // indefinidamente: no se alcanzaba el `setState("idle")` de abajo, el HUD
+      // se quedaba en HABLANDO y la palabra de activación no volvía, porque su
+      // guarda mira `speechQueueRunning`. Ahora se rinde y vuelve a reposo.
+      if (!replyTextComplete && waitingRounds < MAX_WAITING_ROUNDS) {
+        waitingRounds += 1;
+        continue;
+      }
       break;
     }
     if (realtimeVoiceSession) {

@@ -53,6 +53,9 @@ jobs:
       - name: Test HUD dataset board
         run: node clients/web-hud/tests/dataset.test.js
 
+      - name: Test HUD turn recovery
+        run: node clients/web-hud/tests/turn-recovery.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
