@@ -2320,7 +2320,22 @@
   }
 
   // ── Partículas: adaptación dinámica para 60 FPS en Raspberry Pi y dispositivos táctiles ──
-  const isLowSpec = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || window.innerWidth <= 800 || location.search.includes("lowspec=1");
+  //: Modo reducido: sin campo de profundidad, sin instrumentación y sin bloom
+  //: con aberración. Se detecta solo, pero la detección se equivoca por arriba:
+  //: 4 núcleos son hoy un mini-PC perfectamente capaz —un NUC, una Pi 5— y se
+  //: quedaba con el HUD pobre sin manera de decir que no. `?lowspec=0` lo fuerza
+  //: apagado y `?lowspec=1` encendido; la preferencia se recuerda.
+  const lowSpecParam = new URLSearchParams(location.search).get("lowspec");
+  if (lowSpecParam === "0" || lowSpecParam === "1") {
+    try { localStorage.setItem("jarvis_lowspec", lowSpecParam); } catch {}
+  }
+  let lowSpecPref = lowSpecParam;
+  if (lowSpecPref === null) {
+    try { lowSpecPref = localStorage.getItem("jarvis_lowspec"); } catch { lowSpecPref = null; }
+  }
+  const isLowSpec = lowSpecPref !== null
+    ? lowSpecPref === "1"
+    : (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) || window.innerWidth <= 800;
   if (isLowSpec) document.body.classList.add("lowspec");
   const RING = isLowSpec ? 420 : 1750, DUST = isLowSpec ? 80 : 320, N = RING + DUST;
   const P = new Array(N);
@@ -2558,6 +2573,138 @@
     ctx.globalAlpha = 1;
   }
 
+  // ── Instrumentación angular ──
+  //
+  // Todo el orbe era orgánico: curvas, enjambre, ruido. Precioso, pero sin nada
+  // que se leyera como una máquina. Lo que falta es geometría deliberada —arcos
+  // segmentados, marcas de escala, corchetes— girando a ritmos distintos. El
+  // contraste entre lo blando y lo preciso es lo que hace que parezca un
+  // instrumento y no un salvapantallas.
+  //
+  // Cada anillo tiene su radio, su velocidad y su sentido. Los que giran en
+  // contra son los que impiden que el conjunto se lea como una sola pieza.
+  //: Los radios evitan a propósito la banda del enjambre (~R·1.0 a R·1.6):
+  //: puestos ahí, las partículas se los comen y no se lee ninguna geometría.
+  //: Viven en los dos huecos reales, el interior y el exterior.
+  const INSTRUMENT_RINGS = [
+    { radius: 0.52, speed: -0.34, segments: 2, gap: 0.52, width: 2.0, alpha: 0.42, ticks: 0 },
+    { radius: 0.68, speed:  0.21, segments: 5, gap: 0.58, width: 1.2, alpha: 0.32, ticks: 0 },
+    { radius: 0.80, speed:  0.09, segments: 1, gap: 0.00, width: 1.0, alpha: 0.24, ticks: 40 },
+    // Nada más allá de R·1.7: los anillos grandes barrían la pantalla entera y
+    // cruzaban los paneles. El escenario del orbe no es todo el viewport.
+    { radius: 1.66, speed:  0.16, segments: 3, gap: 0.52, width: 1.4, alpha: 0.26, ticks: 0 },
+  ];
+
+  function drawInstruments(cx, cy, R, rgbCol, activity) {
+    if (isLowSpec) return;
+    const giro = reduceMotion ? 0 : 1;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgb(${rgbCol})`;
+    ctx.lineCap = "butt";
+
+    for (const anillo of INSTRUMENT_RINGS) {
+      const rr = R * anillo.radius;
+      // La actividad acelera los anillos: cuando JARVIS trabaja, la máquina
+      // gira más rápido. Es la misma señal que densifica el campo.
+      const fase = t * anillo.speed * (1 + activity * 0.9) * giro;
+      ctx.globalAlpha = anillo.alpha * (0.85 + activity * 0.45);
+      ctx.lineWidth = anillo.width;
+
+      if (anillo.ticks) {
+        // Anillo de escala: marcas radiales, como un dial.
+        for (let i = 0; i < anillo.ticks; i++) {
+          const a = fase + (i / anillo.ticks) * TAU;
+          const larga = i % 6 === 0;
+          const r0 = rr, r1 = rr + R * (larga ? 0.045 : 0.018);
+          ctx.globalAlpha = anillo.alpha * (larga ? 1.6 : 0.55) * (0.85 + activity * 0.45);
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0 * TILT);
+          ctx.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1 * TILT);
+          ctx.stroke();
+        }
+        continue;
+      }
+
+      // Arcos segmentados: el hueco es lo que los convierte en piezas.
+      const arco = (TAU / anillo.segments) * (1 - anillo.gap);
+      for (let i = 0; i < anillo.segments; i++) {
+        const desde = fase + (i / anillo.segments) * TAU;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, rr, rr * TILT, 0, desde, desde + arco);
+        ctx.stroke();
+      }
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Corchetes de encuadre ──
+  //
+  // Cuatro esquinas que enmarcan el orbe y se cierran sobre él cuando hay algo
+  // en marcha. Es la señal de «fijado» de cualquier visor, y da al conjunto un
+  // punto de intención que un anillo suelto no tiene.
+  function drawReticle(cx, cy, R, rgbCol, activity) {
+    if (isLowSpec) return;
+    const cerco = R * (1.78 - activity * 0.10 - amp * 0.05);
+    const brazo = R * 0.13;
+    ctx.strokeStyle = `rgb(${rgbCol})`;
+    ctx.globalAlpha = 0.22 + activity * 0.22;
+    ctx.lineWidth = 1.8;
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const x = cx + sx * cerco, y = cy + sy * cerco * TILT;
+      ctx.beginPath();
+      ctx.moveTo(x - sx * brazo, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y - sy * brazo * TILT);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Flujos de datos ──
+  //
+  // Trazos tangenciales que recorren el anillo, como paquetes viajando. La
+  // densidad la marca la actividad: en reposo apenas hay uno o dos; trabajando,
+  // el anillo se llena. Es la diferencia entre «encendido» y «ocupado».
+  const DATA_STREAMS = 14;
+  const streams = [];
+
+  function seedStreams() {
+    streams.length = 0;
+    for (let i = 0; i < DATA_STREAMS; i++) {
+      streams.push({
+        a: Math.random() * TAU,
+        spd: 0.5 + Math.random() * 1.4,
+        len: 0.06 + Math.random() * 0.12,
+        band: 0.60 + Math.random() * 0.22,
+        seed: Math.random(),
+      });
+    }
+  }
+
+  function drawDataStreams(cx, cy, R, rgbCol, activity, speedFactor) {
+    if (isLowSpec || reduceMotion) return;
+    if (!streams.length) seedStreams();
+    // Cuántos se ven ahora mismo. En reposo, casi ninguno.
+    const vivos = Math.round(2 + (activity + amp) * (DATA_STREAMS - 2));
+    ctx.globalCompositeOperation = "lighter";
+    ctx.lineCap = "round";
+    for (let i = 0; i < Math.min(vivos, streams.length); i++) {
+      const s = streams[i];
+      s.a += s.spd * 0.012 * (0.6 + activity) * speedFactor;
+      const rr = R * s.band;
+      const fundido = 0.30 + 0.35 * Math.sin(t * 1.7 + s.seed * TAU);
+      ctx.strokeStyle = `rgb(${rgbCol})`;
+      ctx.globalAlpha = fundido * (0.35 + activity * 0.5);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rr, rr * TILT, 0, s.a, s.a + s.len);
+      ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+  }
+
   function drawEnvironment(cx, cy, R, rgbCol, activity, pulse) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -2679,6 +2826,11 @@
     paintSprite(col.r, col.g, col.b);
     drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
 
+    // La maquinaria va detrás del enjambre: lo enmarca, no lo tapa.
+    drawInstruments(cx, cy, R, rgbCol, activity);
+    drawReticle(cx, cy, R, rgbCol, activity);
+    drawDataStreams(cx, cy, R, rgbCol, activity, speedFactor);
+
     if (readVoiceSpectrum()) drawVoiceSpectrum(cx, cy, baseR, rgbCol);
 
     // Red Neuronal de Memoria en Canvas
@@ -2758,8 +2910,26 @@
     gctx.clearRect(0, 0, glow.width, glow.height);
     gctx.drawImage(canvas, 0, 0, glow.width, glow.height);
     ctx.globalCompositeOperation = "lighter";
-    ctx.globalAlpha = 0.28; ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(glow, 0, 0, glow.width, glow.height, 0, 0, W, H);
+    ctx.imageSmoothingEnabled = true;
+    if (isLowSpec) {
+      ctx.globalAlpha = 0.28;
+      ctx.drawImage(glow, 0, 0, glow.width, glow.height, 0, 0, W, H);
+    } else {
+      // Aberración cromática: el bloom se compone tres veces con los canales
+      // desplazados un pelo. Es lo que separa un resplandor plano de algo que
+      // parece visto a través de una óptica de verdad. El desplazamiento crece
+      // con la voz, así que el filo late al hablar.
+      const desvio = 1.2 + amp * 2.6 + activity * 1.1;
+      for (const [dx, dy, canal] of [[-desvio, 0, "rgba(255,60,90,"], [desvio, 0, "rgba(60,160,255,"], [0, 0, null]]) {
+        if (canal === null) {
+          ctx.globalAlpha = 0.15;
+          ctx.drawImage(glow, 0, 0, glow.width, glow.height, 0, 0, W, H);
+          continue;
+        }
+        ctx.globalAlpha = 0.055;
+        ctx.drawImage(glow, 0, 0, glow.width, glow.height, dx, dy, W, H);
+      }
+    }
 
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;

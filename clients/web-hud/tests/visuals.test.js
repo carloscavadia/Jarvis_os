@@ -25,10 +25,11 @@ const H = {};
 new Function("H", [
   extractConst("PULSE_KINDS"),
   extractConst("FIELD_LAYERS"),
-  "H.PULSE_KINDS = PULSE_KINDS; H.FIELD_LAYERS = FIELD_LAYERS;",
+  extractConst("INSTRUMENT_RINGS"),
+  "H.PULSE_KINDS = PULSE_KINDS; H.FIELD_LAYERS = FIELD_LAYERS; H.INSTRUMENT_RINGS = INSTRUMENT_RINGS;",
 ].join("\n"))(H);
 
-const { PULSE_KINDS, FIELD_LAYERS } = H;
+const { PULSE_KINDS, FIELD_LAYERS, INSTRUMENT_RINGS } = H;
 
 function prueba(nombre, fn) {
   fn();
@@ -93,6 +94,35 @@ prueba("el campo se omite en equipos lentos", () => {
 prueba("la voz se lee por espectro, no solo por volumen", () => {
   assert.ok(/getByteFrequencyData\(voiceSpectrum\)/.test(js), "seguiría siendo un único número");
   assert.ok(/spectrumSmooth/.test(js), "sin suavizado el anillo tirita");
+});
+
+prueba("la instrumentación esquiva la banda del enjambre", () => {
+  // Puestos sobre el anillo de partículas no se ven: se los come. Es
+  // exactamente el error que costó tres iteraciones descubrir.
+  for (const anillo of INSTRUMENT_RINGS) {
+    const dentroDelEnjambre = anillo.radius > 0.95 && anillo.radius < 1.62;
+    assert.ok(!dentroDelEnjambre, `el anillo en R·${anillo.radius} queda tapado`);
+  }
+});
+
+prueba("nada de la instrumentación barre la pantalla entera", () => {
+  // Los anillos muy grandes cruzaban los paneles y el campo de texto.
+  for (const anillo of INSTRUMENT_RINGS) {
+    assert.ok(anillo.radius <= 1.7, `R·${anillo.radius} se sale del escenario`);
+  }
+});
+
+prueba("los anillos giran a ritmos distintos y en ambos sentidos", () => {
+  const velocidades = INSTRUMENT_RINGS.map(a => a.speed);
+  assert.strictEqual(new Set(velocidades).size, velocidades.length, "girar al unísono se lee como una sola pieza");
+  assert.ok(velocidades.some(v => v > 0) && velocidades.some(v => v < 0), "faltan sentidos opuestos");
+});
+
+prueba("el modo reducido se puede forzar en los dos sentidos", () => {
+  // 4 núcleos son hoy un mini-PC capaz, y se quedaba con el HUD pobre sin
+  // manera de decir que no.
+  assert.ok(/lowspec/.test(js) && /lowSpecParam === "0"/.test(js), "no se puede desactivar");
+  assert.ok(/localStorage.setItem\("jarvis_lowspec"/.test(js), "la preferencia no se recuerda");
 });
 
 console.log("\nLenguaje visual correcto");

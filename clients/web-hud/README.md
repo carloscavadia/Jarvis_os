@@ -29,6 +29,21 @@ cd clients/web-hud && python3 -m http.server 4173
 
 Pero entonces eres tú quien debe mantenerlo actualizado tras cada `git pull`.
 
+### Rendimiento del orbe
+
+El HUD detecta equipos modestos y baja el detalle: sin campo de profundidad, sin
+instrumentación angular y con un bloom simple. La detección es conservadora
+—cuatro núcleos o menos—, y eso hoy incluye mini-PC perfectamente capaces. Se
+puede forzar en los dos sentidos, y la preferencia se recuerda en el navegador:
+
+```text
+http://127.0.0.1:8080/hud?lowspec=0    # detalle completo
+http://127.0.0.1:8080/hud?lowspec=1    # modo reducido (kiosko en Raspberry)
+```
+
+El movimiento también respeta `prefers-reduced-motion`: con esa preferencia
+activa, la deriva del campo y los flujos de datos se detienen.
+
 ### Modo demo (sin servidor)
 
 Al abrirlo funciona en modo demo: usa los botones **Reposo / Escucha / Pensar / Hablar**
