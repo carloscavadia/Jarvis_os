@@ -137,6 +137,16 @@ class Settings:
     # --- Límites de seguridad ---
     max_tool_iterations: int = 12
     max_history_items: int = 80
+    #: Tope por llamada al proveedor. Sin él, un proveedor que se atasca cuelga
+    #: el turno entero: el gateway solo manda el mensaje final cuando el bucle de
+    #: agente retorna, así que el HUD se quedaba bloqueado sin salida posible.
+    llm_timeout_seconds: float = 120.0
+    #: Tope de lo que se le devuelve al modelo por resultado de herramienta.
+    #: `homeassistant.entities` puede devolver 2 MiB, y eso entra en el historial
+    #: y viaja otra vez en **cada** petición posterior del mismo turno: cada
+    #: vuelta del bucle salía más lenta que la anterior. La ruta de voz ya tenía
+    #: su tope (`realtime_max_tool_output`); la de texto no tenía ninguno.
+    max_tool_output_chars: int = 8000
 
     # --- Gateway remoto ---
     gateway_api_key: str = ""
@@ -388,6 +398,12 @@ class Settings:
             ),
             max_history_items=max(
                 10, int(os.environ.get("JARVIS_MAX_HISTORY_ITEMS", "80"))
+            ),
+            llm_timeout_seconds=max(
+                10.0, float(os.environ.get("JARVIS_LLM_TIMEOUT", "120"))
+            ),
+            max_tool_output_chars=max(
+                500, int(os.environ.get("JARVIS_MAX_TOOL_OUTPUT", "8000"))
             ),
             gateway_api_key=os.environ.get("JARVIS_GATEWAY_API_KEY", "").strip().strip('"').strip("'"),
             gateway_max_message_chars=max(

@@ -40,6 +40,7 @@ from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
+from jarvis_core.tools.clipping import clip_structured
 from jarvis_core.tools.builtin.web_tools import WebClient, validate_public_https_url
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
@@ -198,72 +199,17 @@ def _public_proactive_event(event: dict[str, object]) -> dict[str, object]:
 #: inventario de casa entero no ahogue el WebSocket, no para recortar por gusto.
 _TOOL_OUTPUT_MAX_CHARS = 12000
 
-#: Cuántos elementos se conservan de cada lista al reducir, de más a menos.
-_TOOL_OUTPUT_ARRAY_STEPS = (400, 250, 150, 100, 60, 40, 25, 15, 8, 4, 2, 1)
-
-
-def _count_items(value: object) -> int:
-    """Elementos de lista que hay en toda la estructura, a cualquier profundidad."""
-    if isinstance(value, list):
-        return len(value) + sum(_count_items(item) for item in value)
-    if isinstance(value, dict):
-        return sum(_count_items(item) for item in value.values())
-    return 0
-
-
-def _shrink_arrays(value: object, keep: int) -> object:
-    if isinstance(value, list):
-        return [_shrink_arrays(item, keep) for item in value[:keep]]
-    if isinstance(value, dict):
-        return {key: _shrink_arrays(item, keep) for key, item in value.items()}
-    return value
-
 
 def _public_tool_output(content: str) -> tuple[str, dict[str, object] | None]:
-    """Recorta la salida de una herramienta **sin romper su estructura**.
+    """Recorta la salida de una herramienta sin romper su estructura.
 
     Antes esto era `content[:12000]`, un corte por caracteres. Con un inventario
     de Home Assistant de 148 entidades el JSON llegaba partido a mitad de un
     objeto: el HUD no podía parsearlo, caía al modo texto y pintaba el volcado
-    crudo en el pizarrón —justo lo que se veía como una pared de JSON—. Cuando
-    el contenido es JSON se reducen las listas hasta que entre, de forma que lo
-    que llega sigue siendo JSON válido y el pizarrón puede analizarlo. El
-    segundo valor dice qué se dejó fuera, para poder avisarlo en pantalla.
+    crudo en el pizarrón. El recorte vive en el núcleo porque el orquestador
+    necesita exactamente el mismo al devolverle el resultado al modelo.
     """
-    if len(content) <= _TOOL_OUTPUT_MAX_CHARS:
-        return content, None
-
-    try:
-        parsed = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        parsed = None
-
-    if isinstance(parsed, (dict, list)):
-        total_items = _count_items(parsed)
-        for keep in _TOOL_OUTPUT_ARRAY_STEPS:
-            reduced = _shrink_arrays(parsed, keep)
-            text = json.dumps(reduced, ensure_ascii=False, separators=(",", ":"))
-            if len(text) <= _TOOL_OUTPUT_MAX_CHARS:
-                kept_items = _count_items(reduced)
-                if kept_items >= total_items:
-                    return text, None
-                return text, {
-                    "kind": "json",
-                    "shown": kept_items,
-                    "total": total_items,
-                }
-
-    # No es JSON (o ni con un elemento por lista cabe): se corta por líneas para
-    # no partir una a medias, y se avisa.
-    clipped = content[:_TOOL_OUTPUT_MAX_CHARS]
-    newline = clipped.rfind("\n")
-    if newline > _TOOL_OUTPUT_MAX_CHARS // 2:
-        clipped = clipped[:newline]
-    return clipped, {
-        "kind": "text",
-        "shown": len(clipped),
-        "total": len(content),
-    }
+    return clip_structured(content, _TOOL_OUTPUT_MAX_CHARS)
 
 
 def _workspace_presentation(

@@ -21,6 +21,7 @@ from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.llm.base import LLMProvider, TextDeltaFn
 from jarvis_core.tools.base import ToolRegistry, ToolResult
+from jarvis_core.tools.clipping import clip_structured
 
 logger = logging.getLogger("jarvis.orchestrator")
 
@@ -100,12 +101,38 @@ class Orchestrator:
         tools_used: list[str] = []
 
         for _ in range(self._settings.max_tool_iterations):
-            response = await self._llm.complete(
-                system=self._system,
-                history=self._history,
-                tools=tools,
-                on_text_delta=on_text_delta,
-            )
+            try:
+                # Sin tope, un proveedor que no responde cuelga el turno entero y
+                # con él al cliente: el gateway solo manda su mensaje final
+                # cuando este bucle retorna, así que el HUD se quedaba bloqueado
+                # —sin teclado, sin cerrar la conversación y sin voz, porque la
+                # síntesis también sale al cerrar— y sin forma de recuperarse.
+                # Rendirse con un mensaje es peor que responder, pero es
+                # infinitamente mejor que no volver nunca.
+                response = await asyncio.wait_for(
+                    self._llm.complete(
+                        system=self._system,
+                        history=self._history,
+                        tools=tools,
+                        on_text_delta=on_text_delta,
+                    ),
+                    timeout=self._settings.llm_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "El proveedor no respondió en %.0f s; se cierra el turno.",
+                    self._settings.llm_timeout_seconds,
+                )
+                self._trim_history()
+                return AgentReply(
+                    text=(
+                        "El modelo no respondió a tiempo. Vuelve a intentarlo; si "
+                        "se repite, sube JARVIS_LLM_TIMEOUT o revisa el proveedor."
+                    ),
+                    tools_used=tools_used,
+                    stop_reason="timeout",
+                    emotion=self._emotion.current if self._emotion else "concern",
+                )
             # Añadir el turno del asistente al historial neutral. Se guarda el contenido
             # nativo (`raw`) para poder reutilizarlo si se sigue con el mismo proveedor.
             self._history.append(
@@ -157,12 +184,29 @@ class Orchestrator:
                     await on_tool_event("running", call.name, call.input, None)
                 result = await self._registry.execute(call.name, call.input)
                 if on_tool_event is not None:
+                    # El cliente recibe el resultado íntegro: tiene su propio
+                    # recorte y sabe presentarlo. Al modelo se le da menos.
                     await on_tool_event("completed", call.name, call.input, result)
+                # Un inventario de casa entero no solo ocupa esta petición: se
+                # queda en el historial y vuelve a viajar en cada vuelta del
+                # bucle, así que cada iteración salía más lenta que la anterior.
+                # El recorte respeta la estructura, de modo que lo que lee el
+                # modelo sigue siendo JSON válido con menos elementos.
+                content, clipped = clip_structured(
+                    result.content, self._settings.max_tool_output_chars
+                )
+                if clipped is not None:
+                    # Que el modelo sepa que hay más: si no, afirma que eso es
+                    # todo lo que existe en vez de ofrecerse a filtrar.
+                    content += (
+                        f"\n\n[Resultado recortado: se muestran {clipped['shown']} de "
+                        f"{clipped['total']}. Vuelve a llamar con un filtro para ver el resto.]"
+                    )
                 results.append(
                     {
                         "id": call.id,
                         "name": call.name,
-                        "content": result.content,
+                        "content": content,
                         "is_error": result.is_error,
                     }
                 )
