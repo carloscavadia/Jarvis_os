@@ -50,6 +50,9 @@ jobs:
       - name: Test HUD connectors panel
         run: node clients/web-hud/tests/connectors.test.js
 
+      - name: Test HUD dataset board
+        run: node clients/web-hud/tests/dataset.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15

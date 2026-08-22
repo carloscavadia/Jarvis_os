@@ -166,6 +166,52 @@
     font-family: var(--mono); white-space: pre; overflow-wrap: normal; tab-size: 2; }
   .action-presentation.json { white-space: normal; overflow-wrap: anywhere; }
 
+  /* ── Vista de lista analizada ── */
+  .ds-note {
+    margin: 0 0 9px; padding: 6px 9px; border-radius: 5px;
+    border: 1px solid rgba(255,180,96,.28); background: rgba(255,180,96,.07);
+    color: #ffc98a; font: 9.5px var(--mono); letter-spacing: .05em; line-height: 1.5;
+  }
+  .ds-filter {
+    width: 100%; margin: 0 0 9px; padding: 6px 9px; border-radius: 5px;
+    border: 1px solid var(--hairline); background: rgba(2,8,15,.7);
+    color: var(--core-bright); font: 10.5px var(--mono); letter-spacing: .04em;
+  }
+  .ds-filter::placeholder { color: var(--muted); }
+  .ds-filter:focus { outline: none; border-color: var(--core); background: rgba(53,230,255,.06); }
+  .ds-summary { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 11px; }
+  .ds-chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
+    border: 1px solid var(--hairline-2); border-radius: 20px;
+    background: rgba(10,26,40,.7); font: 9px var(--mono); letter-spacing: .07em;
+  }
+  .ds-chip b { color: var(--muted); font-weight: 500; text-transform: uppercase; }
+  .ds-chip i { color: var(--core); font-style: normal; font-weight: bold; }
+  .ds-chip.total { border-color: rgba(53,230,255,.4); background: rgba(53,230,255,.1); }
+  .ds-chip.total b { color: var(--core-bright); }
+  .ds-group { margin: 0 0 15px; }
+  .ds-group-head {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 5px;
+    font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--core); border-bottom: 1px solid rgba(53,230,255,.18); padding-bottom: 4px;
+  }
+  .ds-group-head em { font-style: normal; color: var(--muted); letter-spacing: .06em; }
+  .ds-table { width: 100%; border-collapse: collapse; font: 10.5px var(--mono); }
+  .ds-table th {
+    text-align: left; padding: 4px 8px; color: var(--muted); white-space: nowrap;
+    font-weight: 500; letter-spacing: .1em; text-transform: uppercase; font-size: 8.5px;
+  }
+  .ds-table td {
+    padding: 5px 8px; border-top: 1px solid rgba(53,230,255,.08);
+    color: #d8f8ff; vertical-align: top; overflow-wrap: break-word;
+  }
+  .ds-table tbody tr:hover td { background: rgba(53,230,255,.05); }
+  .ds-table td.ds-state { color: var(--muted); }
+  .ds-table td.ds-state.on { color: #60eca8; }
+  .ds-empty { padding: 14px 4px; color: var(--muted); font: 10px var(--mono); letter-spacing: .08em; }
+  .action-presentation.json .ds-table,
+  .action-presentation.json .ds-summary { white-space: normal; }
+
   /* ── Explorador de JSON Holográfico ── */
   .json-toolbar {
     display: flex; align-items: center; justify-content: space-between;
@@ -1720,6 +1766,252 @@
     return wrapper;
   }
 
+  // ── Vista de conjunto de datos ──
+  //
+  // Un inventario de 148 entidades de Home Assistant *es una lista*, y como tal
+  // hay que enseñarla. El árbol JSON deja ver la estructura, pero para responder
+  // «qué dispositivos tengo en casa» obliga a desplegar nodo por nodo, y si el
+  // JSON venía cortado ni eso: caía a texto plano y pintaba una pared de llaves.
+  //
+  // Esto reconoce cuándo unos datos son en realidad una tabla y los pinta
+  // agrupados, contados y filtrables. La forma la deciden los propios datos: qué
+  // columnas mostrar y por qué campo agrupar sale de las claves que traen los
+  // registros, así que sirve igual para entidades de Home Assistant, tareas,
+  // canciones o VMs de Proxmox sin saber nada de ninguna de ellas.
+  const DATASET_PREFERRED_COLUMNS = ["name", "title", "label", "friendly_name",
+    "entity_id", "id", "domain", "type", "category", "status", "state", "value",
+    "unit", "device_class", "artist", "album"];
+  const DATASET_PREFERRED_GROUPS = ["domain", "type", "category", "kind", "group",
+    "status", "state", "artist"];
+  const DATASET_MAX_COLUMNS = 6;
+  const DATASET_MIN_RECORDS = 2;
+
+  function isRecordArray(value) {
+    return Array.isArray(value) && value.length >= DATASET_MIN_RECORDS &&
+      value.every(item => item && typeof item === "object" && !Array.isArray(item));
+  }
+
+  function analyzeDataset(data) {
+    // La lista puede venir suelta o envuelta: {"total":148,"entities":[…]} es lo
+    // que devuelve Home Assistant, pero nadie garantiza el nombre del campo, así
+    // que se coge el array de registros más largo en vez de buscar claves fijas.
+    let records = null;
+    let source = "";
+    if (isRecordArray(data)) records = data;
+    else if (data && typeof data === "object" && !Array.isArray(data)) {
+      for (const key of Object.keys(data)) {
+        if (!isRecordArray(data[key])) continue;
+        if (!records || data[key].length > records.length) {
+          records = data[key];
+          source = key;
+        }
+      }
+    }
+    if (!records) return null;
+
+    const freq = new Map();
+    for (const record of records) {
+      for (const [key, value] of Object.entries(record)) {
+        if (value !== null && typeof value === "object") continue;
+        freq.set(key, (freq.get(key) || 0) + 1);
+      }
+    }
+    if (!freq.size) return null;
+
+    const rank = (key) => {
+      const index = DATASET_PREFERRED_COLUMNS.indexOf(key);
+      return index === -1 ? DATASET_PREFERRED_COLUMNS.length : index;
+    };
+    const columns = [...freq.keys()]
+      .sort((a, b) => rank(a) - rank(b) || freq.get(b) - freq.get(a) || a.localeCompare(b))
+      .slice(0, DATASET_MAX_COLUMNS);
+
+    // Agrupar solo aporta si el campo parte la lista en unos pocos montones. Uno
+    // con un valor distinto por fila (un id) da 148 grupos de uno: peor que nada.
+    let groupBy = "";
+    let bestScore = Infinity;
+    for (const column of columns) {
+      const values = new Set();
+      let present = 0;
+      for (const record of records) {
+        const value = record[column];
+        if (value === undefined || value === null || value === "") continue;
+        present += 1;
+        values.add(String(value));
+      }
+      if (present < records.length * 0.8) continue;
+      if (values.size < 2 || values.size > 12 || values.size === records.length) continue;
+      const preference = DATASET_PREFERRED_GROUPS.indexOf(column);
+      const score = preference === -1 ? DATASET_PREFERRED_GROUPS.length : preference;
+      if (score < bestScore) { bestScore = score; groupBy = column; }
+    }
+
+    return { records, columns, groupBy, total: records.length, source };
+  }
+
+  function datasetCell(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    if (typeof value === "boolean") return value ? "sí" : "no";
+    return String(value);
+  }
+
+  const DATASET_ON_STATES = new Set(["on", "home", "playing", "open", "online",
+    "active", "running", "unlocked", "true"]);
+
+  function renderDataset(container, analysis, data, clipped) {
+    container.replaceChildren();
+    const { records, columns, groupBy, total, source } = analysis;
+    const declared = data && typeof data === "object" && !Array.isArray(data) &&
+      typeof data.total === "number" ? data.total : total;
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "json-toolbar";
+    const info = document.createElement("span");
+    info.className = "json-meta-info";
+    info.textContent = `${(source || "LISTA").toUpperCase()} · ${total}` +
+      (declared > total ? ` DE ${declared}` : " ELEMENTOS") +
+      (groupBy ? ` · AGRUPADO POR ${groupBy.toUpperCase()}` : "");
+    const toggle = document.createElement("button");
+    toggle.className = "json-toggle-btn";
+    toggle.type = "button";
+    toggle.textContent = "⚙ VISTA JSON";
+    toolbar.append(info, toggle);
+    container.appendChild(toolbar);
+
+    if (clipped && clipped.kind === "json" && clipped.total > clipped.shown) {
+      const note = document.createElement("div");
+      note.className = "ds-note";
+      note.textContent = `Se muestran ${clipped.shown} de ${clipped.total} registros. ` +
+        `Pídele a JARVIS que filtre (por dominio, por nombre…) para ver el resto.`;
+      container.appendChild(note);
+    }
+
+    const filter = document.createElement("input");
+    filter.className = "ds-filter";
+    filter.type = "search";
+    filter.placeholder = `Filtrar ${total} elementos…`;
+    filter.setAttribute("aria-label", "Filtrar la lista");
+    const summary = document.createElement("div");
+    summary.className = "ds-summary";
+    const body = document.createElement("div");
+    body.className = "ds-body";
+    const jsonView = document.createElement("div");
+    jsonView.className = "ds-json";
+    jsonView.hidden = true;
+    container.append(filter, summary, body, jsonView);
+
+    function paint() {
+      const query = filter.value.trim().toLowerCase();
+      const visible = query
+        ? records.filter(record => columns.some(column =>
+            String(record[column] ?? "").toLowerCase().includes(query)))
+        : records;
+
+      const groups = new Map();
+      for (const record of visible) {
+        const key = groupBy ? datasetCell(record[groupBy]) : "";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(record);
+      }
+      const ordered = [...groups.entries()]
+        .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+
+      summary.replaceChildren();
+      const totalChip = document.createElement("span");
+      totalChip.className = "ds-chip total";
+      const totalName = document.createElement("b");
+      totalName.textContent = query ? "COINCIDEN" : "TOTAL";
+      const totalCount = document.createElement("i");
+      totalCount.textContent = String(visible.length);
+      totalChip.append(totalName, totalCount);
+      summary.appendChild(totalChip);
+      if (groupBy) {
+        for (const [key, rows] of ordered) {
+          const chip = document.createElement("span");
+          chip.className = "ds-chip";
+          const name = document.createElement("b");
+          name.textContent = key;
+          const count = document.createElement("i");
+          count.textContent = String(rows.length);
+          chip.append(name, count);
+          summary.appendChild(chip);
+        }
+      }
+
+      body.replaceChildren();
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "ds-empty";
+        empty.textContent = "Ningún elemento coincide con el filtro.";
+        body.appendChild(empty);
+        return;
+      }
+
+      // Dentro de un grupo, repetir su columna en cada fila es ruido.
+      const candidates = columns.filter(column => column !== groupBy);
+      for (const [key, rows] of ordered) {
+        // Y una columna vacía para todas las filas del grupo, también: `unit` y
+        // `device_class` solo aplican a los sensores, no a los interruptores.
+        const shown = candidates.filter(column =>
+          rows.some(record => datasetCell(record[column]) !== "—"));
+        if (!shown.length) shown.push(candidates[0]);
+        const section = document.createElement("section");
+        section.className = "ds-group";
+        if (groupBy) {
+          const head = document.createElement("h4");
+          head.className = "ds-group-head";
+          const name = document.createElement("span");
+          name.textContent = key;
+          const count = document.createElement("em");
+          count.textContent = `${rows.length}`;
+          head.append(name, count);
+          section.appendChild(head);
+        }
+        const table = document.createElement("table");
+        table.className = "ds-table";
+        const thead = document.createElement("thead");
+        const headRow = document.createElement("tr");
+        for (const column of shown) {
+          const th = document.createElement("th");
+          th.textContent = column.replace(/_/g, " ");
+          headRow.appendChild(th);
+        }
+        thead.appendChild(headRow);
+        const tbody = document.createElement("tbody");
+        for (const record of rows) {
+          const tr = document.createElement("tr");
+          for (const column of shown) {
+            const td = document.createElement("td");
+            const value = datasetCell(record[column]);
+            td.textContent = value;
+            if (column === "state" || column === "status") {
+              td.className = DATASET_ON_STATES.has(value.toLowerCase())
+                ? "ds-state on" : "ds-state";
+            }
+            tr.appendChild(td);
+          }
+          tbody.appendChild(tr);
+        }
+        table.append(thead, tbody);
+        section.appendChild(table);
+        body.appendChild(section);
+      }
+    }
+
+    let showingJson = false;
+    toggle.onclick = () => {
+      showingJson = !showingJson;
+      toggle.textContent = showingJson ? "▤ VISTA LISTA" : "⚙ VISTA JSON";
+      filter.hidden = showingJson;
+      summary.hidden = showingJson;
+      body.hidden = showingJson;
+      jsonView.hidden = !showingJson;
+      if (showingJson && !jsonView.childElementCount) renderJsonExplorer(jsonView, data);
+    };
+    filter.addEventListener("input", paint);
+    paint();
+  }
+
   function renderJsonExplorer(container, data) {
     container.replaceChildren();
 
@@ -1765,7 +2057,27 @@
     };
   }
 
-  function showOnBoard({ title = "RESULTADO", content = "", format = "text", language = "", keepOpen = true } = {}) {
+  // Un único sitio donde se decide cómo se pinta el pizarrón, para que la vista
+  // no dependa de si el contenido llegó de golpe o en streaming.
+  function paintBoard(contentEl, format, content, clipped) {
+    contentEl.replaceChildren();
+    if (["markdown", "table"].includes(format)) {
+      renderStructuredText(contentEl, content);
+      return;
+    }
+    if (format === "json") {
+      let parsed;
+      try { parsed = JSON.parse(content); }
+      catch { contentEl.textContent = content; return; }
+      const dataset = analyzeDataset(parsed);
+      if (dataset) renderDataset(contentEl, dataset, parsed, clipped);
+      else renderJsonExplorer(contentEl, parsed);
+      return;
+    }
+    contentEl.textContent = content;
+  }
+
+  function showOnBoard({ title = "RESULTADO", content = "", format = "text", language = "", keepOpen = true, clipped = null } = {}) {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     boardContent = String(content || "");
     const resolvedFormat = presentationFormat(boardContent, format);
@@ -1780,11 +2092,7 @@
     actionList.replaceChildren();
     const card = document.createElement("article"); card.className = "action-card completed";
     const contentEl = document.createElement("div"); contentEl.className = `action-presentation ${resolvedFormat}`;
-    if (["markdown", "table"].includes(resolvedFormat)) renderStructuredText(contentEl, boardContent);
-    else if (resolvedFormat === "json") {
-      try { renderJsonExplorer(contentEl, JSON.parse(boardContent)); }
-      catch { contentEl.textContent = boardContent; }
-    } else contentEl.textContent = boardContent;
+    paintBoard(contentEl, resolvedFormat, boardContent, clipped);
     card.appendChild(contentEl); actionList.appendChild(card);
     currentToolCard = card; currentToolKey = `board:${title}`;
     requestAnimationFrame(() => contentEl.scrollTo({ top: 0, behavior: "auto" }));
@@ -1795,11 +2103,7 @@
     const contentEl = actionList.querySelector(".action-presentation");
     if (!contentEl) return;
     const format = [...contentEl.classList].find(value => ["text", "code", "json", "table", "markdown"].includes(value)) || "text";
-    if (["markdown", "table"].includes(format)) renderStructuredText(contentEl, boardContent);
-    else if (format === "json") {
-      try { renderJsonExplorer(contentEl, JSON.parse(boardContent)); }
-      catch { contentEl.textContent = boardContent; }
-    } else contentEl.textContent = boardContent;
+    paintBoard(contentEl, format, boardContent, null);
     if (follow) requestAnimationFrame(() => contentEl.scrollTo({ top: contentEl.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" }));
   }
   function showToolEvent(event) {
@@ -1835,6 +2139,7 @@
         content: event.output,
         format: presentationFormat(event.output),
         keepOpen: true,
+        clipped: event.output_clipped || null,
       });
       if (event.goal) showGoalProgress(event.goal);
       return;
