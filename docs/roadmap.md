@@ -22,20 +22,23 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Prompt de personalidad configurable (nombre, tono, idioma, "reglas de la casa").
 - [ ] Caché de prompt para bajar coste/latencia.
 - [ ] Proveedor `OllamaProvider` para modelos locales (offline/privacidad).
-- [ ] Suite de tests del bucle de agente y del registro de herramientas.
+- [x] Suite de tests del bucle de agente y del registro de herramientas.
 
 ## Fase 2 — Voz
 - [x] Integrar STT (Whisper) y TTS (Kokoro con `em_alex`) locales.
 - [x] Pipeline web de voz extremo a extremo: audio → texto → agente → texto → audio.
-- [ ] Detección de palabra de activación ("Jarvis").
+- [x] Detección de palabra de activación ("Hey JARVIS") 100% local con openWakeWord.
 
 ## Fase 3 — Capacidades (herramientas)
 - [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.
 - [x] Instalación limitada de paquetes con aprobación humana interactiva.
-- [ ] Domótica: Home Assistant (encender luces, leer sensores).
+- [x] Domótica: Home Assistant (entidades, estado y servicios) como módulo de
+      conector, con matriz táctil en el HUD.
 - [x] Búsqueda web y lectura HTTPS pública con protección SSRF y fuentes visibles.
+- [x] Correo saliente por SMTP (`send_email`), con aprobación humana.
 - [ ] Calendario y recordatorios.
-- [ ] Control del propio servidor Proxmox (estado de VMs/LXC, arrancar/parar).
+- [x] Lectura del estado del servidor Proxmox (CPU/RAM/disco de los nodos).
+- [ ] Control del propio servidor Proxmox (arrancar/parar VMs y LXC).
 - [ ] Multiagente: subagentes "casa", "investigación", "código".
 - [x] Motor de objetivos persistentes con planes, verificación y progreso en el HUD.
 
@@ -46,7 +49,8 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Aprovisionamiento sencillo de dispositivos nuevos (ID + credenciales).
 
 ## Fase 5 — Autonomía
-- [ ] Tareas programadas / proactivas ("avísame si…", "cada mañana…").
+- [x] Tareas programadas / proactivas ("avísame si…", "cada mañana…"), con aviso
+      por correo desde `send_email`.
 - [ ] Memoria semántica con embeddings (búsqueda por significado).
 - [ ] Aprendizaje de preferencias del usuario a lo largo del tiempo.
 - [ ] Panel web de administración.

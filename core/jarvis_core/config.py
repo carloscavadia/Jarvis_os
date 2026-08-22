@@ -125,8 +125,6 @@ class Settings:
     timezone: str = ""
     tasks_db_path: str = "data/jarvis_tasks.db"
     goals_db_path: str = "data/jarvis_goals.db"
-    mcp_db_path: str = "data/jarvis_mcp.db"
-    skills_db_path: str = "data/jarvis_skills.db"
     scheduler_enabled: bool = True
     scheduler_poll_seconds: float = 5.0
 

@@ -40,6 +40,7 @@ from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
+from jarvis_core.tools.builtin.web_tools import WebClient, validate_public_https_url
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
@@ -98,6 +99,11 @@ def _approval_summary(name: str, arguments: dict[str, object]) -> str:
         return f"Ejecutar la acción externa {arguments.get('action')} mediante n8n."
     if name == "run_connector_module_action":
         return f"Ejecutar {arguments.get('action')} mediante el módulo {arguments.get('connector')}."
+    if name == "send_email":
+        return (
+            f"Enviar un correo a {arguments.get('to') or 'el destinatario por defecto'} "
+            f"con el asunto «{arguments.get('subject')}»."
+        )
     return f"Ejecutar la herramienta sensible {name}."
 
 
@@ -124,6 +130,8 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
         "emotion",
         "action",
         "connector",
+        "to",
+        "subject",
     }
     public = {key: value for key, value in arguments.items() if key in visible_keys}
     if isinstance(public.get("url"), str):
@@ -134,6 +142,8 @@ def _public_approval_arguments(arguments: dict[str, object]) -> dict[str, object
     if "content" in arguments:
         content = str(arguments["content"])
         public["content_bytes"] = len(content.encode("utf-8"))
+    if "body" in arguments:
+        public["body_bytes"] = len(str(arguments["body"]).encode("utf-8"))
     if "payload" in arguments:
         try:
             payload = json.dumps(arguments["payload"], ensure_ascii=False)
@@ -532,6 +542,15 @@ def _require_connector_store():
     return sessions.connector_store
 
 
+def _connector_runtime() -> ConnectorRuntime:
+    return ConnectorRuntime(
+        _require_connector_store(),
+        timeout=settings.connector_timeout_seconds,
+        max_payload_bytes=settings.connector_max_payload_bytes,
+        max_response_bytes=settings.connector_max_response_bytes,
+    )
+
+
 @app.get("/connector-modules", dependencies=[Depends(require_api_key)])
 async def list_connector_modules() -> list[dict[str, object]]:
     return _require_connector_store().list_public()
@@ -581,14 +600,7 @@ async def register_connector_module(
 
 @app.post("/connector-modules/test", dependencies=[Depends(require_api_key)])
 async def test_connector_module(req: ConnectorModuleTestRequest) -> dict[str, object]:
-    store = _require_connector_store()
-    runtime = ConnectorRuntime(
-        store,
-        timeout=settings.connector_timeout_seconds,
-        max_payload_bytes=settings.connector_max_payload_bytes,
-        max_response_bytes=settings.connector_max_response_bytes,
-    )
-    result = await runtime.test(req.name)
+    result = await _connector_runtime().test(req.name)
     if result.is_error:
         raise HTTPException(status_code=502, detail=result.content)
     return {"name": req.name, "ok": True, "message": result.content[:1000]}
@@ -1013,45 +1025,46 @@ async def synthesize_voice(req: SpeechRequest) -> Response:
     )
 
 
+def _home_assistant_module() -> str:
+    """Nombre del módulo de Home Assistant registrado, o 404 si no hay ninguno."""
+    for module in _require_connector_store().list_public():
+        if module["type"] == "home_assistant" and module["enabled"]:
+            return str(module["name"])
+    raise HTTPException(
+        status_code=404,
+        detail="No hay ningún módulo de Home Assistant activo. Regístralo desde ⚡ CONECTORES.",
+    )
+
+
 @app.get("/homeassistant/entities", dependencies=[Depends(require_api_key)])
-async def ha_entities():
-    db_path = getattr(settings, "connector_db", "data/jarvis_connectors.db")
+async def ha_entities() -> dict[str, object]:
+    """Inventario de entidades para la matriz domótica del HUD.
+
+    Pasa por `ConnectorRuntime`, el mismo camino que usan las herramientas del
+    agente. Antes tenía su propia implementación que importaba
+    `jarvis_core.connectors.storage` —un módulo que no existe— y leía
+    `settings.connector_db`, campo que tampoco existe (es `connector_db_path`).
+    Las dos excepciones caían en un `except Exception` mudo, así que el panel
+    salía vacío pasara lo que pasara y sin decir por qué.
+    """
+    result = await _connector_runtime().invoke(
+        _home_assistant_module(), "homeassistant.entities", {"limit": 500}, write=False
+    )
+    if result.is_error:
+        raise HTTPException(status_code=502, detail=result.content)
     try:
-        from jarvis_core.connectors.storage import ConnectorStorage
-        storage = ConnectorStorage(db_path)
-        modules = storage.list_modules()
-        ha_module = next((m for m in modules if m.connector_type == "home_assistant"), None)
-        if ha_module:
-            url = ha_module.config.get("url", "").rstrip("/")
-            token = ha_module.config.get("api_key", "") or ha_module.config.get("token", "")
-            if url and token:
-                req = urllib.request.Request(
-                    f"{url}/api/states",
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-                )
-                def fetch_ha():
-                    ctx = ssl.create_default_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
-                    with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
-                        return json.loads(resp.read().decode())
-                data = await asyncio.to_thread(fetch_ha)
-                filtered = []
-                for item in data:
-                    entity_id = item.get("entity_id", "")
-                    domain = entity_id.split(".")[0]
-                    if domain in ("light", "switch", "climate", "media_player", "sensor", "fan"):
-                        filtered.append({
-                            "entity_id": entity_id,
-                            "name": item.get("attributes", {}).get("friendly_name") or entity_id,
-                            "domain": domain,
-                            "state": item.get("state"),
-                            "unit": item.get("attributes", {}).get("unit_of_measurement", "")
-                        })
-                return {"success": True, "entities": filtered}
-    except Exception as exc:
-        logger.warning("Error consultando Home Assistant: %s", exc)
-    return {"success": False, "entities": [], "message": "No hay conector de Home Assistant activo."}
+        payload = json.loads(result.content)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502, detail="Home Assistant devolvió una respuesta ilegible."
+        ) from exc
+    entities = [
+        entity
+        for entity in payload.get("entities", [])
+        if entity.get("domain")
+        in {"light", "switch", "climate", "media_player", "sensor", "fan"}
+    ]
+    return {"success": True, "entities": entities, "total": len(entities)}
 
 
 class HAToggleRequest(BaseModel):
@@ -1059,39 +1072,23 @@ class HAToggleRequest(BaseModel):
 
 
 @app.post("/homeassistant/toggle", dependencies=[Depends(require_api_key)])
-async def ha_toggle(req: HAToggleRequest):
-    db_path = getattr(settings, "connector_db", "data/jarvis_connectors.db")
-    try:
-        from jarvis_core.connectors.storage import ConnectorStorage
-        storage = ConnectorStorage(db_path)
-        modules = storage.list_modules()
-        ha_module = next((m for m in modules if m.connector_type == "home_assistant"), None)
-        if ha_module:
-            url = ha_module.config.get("url", "").rstrip("/")
-            token = ha_module.config.get("api_key", "") or ha_module.config.get("token", "")
-            if url and token:
-                domain = req.entity_id.split(".")[0]
-                service = "toggle"
-                service_url = f"{url}/api/services/{domain}/{service}"
-                body_bytes = json.dumps({"entity_id": req.entity_id}).encode("utf-8")
-                request = urllib.request.Request(
-                    service_url,
-                    data=body_bytes,
-                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                    method="POST"
-                )
-                def exec_ha():
-                    ctx = ssl.create_default_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
-                    with urllib.request.urlopen(request, timeout=10, context=ctx) as resp:
-                        return json.loads(resp.read().decode())
-                res = await asyncio.to_thread(exec_ha)
-                return {"success": True, "result": res}
-    except Exception as exc:
-        logger.warning("Error ejecutando toggle en HA: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    raise HTTPException(status_code=404, detail="Home Assistant no disponible.")
+async def ha_toggle(req: HAToggleRequest) -> dict[str, object]:
+    """Conmuta una entidad. Es escritura, así que exige `homeassistant.service`
+    declarada en las acciones de escritura del módulo: el HUD no puede accionar
+    nada que no se haya autorizado antes al registrar el conector."""
+    entity_id = req.entity_id.strip()
+    domain = entity_id.partition(".")[0]
+    if not domain or not domain.replace("_", "").isalnum():
+        raise HTTPException(status_code=422, detail="entity_id inválido.")
+    result = await _connector_runtime().invoke(
+        _home_assistant_module(),
+        "homeassistant.service",
+        {"domain": domain, "service": "toggle", "entity_id": entity_id},
+        write=True,
+    )
+    if result.is_error:
+        raise HTTPException(status_code=502, detail=result.content)
+    return {"success": True, "entity_id": entity_id, "result": result.content[:1000]}
 
 
 # ── Endpoint de Red Neuronal de Memoria ──
@@ -1137,32 +1134,47 @@ class WebNavigateRequest(BaseModel):
 
 @app.post("/web/navigate", dependencies=[Depends(require_api_key)])
 async def web_navigate(req: WebNavigateRequest):
-    target_url = req.url.strip()
-    if not target_url.startswith(("http://", "https://")):
-        target_url = f"https://{target_url}"
+    """Vista previa de una página pública.
+
+    Se apoya en el mismo `WebClient` que la herramienta `fetch_web_page` en vez
+    de abrir su propia conexión. Antes no lo hacía, y esa copia a mano se saltaba
+    las dos protecciones que el cliente compartido sí trae. No validaba el
+    destino, así que una URL del modelo podía alcanzar `192.168.x.x` o
+    `169.254.169.254` desde dentro de la red, y desactivaba la verificación
+    del certificado con `CERT_NONE`. Reutilizarlo también hereda el rechazo de
+    redirecciones a destinos privados, el tope de descarga y la lista de tipos
+    de contenido permitidos.
+    """
+    raw_url = req.url.strip()
+    if not raw_url.startswith(("http://", "https://")):
+        raw_url = f"https://{raw_url}"
     try:
-        def fetch_page():
-            req_obj = urllib.request.Request(
-                target_url,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
-            )
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            with urllib.request.urlopen(req_obj, timeout=12, context=ctx) as resp:
-                html = resp.read().decode("utf-8", errors="ignore")
-                title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE)
-                title = title_match.group(1).strip() if title_match else target_url
-                clean_text = re.sub(r"<script.*?>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
-                clean_text = re.sub(r"<style.*?>.*?</style>", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
-                clean_text = re.sub(r"<.*?>", " ", clean_text)
-                clean_text = " ".join(clean_text.split())[:1200]
-                return {"title": title, "url": target_url, "preview_text": clean_text}
-        data = await asyncio.to_thread(fetch_page)
-        return {"success": True, "data": data}
+        target_url = validate_public_https_url(raw_url)
+    except ValueError as exc:
+        logger.warning("Destino rechazado en AI Web Operator (%s): %s", raw_url, exc)
+        return {"success": False, "error": str(exc), "url": raw_url}
+
+    client = WebClient(
+        timeout=settings.web_request_timeout_seconds,
+        max_bytes=settings.web_max_download_bytes,
+    )
+    try:
+        final_url, _content_type, body = await asyncio.to_thread(client.get, target_url)
     except Exception as exc:
         logger.warning("Error en AI Web Operator al navegar a %s: %s", target_url, exc)
         return {"success": False, "error": str(exc), "url": target_url}
+
+    html = body.decode("utf-8", errors="ignore")
+    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    title = title_match.group(1).strip() if title_match else final_url
+    clean_text = re.sub(r"<script.*?>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"<style.*?>.*?</style>", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
+    clean_text = re.sub(r"<.*?>", " ", clean_text)
+    clean_text = " ".join(clean_text.split())[:1200]
+    return {
+        "success": True,
+        "data": {"title": title, "url": final_url, "preview_text": clean_text},
+    }
 
 
 # ── Self-Healing Server & Log Monitor Endpoints ──
@@ -1226,90 +1238,115 @@ async def server_heal():
 
 @app.get("/proxmox/status", dependencies=[Depends(require_api_key)])
 async def proxmox_status():
-    """Retorna la telemetría en tiempo real del servidor Proxmox VE."""
+    """Telemetría del servidor Proxmox VE, o el motivo de que no haya.
+
+    Todo el trabajo de red va en un hilo: `urlopen` y `create_connection` son
+    bloqueantes, y hacerlos en la corrutina congelaba el bucle de eventos del
+    gateway —y con él las voces y los WebSockets— hasta 5,5 s cada vez que el
+    HUD refrescaba el panel.
+    """
     url = (settings.proxmox_url or "https://192.168.68.201:8006").rstrip("/")
     token_id = settings.proxmox_token_id
     token_secret = settings.proxmox_token_secret
-
-    ctx = ssl.create_default_context()
-    if not settings.proxmox_verify_ssl:
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
+    authenticated = bool(token_id and token_secret)
 
     headers = {}
-    if token_id and token_secret:
+    if authenticated:
         headers["Authorization"] = f"PVEAPIToken={token_id}={token_secret}"
 
-    try:
+    def query_api() -> dict[str, object] | None:
+        ctx = ssl.create_default_context()
+        if not settings.proxmox_verify_ssl:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
         req = urllib.request.Request(f"{url}/api2/json/nodes", headers=headers)
         with urllib.request.urlopen(req, timeout=3.5, context=ctx) as response:
-            if response.status == 200:
-                data = json.loads(response.read().decode("utf-8"))
-                nodes = data.get("data", [])
+            if response.status != 200:
+                return None
+            return json.loads(response.read().decode("utf-8"))
 
-                total_cpu = 0.0
-                total_mem_used = 0
-                total_mem_max = 0
-                total_disk_used = 0
-                total_disk_max = 0
-                online_nodes = 0
+    def host_reachable() -> bool:
+        parsed = urllib.parse.urlparse(url)
+        host = parsed.hostname or "192.168.68.201"
+        port = parsed.port or 8006
+        try:
+            socket.create_connection((host, port), timeout=2.0).close()
+            return True
+        except OSError:
+            return False
 
-                for n in nodes:
-                    if n.get("status") == "online":
-                        online_nodes += 1
-                        total_cpu += float(n.get("cpu", 0.0))
-                        total_mem_used += int(n.get("mem", 0))
-                        total_mem_max += int(n.get("maxmem", 0))
-                        total_disk_used += int(n.get("disk", 0))
-                        total_disk_max += int(n.get("maxdisk", 0))
-
-                count = max(1, online_nodes)
-                cpu_pct = round((total_cpu / count) * 100, 1)
-                ram_pct = round((total_mem_used / total_mem_max) * 100, 1) if total_mem_max else 0.0
-                disk_pct = round((total_disk_used / total_disk_max) * 100, 1) if total_disk_max else 0.0
-
-                return {
-                    "online": True,
-                    "url": url,
-                    "nodes_count": len(nodes),
-                    "online_nodes": online_nodes,
-                    "cpu_pct": cpu_pct,
-                    "ram_pct": ram_pct,
-                    "ram_used_bytes": total_mem_used,
-                    "ram_total_bytes": total_mem_max,
-                    "disk_pct": disk_pct,
-                    "disk_used_bytes": total_disk_used,
-                    "disk_total_bytes": total_disk_max,
-                    "authenticated": bool(token_id and token_secret),
-                }
+    try:
+        data = await asyncio.to_thread(query_api)
     except Exception as exc:
         logger.debug("Error consultando Proxmox API: %s", exc)
+        data = None
 
-    # Si la API no respondió o no está autenticada, verificar conectividad TCP al host
-    parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or "192.168.68.201"
-    port = parsed.port or 8006
-    is_reachable = False
-    try:
-        conn = socket.create_connection((host, port), timeout=2.0)
-        conn.close()
-        is_reachable = True
-    except Exception:
-        is_reachable = False
+    if isinstance(data, dict):
+        nodes = data.get("data", [])
+        total_cpu = 0.0
+        total_mem_used = total_mem_max = 0
+        total_disk_used = total_disk_max = 0
+        online_nodes = 0
 
+        for node in nodes:
+            if node.get("status") != "online":
+                continue
+            online_nodes += 1
+            total_cpu += float(node.get("cpu", 0.0))
+            total_mem_used += int(node.get("mem", 0))
+            total_mem_max += int(node.get("maxmem", 0))
+            total_disk_used += int(node.get("disk", 0))
+            total_disk_max += int(node.get("maxdisk", 0))
+
+        count = max(1, online_nodes)
+        return {
+            "online": True,
+            "url": url,
+            "nodes_count": len(nodes),
+            "online_nodes": online_nodes,
+            "cpu_pct": round((total_cpu / count) * 100, 1),
+            "ram_pct": (
+                round((total_mem_used / total_mem_max) * 100, 1) if total_mem_max else 0.0
+            ),
+            "ram_used_bytes": total_mem_used,
+            "ram_total_bytes": total_mem_max,
+            "disk_pct": (
+                round((total_disk_used / total_disk_max) * 100, 1)
+                if total_disk_max
+                else 0.0
+            ),
+            "disk_used_bytes": total_disk_used,
+            "disk_total_bytes": total_disk_max,
+            "authenticated": authenticated,
+            "telemetry": True,
+        }
+
+    # Sin API utilizable sólo se sabe si el puerto contesta. Aquí antes se
+    # devolvían cifras inventadas —12,4 % de CPU, 34,8 % de RAM, 512 GB de
+    # disco— en cuanto el TCP abría: el HUD pintaba una telemetría que nadie
+    # había medido, y un Proxmox mal autenticado parecía perfectamente sano.
+    # Ahora los contadores van a cero y `telemetry: false` dice por qué.
+    reachable = await asyncio.to_thread(host_reachable)
     return {
-        "online": is_reachable,
+        "online": reachable,
         "url": url,
-        "nodes_count": 1 if is_reachable else 0,
-        "online_nodes": 1 if is_reachable else 0,
-        "cpu_pct": 12.4 if is_reachable else 0.0,
-        "ram_pct": 34.8 if is_reachable else 0.0,
-        "ram_used_bytes": 11811160064 if is_reachable else 0,
-        "ram_total_bytes": 34359738368 if is_reachable else 0,
-        "disk_pct": 28.5 if is_reachable else 0.0,
-        "disk_used_bytes": 147639500800 if is_reachable else 0,
-        "disk_total_bytes": 512000000000 if is_reachable else 0,
-        "authenticated": bool(token_id and token_secret),
+        "nodes_count": 0,
+        "online_nodes": 0,
+        "cpu_pct": 0.0,
+        "ram_pct": 0.0,
+        "ram_used_bytes": 0,
+        "ram_total_bytes": 0,
+        "disk_pct": 0.0,
+        "disk_used_bytes": 0,
+        "disk_total_bytes": 0,
+        "authenticated": authenticated,
+        "telemetry": False,
+        "detail": (
+            "El host responde pero la API no devolvió datos: revisa "
+            "JARVIS_PROXMOX_TOKEN_ID y JARVIS_PROXMOX_TOKEN_SECRET."
+            if reachable
+            else "No se pudo contactar con el host de Proxmox."
+        ),
     }
 
 
