@@ -18,6 +18,7 @@ from jarvis_core.goals.store import GoalStore
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.mcp import MCPManager, MCPStore
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.calendar.store import CalendarStore
 from jarvis_core.memory.embeddings import build_embedder
 from jarvis_core.skills import SkillManager, SkillStore
 from jarvis_core.tasks.store import TaskStore
@@ -32,6 +33,7 @@ class SessionManager:
         self._settings = settings
         # Memoria y tareas son compartidas por todas las sesiones (son "de JARVIS").
         self.memory = MemoryStore(settings.memory_db_path, embedder=build_embedder(settings))
+        self.calendar = CalendarStore(settings.calendar_db_path)
         self.tasks = TaskStore(settings.tasks_db_path)
         self.goals = GoalStore(settings.goals_db_path)
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
@@ -73,6 +75,7 @@ class SessionManager:
                     goals=self.goals,
                     mcp_manager=self.mcp_manager,
                     skill_manager=self.skill_manager,
+                    calendar=self.calendar,
                 )
                 orch = Orchestrator(
                     llm, registry, self._settings, emotion=emotion, memory=self.memory
@@ -130,6 +133,7 @@ class SessionManager:
             goals=self.goals,
             mcp_manager=self.mcp_manager,
             skill_manager=self.skill_manager,
+            calendar=self.calendar,
         )
 
     def reset(self, session_id: str) -> None:

@@ -20,6 +20,7 @@ from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.calendar.store import CalendarStore
 from jarvis_core.memory.embeddings import build_embedder
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.builtin import build_default_registry
@@ -55,7 +56,8 @@ def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
     memory = MemoryStore(settings.memory_db_path, embedder=build_embedder(settings))
     tasks = TaskStore(settings.tasks_db_path)
     emotion = EmotionState()
-    registry = build_default_registry(settings, memory, tasks, emotion)
+    calendar = CalendarStore(settings.calendar_db_path)
+    registry = build_default_registry(settings, memory, tasks, emotion, calendar=calendar)
     llm = build_llm(settings)
     orchestrator = Orchestrator(
         llm,
@@ -102,7 +104,10 @@ async def _ask(settings: Settings, question: str) -> None:
 def _tools(settings: Settings) -> None:
     memory = MemoryStore(settings.memory_db_path)
     tasks = TaskStore(settings.tasks_db_path)
-    registry = build_default_registry(settings, memory, tasks, EmotionState())
+    registry = build_default_registry(
+        settings, memory, tasks, EmotionState(),
+        calendar=CalendarStore(settings.calendar_db_path),
+    )
     print("Herramientas disponibles:")
     for definition in registry.definitions():
         print(f"  - {definition['name']}: {definition['description']}")

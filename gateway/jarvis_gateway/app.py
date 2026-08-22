@@ -752,6 +752,31 @@ async def delete_skill(name: str) -> dict[str, object]:
     return {"name": name, "deleted": deleted}
 
 
+@app.get("/calendar/events", dependencies=[Depends(require_api_key)])
+async def calendar_events(days: int = 30, limit: int = 200) -> dict[str, object]:
+    """Agenda para el mini calendario del HUD, que hasta ahora solo pintaba fechas."""
+    ventana = max(1, min(int(days), 365))
+    ahora = time.time()
+    eventos = sessions.calendar.range(
+        ahora - 86400, ahora + ventana * 86400, limit=max(1, min(int(limit), 500))
+    )
+    return {
+        "events": [
+            {
+                "id": e.id,
+                "title": e.title,
+                "description": e.description,
+                "location": e.location,
+                "starts_at": e.starts_at,
+                "ends_at": e.ends_at,
+                "all_day": e.all_day,
+            }
+            for e in eventos
+        ],
+        "total": len(eventos),
+    }
+
+
 class PersonaRequest(BaseModel):
     overlay: str = Field(default="", max_length=4000)
 

@@ -143,6 +143,7 @@ class Settings:
     timezone: str = ""
     tasks_db_path: str = "data/jarvis_tasks.db"
     goals_db_path: str = "data/jarvis_goals.db"
+    calendar_db_path: str = "data/jarvis_calendar.db"
     scheduler_enabled: bool = True
     scheduler_poll_seconds: float = 5.0
 
@@ -418,6 +419,9 @@ class Settings:
             ),
             tasks_db_path=os.environ.get("JARVIS_TASKS_DB", "data/jarvis_tasks.db"),
             goals_db_path=os.environ.get("JARVIS_GOALS_DB", "data/jarvis_goals.db"),
+            calendar_db_path=os.environ.get(
+                "JARVIS_CALENDAR_DB", "data/jarvis_calendar.db"
+            ),
             timezone=os.environ.get("JARVIS_TIMEZONE", "").strip(),
             scheduler_enabled=_get_bool("JARVIS_SCHEDULER_ENABLED", True),
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),

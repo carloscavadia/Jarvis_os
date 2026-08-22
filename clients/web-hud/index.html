@@ -861,6 +861,7 @@
   .cal-week-day .wd-dot { width: 3px; height: 3px; border-radius: 50%; background: #60eca8; box-shadow: 0 0 4px #60eca8; }
 
   /* Mes completo — oculto por defecto, expandible */
+  .cal-day.has-event { box-shadow: inset 0 -2px 0 var(--core); }
   .cal-grid {
     display: none; grid-template-columns: repeat(7, 1fr); gap: 2px;
     text-align: center; margin-top: 6px; padding-top: 6px;
@@ -2879,7 +2880,7 @@
     setBusy(false);
     // Refrescar tareas por si JARVIS acaba de crear/modificar alguna
     if (ws && ws.readyState === WebSocket.OPEN) {
-      setTimeout(() => fetchTasks(), 800);
+      setTimeout(() => { fetchTasks(); fetchCalendarEvents(); }, 800);
     }
   }
   addLine("SISTEMA", "HUD iniciado. Modo demo. Prueba los estados y emociones, o conéctate a tu gateway.", "system");
@@ -2982,11 +2983,12 @@
       addLine("SISTEMA", "Conectado a " + target.host, "system");
       // Cargar tareas y telemetría de Proxmox ahora que tenemos conexión
       fetchTasks();
+      fetchCalendarEvents();
       fetchProxmoxStatus();
       // Polling de tareas (20s) y Proxmox (10s)
       if (window._taskPoll) clearInterval(window._taskPoll);
       window._taskPoll = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) fetchTasks();
+        if (ws && ws.readyState === WebSocket.OPEN) { fetchTasks(); fetchCalendarEvents(); }
         else clearInterval(window._taskPoll);
       }, 20000);
       if (window._proxmoxPoll) clearInterval(window._proxmoxPoll);
@@ -4004,6 +4006,9 @@
   const calGrid = document.getElementById("cal-grid");
   const calTodayBadge = document.getElementById("cal-today-badge");
   let currentTasksList = [];
+  //: El mini calendario solo pintaba fechas y las tareas del scheduler. La
+  //: agenda es otra cosa: lo que ocurre, no lo que JARVIS ejecuta.
+  let currentEventsList = [];
 
   function renderMiniCalendar() {
     if (!calGrid) return;
@@ -4033,7 +4038,8 @@
         const dNum = d.getDate(); const dMonth = d.getMonth();
         const dayTimestampStart = d.getTime() / 1000;
         const dayTimestampEnd = dayTimestampStart + 86400;
-        const hasTask = currentTasksList.some(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
+        const agenda = dayAgendaMessage(dayTimestampStart, dayTimestampEnd);
+        const hasTask = agenda.total > 0;
         const isToday = dNum === todayDate && dMonth === month;
 
         const cell = document.createElement("div");
@@ -4046,13 +4052,12 @@
         cell.appendChild(nameEl); cell.appendChild(numEl);
         if (hasTask) { const dot = document.createElement("span"); dot.className = "wd-dot"; cell.appendChild(dot); }
 
-        cell.onclick = (e) => {
-          e.stopPropagation();
-          const matchingTasks = currentTasksList.filter(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
+        cell.onclick = (ev) => {
+          ev.stopPropagation();
           showHudNotification({
-            title: matchingTasks.length ? `TAREAS · ${dNum}/${dMonth+1}` : `AGENDA · ${dNum}/${dMonth+1}`,
-            message: matchingTasks.length ? matchingTasks.map(t => `• ${t.title}`).join("\n") : "Sin tareas este día.",
-            type: matchingTasks.length ? "task" : "system", duration: 3500
+            title: `AGENDA · ${dNum}/${dMonth + 1}`,
+            message: agenda.total ? agenda.lineas.join("\n") : "Nada este día.",
+            type: agenda.total ? "task" : "system", duration: 3500
           });
         };
         weekStrip.appendChild(cell);
@@ -4079,16 +4084,16 @@
       if (day === todayDate) cell.classList.add("today");
       const dayTimestampStart = new Date(year, month, day).getTime() / 1000;
       const dayTimestampEnd = dayTimestampStart + 86400;
-      const hasTask = currentTasksList.some(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
-      if (hasTask) cell.classList.add("has-task");
+      const agenda = dayAgendaMessage(dayTimestampStart, dayTimestampEnd);
+      if (agenda.total) cell.classList.add("has-task");
+      if (agenda.eventos) cell.classList.add("has-event");
       cell.textContent = day;
-      cell.onclick = (e) => {
-        e.stopPropagation();
-        const matchingTasks = currentTasksList.filter(t => t.next_run >= dayTimestampStart && t.next_run < dayTimestampEnd && t.enabled);
+      cell.onclick = (ev) => {
+        ev.stopPropagation();
         showHudNotification({
-          title: matchingTasks.length ? `TAREAS · ${day} ${monthNames[month]}` : `AGENDA · ${day} ${monthNames[month]}`,
-          message: matchingTasks.length ? matchingTasks.map(t => `• ${t.title}`).join("\n") : "Sin tareas programadas.",
-          type: matchingTasks.length ? "task" : "system", duration: 4500
+          title: `AGENDA · ${day} ${monthNames[month]}`,
+          message: agenda.total ? agenda.lineas.join("\n") : "Nada programado.",
+          type: agenda.total ? "task" : "system", duration: 4500
         });
       };
       calGrid.appendChild(cell);
@@ -4099,6 +4104,39 @@
   // ── Tareas & Reminders Manager ──
   const tasksList = document.getElementById("tasks-list");
   const taskAddTrigger = document.getElementById("task-add-trigger");
+
+  async function fetchCalendarEvents() {
+    try {
+      const data = await connectorRequest("/calendar/events", { headers: connectorApiHeaders() });
+      currentEventsList = data.events || [];
+    } catch (error) {
+      currentEventsList = [];
+    }
+    renderMiniCalendar();
+  }
+
+  //: Eventos que se solapan con el día, no solo los que empiezan en él: algo de
+  //: 23:00 a 01:00 pertenece a los dos días.
+  function eventsOnDay(startEpoch, endEpoch) {
+    return currentEventsList.filter(e => e.starts_at < endEpoch && e.ends_at > startEpoch);
+  }
+
+  function dayAgendaMessage(startEpoch, endEpoch) {
+    const tareas = currentTasksList.filter(
+      t => t.next_run >= startEpoch && t.next_run < endEpoch && t.enabled
+    );
+    const eventos = eventsOnDay(startEpoch, endEpoch);
+    const lineas = [
+      ...eventos.map(e => {
+        const hora = e.all_day
+          ? "todo el día"
+          : new Date(e.starts_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        return `• ${hora} · ${e.title}${e.location ? " — " + e.location : ""}`;
+      }),
+      ...tareas.map(t => `▸ ${t.title}`),
+    ];
+    return { lineas, total: eventos.length + tareas.length, eventos: eventos.length };
+  }
 
   async function fetchTasks() {
     if (!tasksList) return;

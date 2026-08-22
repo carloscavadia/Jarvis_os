@@ -41,6 +41,7 @@ services:
       JARVIS_STT_COMPUTE_TYPE: "${JARVIS_STT_COMPUTE_TYPE:-int8}"
       JARVIS_STT_DOWNLOAD_ROOT: /app/data/models
       JARVIS_GOALS_DB: /app/data/jarvis_goals.db
+      JARVIS_CALENDAR_DB: /app/data/jarvis_calendar.db
       JARVIS_OPENAI_USAGE_DB: /app/data/openai_usage.db
       JARVIS_TTS_VOICE: "${JARVIS_TTS_VOICE:-em_alex}"
       JARVIS_TTS_LANG_CODE: "${JARVIS_TTS_LANG_CODE:-e}"

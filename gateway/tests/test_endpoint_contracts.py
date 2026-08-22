@@ -42,6 +42,7 @@ EXPECTED_ROUTES = {
     "/connector-modules", "/connector-modules/test", "/connector-modules/{name}",
     "/connectors/chat", "/connectors/events",
     "/goals/current", "/goals/{goal_id}/control",
+    "/calendar/events",
     "/config.js", "/health", "/hud", "/ready",
     "/homeassistant/entities", "/homeassistant/toggle",
     "/mcp/servers", "/mcp/servers/{name}", "/mcp/servers/{name}/test",

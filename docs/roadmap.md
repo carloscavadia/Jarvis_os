@@ -39,7 +39,8 @@ desde el coche". Cada fase deja algo usable.
       conector, con matriz táctil en el HUD.
 - [x] Búsqueda web y lectura HTTPS pública con protección SSRF y fuentes visibles.
 - [x] Correo saliente por SMTP (`send_email`), con aprobación humana.
-- [ ] Calendario y recordatorios.
+- [x] Calendario: agenda local con eventos, consulta por rango y vista en el
+      mini calendario del HUD. Los recordatorios ya los cubre el motor de tareas.
 - [x] Lectura del estado del servidor Proxmox (CPU/RAM/disco de los nodos).
 - [ ] Control del propio servidor Proxmox (arrancar/parar VMs y LXC).
 - [ ] Multiagente: subagentes "casa", "investigación", "código".

@@ -11,6 +11,7 @@ from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.connectors.store import ConnectorStore
+from jarvis_core.calendar.store import CalendarStore
 from jarvis_core.goals.store import GoalStore
 from jarvis_core.mcp.manager import MCPManager
 from jarvis_core.memory.store import MemoryStore
@@ -75,6 +76,7 @@ def build_default_registry(
     goals: GoalStore | None = None,
     mcp_manager: MCPManager | None = None,
     skill_manager: SkillManager | None = None,
+    calendar: CalendarStore | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -178,5 +180,9 @@ def build_default_registry(
                 email_from=settings.email_from,
             )
         )
+    if calendar is not None:
+        from jarvis_core.tools.builtin.calendar_tools import register_calendar_tools
+
+        register_calendar_tools(registry, calendar, settings.timezone)
     register_music_tools(registry, build_navidrome_client(settings))
     return registry
