@@ -2800,7 +2800,8 @@
       activeReply.text.textContent = "Detalle visible en el pizarrón…";
       return;
     }
-    appendStreamSpeech(delta);
+    try { appendStreamSpeech(delta); }
+    catch (error) { console.error("No pude sintetizar el fragmento:", error); }
     const shouldUseBoard = !currentTurnPresented && (
       activeReplyText.length > 620 || /```|\n\s*\|.+\||\n(?:[-*]|\d+[.)])\s/.test(activeReplyText)
     );
@@ -2863,7 +2864,13 @@
     }
     replyTextComplete = true;
     automaticTurn = false;
-    if (spokenText && !voiceSocket) finishStreamSpeech(spokenText);
+    // Un fallo sintetizando no puede impedir lo que viene después: el
+    // `setBusy(false)` de más abajo es lo único que devuelve el teclado, y una
+    // excepción aquí dejaba el HUD bloqueado con la respuesta ya en pantalla.
+    if (spokenText && !voiceSocket) {
+      try { finishStreamSpeech(spokenText); }
+      catch (error) { console.error("No pude sintetizar la respuesta:", error); }
+    }
     activeReplyText = "";
     streamDirectedToBoard = false;
     if (requestStartedAt) {
@@ -3019,7 +3026,10 @@
     ws.onerror = () => { rLink.textContent = "ERROR DE CONEXIÓN"; setConnStatus("disconnected"); };
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch { return; }
-      handleGatewayMessage(m);
+      // Una excepción aquí abortaba el resto del manejo de ese mensaje y podía
+      // dejar el turno a medio cerrar. Se registra y se sigue viviendo.
+      try { handleGatewayMessage(m); }
+      catch (error) { console.error("Error procesando", m?.type, error); }
     };
   }
 
@@ -4741,6 +4751,40 @@
     if (voiceEnabled) rVoice.textContent = realtimeVoiceAvailable ? "OPENAI RT" : serverVoiceAvailable ? "LOCAL" : "NAVEGADOR";
     setState("idle");
     startConversationFollowUp();
+  }
+
+  //: Entidades HTML que aparecen de verdad en una respuesta del modelo.
+  const SPEECH_ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+
+  // Convierte el Markdown de una respuesta en texto natural para el sintetizador.
+  //
+  // Existía solo en el servidor (`prepare_speech_text`, gateway/voice.py) y aquí
+  // se llamaba sin haberla escrito nunca. Cada respuesta lanzaba un
+  // ReferenceError dentro de `enqueueSpeech`, y como `finishStreamReply` invoca
+  // la voz **antes** de su `setBusy(false)`, el turno moría ahí: sin voz, sin
+  // cerrar la conversación y sin devolver el teclado. `node --check` no lo veía
+  // —es un fallo de ejecución, no de sintaxis— y el test de la cola de voz
+  // tampoco, porque sustituye `enqueueSpeech` entera por un doble.
+  function prepareSpeechText(text) {
+    let spoken = String(text == null ? "" : text)
+      .replace(/&(amp|lt|gt|quot|apos|nbsp);/g, (whole, name) => SPEECH_ENTITIES[name] || whole)
+      .replace(/&#(\d+);/g, (whole, code) => String.fromCodePoint(Number(code)));
+    spoken = spoken
+      .replace(/```[\s\S]*?```/g, " ")          // bloques de código: no se leen
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1") // imágenes: solo el texto alt
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")  // enlaces: solo el texto
+      .replace(/<https?:\/\/[^>]+>/g, " ")
+      .replace(/https?:\/\/\S+/g, " ")          // una URL leída en voz alta es ruido
+      .replace(/`([^`]*)`/g, "$1")
+      .replace(/^[ \t]{0,3}(?:#{1,6}|>|[-+*]|\d+[.)])[ \t]+/gm, "") // viñetas y títulos
+      .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/gm, " ")          // separador de tabla
+      .replace(/\|/g, ". ")                     // celdas: una pausa entre ellas
+      .replace(/[*_~#`]/g, "")
+      .replace(/[{}[\]\\]/g, " ")
+      .replace(/[•▪◦►▶]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\s+([,.;:!?])/g, "$1");
+    return spoken.trim();
   }
 
   function enqueueSpeech(text) {

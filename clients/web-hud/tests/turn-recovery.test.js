@@ -44,11 +44,17 @@ function extractConst(name) {
 }
 
 // Un HUD mínimo: solo lo que estas funciones tocan de verdad.
-function montar() {
+function montar({ vozRota = false } = {}) {
   const H = {};
   const registro = [];
   const stub = (name) => `function ${name}(){}`;
   const cuerpo = [
+    // Temporizadores de mentira: el vigilante arma uno de 45 s por turno, y en
+    // Node eso mantiene vivo el proceso hasta que vence. Aquí el vencimiento se
+    // provoca llamando a `giveUpOnTurn`, así que no hace falta esperarlo.
+    "let idTemporizador = 0;",
+    "function setTimeout(){ return ++idTemporizador; }",
+    "function clearTimeout(){}",
     "let busy=false, pendingApproval=null, pendingProactive=null, activeReply=null;",
     "let activeReplyText='', replyTextComplete=false, streamDirectedToBoard=false;",
     "let currentTurnPresented=false, automaticTurn=false, requestStartedAt=0;",
@@ -65,9 +71,13 @@ function montar() {
       "stopWakeListening", "stopConversationFollowUp", "scheduleWakeListening",
       "showToolEvent", "receiveMusicEvent", "firePulse", "setState", "setEmotion",
       "showGoalProgress", "renderStructuredText", "showOnBoard", "updateBoardContent",
-      "finishStreamSpeech", "beginStreamSpeech", "fetchTasks", "presentationFormat",
-      "cancelSpeechQueue", "appendStreamSpeech", "dropQueuedSpeech",
+      "beginStreamSpeech", "fetchTasks", "presentationFormat",
+      "cancelSpeechQueue", "dropQueuedSpeech",
     ].map(stub).join("\n"),
+    vozRota
+      ? "function finishStreamSpeech(){ throw new ReferenceError('prepareSpeechText is not defined'); }"
+        + "\nfunction appendStreamSpeech(){ throw new ReferenceError('prepareSpeechText is not defined'); }"
+      : "function finishStreamSpeech(){}\nfunction appendStreamSpeech(){}",
     extractConst("BUSY_WATCHDOG_MS"),
     "let busyWatchdog = null;",
     extractFunction("armBusyWatchdog"),
@@ -149,6 +159,26 @@ prueba("el vigilante no se dispara si el turno ya terminó bien", () => {
   const antes = H.registro.length;
   H.rendirse();
   assert.strictEqual(H.registro.length, antes, "avisó de un fallo que no existía");
+});
+
+prueba("un fallo de la voz no impide cerrar el turno", () => {
+  // La regresión exacta: `prepareSpeechText` no existía, y `finishStreamReply`
+  // llama a la voz ANTES de su `setBusy(false)`. La excepción se llevaba por
+  // delante el desbloqueo del teclado, el cierre y el regreso a reposo, con la
+  // respuesta ya escrita en pantalla.
+  const H = montar({ vozRota: true });
+  const errorReal = console.error;
+  console.error = () => {};   // el fallo se registra a propósito; aquí solo estorba
+  H.setBusy(true);
+  H.recibir({ type: "reply_start" });
+  H.recibir({ type: "reply_delta", delta: "He encendido la luz." });
+  H.recibir({ type: "reply", reply: "He encendido la luz del game room." });
+
+  console.error = errorReal;
+
+  const e = H.estado();
+  assert.strictEqual(e.bloqueado, false, "la voz se llevó por delante el desbloqueo");
+  assert.strictEqual(e.replyTextComplete, true, "el turno quedó sin cerrar");
 });
 
 prueba("la cola de voz tiene tope de espera, no gira indefinidamente", () => {

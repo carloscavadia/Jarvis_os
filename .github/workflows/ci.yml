@@ -56,6 +56,9 @@ jobs:
       - name: Test HUD turn recovery
         run: node clients/web-hud/tests/turn-recovery.test.js
 
+      - name: Test HUD speech text
+        run: node clients/web-hud/tests/speech-text.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15
