@@ -1573,6 +1573,14 @@
   let voiceEnergy = 0, voiceActive = false;      // energía medida del audio real
   let voiceAnalyser = null, voiceWaveform = null;
   const pulses = [];                            // flares de ejecución
+  //: Motas del campo de profundidad. Se declaran aquí y no junto a su código
+  //: porque `seedField()` corre al dimensionar el lienzo, que ocurre antes.
+  let fieldMotes = [];
+  let fieldSeeded = false;
+  //: Carga del sistema (0..1). La alimentan la telemetría de Proxmox y el
+  //: trabajo en curso; mueve el ambiente sin tocar el orbe.
+  let systemLoad = 0;
+  let systemLoadTarget = 0;
 
   function setState(next) {
     if (!STATES[next]) return;
@@ -1584,7 +1592,27 @@
     emotionName = next;
     rEmotion.textContent = EMO_LABEL[next];
   }
-  function firePulse() { pulses.push({ r: 0, life: 1 }); }
+  //: Cada cosa que ocurre deja una marca distinta en el aire. Antes todo era el
+  //: mismo anillo, así que ejecutar una herramienta, terminarla o que fuera
+  //: denegada se veían igual: el orbe reaccionaba pero no decía nada.
+  const PULSE_KINDS = {
+    // Se expande despacio: algo está en marcha.
+    running:   { speed: 5,  fade: 0.011, width: 1.6, alpha: 0.34, hue: null,        rings: 1 },
+    // Chasquido breve y brillante: hecho.
+    completed: { speed: 13, fade: 0.030, width: 2.4, alpha: 0.60, hue: null,        rings: 2 },
+    // Rojo y hacia dentro: se ha rechazado o ha fallado.
+    denied:    { speed: -4, fade: 0.022, width: 2.0, alpha: 0.55, hue: "255,96,96", rings: 1 },
+    // Ámbar sostenido: hay algo esperando tu decisión.
+    awaiting:  { speed: 1,  fade: 0.006, width: 1.4, alpha: 0.40, hue: "255,180,96", rings: 1 },
+    generic:   { speed: 8,  fade: 0.020, width: 2.0, alpha: 0.50, hue: null,        rings: 1 },
+  };
+
+  function firePulse(kind = "generic") {
+    const spec = PULSE_KINDS[kind] || PULSE_KINDS.generic;
+    for (let i = 0; i < spec.rings; i++) {
+      pulses.push({ r: i * -14, life: 1, spec });
+    }
+  }
 
   function measuredVoiceEnergy() {
     if (!voiceAnalyser || !voiceWaveform || !voiceActive) return null;
@@ -2110,6 +2138,13 @@
   function showToolEvent(event) {
     clearTimeout(workspaceCloseTimer); workspaceCloseTimer = null;
     actionTrace.classList.add("active");
+    // El orbe cuenta lo que pasa sin que haya que leer el panel.
+    if (event.is_error) firePulse("denied");
+    else if (PULSE_KINDS[event.phase]) firePulse(event.phase);
+    // Mientras haya trabajo, el ambiente se activa; al acabar, se calma.
+    systemLoadTarget = event.phase === "completed" || event.phase === "denied"
+      ? Math.max(0, systemLoadTarget - 0.35)
+      : Math.min(1, systemLoadTarget + 0.4);
     if (event.phase === "running") {
       showHudNotification({
         title: "EJECUTANDO HERRAMIENTA",
@@ -2407,6 +2442,122 @@
   }
 
   // Campo ambiental: luz muy tenue que deriva con el núcleo y reacciona al estado.
+  // ── Campo de profundidad ──
+  //
+  // El espacio alrededor del orbe estaba muerto: un relleno casi negro y tres
+  // gradientes. El orbe se leía como un objeto pegado sobre un fondo, no como
+  // algo que habita un sitio. Tres capas de polvo a distintas profundidades, con
+  // paralaje, dan volumen sin competir con el enjambre —son puntos de un píxel,
+  // apenas visibles de uno en uno—.
+  //
+  // Y no es decoración: la densidad y la deriva responden a la carga del
+  // sistema, así que el ambiente respira con lo que JARVIS está haciendo.
+  //: Densidad por megapíxel, no absoluta: un número fijo se pierde en un
+  //: monitor grande y satura una tablet.
+  const FIELD_LAYERS = [
+    { per_mpx: 150, depth: 0.28, size: 1.6, alpha: 0.42 },
+    { per_mpx: 120, depth: 0.55, size: 1.2, alpha: 0.30 },
+    { per_mpx: 90,  depth: 0.85, size: 0.9, alpha: 0.20 },
+  ];
+
+  function seedField() {
+    fieldMotes = [];
+    if (isLowSpec) return; // en la Raspberry el campo se omite entero
+    const megapixeles = Math.max(0.4, (W * H) / 1_000_000);
+    for (const layer of FIELD_LAYERS) {
+      const cuantas = Math.round(layer.per_mpx * megapixeles);
+      for (let i = 0; i < cuantas; i++) {
+        fieldMotes.push({
+          x: Math.random(), y: Math.random(),
+          depth: layer.depth, size: layer.size, alpha: layer.alpha,
+          drift: 0.2 + Math.random() * 0.8,
+          twinkle: Math.random() * TAU,
+        });
+      }
+    }
+  }
+
+  function drawField(cx, cy, rgbCol) {
+    // Siembra perezosa: el lienzo se dimensiona antes de que exista nada de
+    // esto. Las motas van en coordenadas normalizadas, así que redimensionar
+    // no obliga a resembrarlas.
+    if (!fieldMotes.length && !fieldSeeded) { fieldSeeded = true; seedField(); }
+    if (!fieldMotes.length) return;
+    const motion = reduceMotion ? 0 : 1;
+    // Las capas cercanas se mueven más: eso es lo que se lee como profundidad.
+    const swayX = Math.sin(t * 0.11) * 26 * motion;
+    const swayY = Math.cos(t * 0.08) * 14 * motion;
+    ctx.globalCompositeOperation = "lighter";
+    for (const mote of fieldMotes) {
+      const parallax = 1 - mote.depth;
+      const x = mote.x * W + swayX * parallax * mote.drift;
+      const y = mote.y * H + swayY * parallax * mote.drift;
+      // Un centelleo lento evita que parezca una textura estática pegada.
+      const twinkle = 0.55 + 0.45 * Math.sin(t * (0.5 + mote.drift) + mote.twinkle);
+      const load = 1 + systemLoad * 0.9;
+      ctx.globalAlpha = mote.alpha * twinkle * (0.5 + parallax * 0.5) * load;
+      ctx.fillStyle = `rgb(${rgbCol})`;
+      const s = mote.size * (1 + systemLoad * 0.3);
+      ctx.fillRect(x % W, y % H, s, s);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Espectro de voz ──
+  //
+  // La voz movía el orbe con un solo número: la amplitud. Con eso, decir «sí» y
+  // recitar una lista se ven igual. El analizador ya existía y la música ya lo
+  // usaba; esto le da a la voz el mismo trato, así que el anillo dibuja la forma
+  // real de lo que se está diciendo.
+  let voiceSpectrum = null;
+  const SPECTRUM_BINS = 64;
+  let spectrumSmooth = new Float32Array(SPECTRUM_BINS);
+
+  function readVoiceSpectrum() {
+    if (!voiceAnalyser || !voiceActive) return false;
+    if (!voiceSpectrum || voiceSpectrum.length !== voiceAnalyser.frequencyBinCount) {
+      voiceSpectrum = new Uint8Array(voiceAnalyser.frequencyBinCount);
+    }
+    voiceAnalyser.getByteFrequencyData(voiceSpectrum);
+    const paso = Math.max(1, Math.floor(voiceSpectrum.length / SPECTRUM_BINS));
+    for (let i = 0; i < SPECTRUM_BINS; i++) {
+      let suma = 0;
+      for (let j = 0; j < paso; j++) suma += voiceSpectrum[i * paso + j] || 0;
+      const valor = suma / paso / 255;
+      // Sube rápido y baja despacio: si no, el anillo tirita.
+      spectrumSmooth[i] = valor > spectrumSmooth[i]
+        ? spectrumSmooth[i] + (valor - spectrumSmooth[i]) * 0.6
+        : spectrumSmooth[i] * 0.88;
+    }
+    return true;
+  }
+
+  function drawVoiceSpectrum(cx, cy, baseR, rgbCol) {
+    let energia = 0;
+    for (let i = 0; i < SPECTRUM_BINS; i++) energia += spectrumSmooth[i];
+    if (energia < 0.2) return; // silencio: nada que dibujar
+    ctx.globalCompositeOperation = "lighter";
+    ctx.strokeStyle = `rgb(${rgbCol})`;
+    ctx.lineWidth = 1.6;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    for (let i = 0; i <= SPECTRUM_BINS; i++) {
+      // Espejado: la mitad izquierda refleja a la derecha, como un vúmetro
+      // circular. Un barrido asimétrico se lee como un fallo de dibujo.
+      const idx = i % SPECTRUM_BINS;
+      const reflejo = idx < SPECTRUM_BINS / 2 ? idx : SPECTRUM_BINS - idx - 1;
+      const a = (i / SPECTRUM_BINS) * TAU - Math.PI / 2;
+      const rr = baseR * 1.22 + spectrumSmooth[reflejo] * baseR * 0.30;
+      const x = cx + Math.cos(a) * rr;
+      const y = cy + Math.sin(a) * rr * TILT;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+  }
+
   function drawEnvironment(cx, cy, R, rgbCol, activity, pulse) {
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
@@ -2439,6 +2590,20 @@
     echo.addColorStop(0.58, `rgba(${rgbCol},${glowPower * 0.07})`);
     echo.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = echo; ctx.fillRect(0, 0, W, H);
+
+    // Dos brumas lejanas en esquinas opuestas, con deriva propia. El encuadre
+    // era un rectángulo negro alrededor del orbe; esto le da un «allá al fondo»
+    // sin meter nada que compita con el enjambre.
+    for (const [nx, ny, fase, tinte] of [[0.18, 0.22, 0, 0.9], [0.84, 0.78, 2.1, 0.55]]) {
+      const bx = W * nx + Math.sin(t * 0.06 + fase) * W * 0.04 * motion;
+      const by = H * ny + Math.cos(t * 0.05 + fase) * H * 0.05 * motion;
+      const bruma = ctx.createRadialGradient(bx, by, 0, bx, by, Math.max(W, H) * 0.42);
+      const fuerza = (0.020 + systemLoad * 0.020) * tinte;
+      bruma.addColorStop(0, `rgba(${rgbCol},${fuerza})`);
+      bruma.addColorStop(0.45, `rgba(${rgbCol},${fuerza * 0.32})`);
+      bruma.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = bruma; ctx.fillRect(0, 0, W, H);
+    }
 
     // Sombra periférica suave para que la iluminación central tenga profundidad.
     const vignette = ctx.createRadialGradient(cx, cy, R * 0.82, cx, cy, Math.max(W, H) * 0.72);
@@ -2497,6 +2662,7 @@
       curExpand = Math.max(curExpand, treble * 0.45);
     }
 
+    systemLoad = lerp(systemLoad, systemLoadTarget, 0.02 * speedFactor);
     rot += curSpin * (reduceMotion ? 0.2 : 1) * 0.016 * speedFactor;
 
     const cx = W / 2, cy = H * 0.46;
@@ -2508,8 +2674,12 @@
     const activity = Math.min(1, (curTurb - 0.75) / 1.2);
 
     drawEnvironment(cx, cy, R, rgbCol, activity, pulse);
+    // El campo va detrás de todo: es el sitio donde el orbe está, no un adorno.
+    drawField(cx, cy, rgbCol);
     paintSprite(col.r, col.g, col.b);
     drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
+
+    if (readVoiceSpectrum()) drawVoiceSpectrum(cx, cy, baseR, rgbCol);
 
     // Red Neuronal de Memoria en Canvas
     drawMemoryNeuralGraph(cx, cy, R, rgbCol, t);
@@ -2570,12 +2740,18 @@
     // ── flares de ejecución (elipses inclinadas) ──
     for (let i = pulses.length - 1; i >= 0; i--) {
       const pu = pulses[i];
-      pu.r += 8; pu.life -= 0.02;
+      const spec = pu.spec || PULSE_KINDS.generic;
+      pu.r += spec.speed * speedFactor;
+      pu.life -= spec.fade * speedFactor;
       if (pu.life <= 0) { pulses.splice(i, 1); continue; }
-      ctx.globalAlpha = pu.life * 0.5; ctx.lineWidth = 2;
       const rr = baseR + pu.r;
+      if (rr <= 4) { pulses.splice(i, 1); continue; }  // los que van hacia dentro mueren al llegar
+      ctx.strokeStyle = spec.hue ? `rgb(${spec.hue})` : `rgb(${rgbCol})`;
+      ctx.globalAlpha = pu.life * spec.alpha;
+      ctx.lineWidth = spec.width;
       ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * TILT, 0, 0, TAU); ctx.stroke();
     }
+    ctx.strokeStyle = `rgb(${rgbCol})`;
 
     // ── bloom: copia difusa a baja resolución, sumada encima ──
     if (glow.width !== ((W / 4) | 0) || glow.height !== ((H / 4) | 0)) sizeGlow();
@@ -2865,6 +3041,7 @@
     }
     replyTextComplete = true;
     automaticTurn = false;
+    systemLoadTarget = Math.min(systemLoadTarget, 0.15);
     // Un fallo sintetizando no puede impedir lo que viene después: el
     // `setBusy(false)` de más abajo es lo único que devuelve el teclado, y una
     // excepción aquí dejaba el HUD bloqueado con la respuesta ya en pantalla.
@@ -3045,7 +3222,7 @@
       if (m.type === "state") setState(m.state);
       else if (m.type === "emotion") setEmotion(m.emotion);
       else if (m.type === "event") firePulse();
-      else if (m.type === "tool_event") { showToolEvent(m); receiveMusicEvent(m); firePulse(); }
+      else if (m.type === "tool_event") { showToolEvent(m); receiveMusicEvent(m); }
       else if (m.type === "reply_start") startStreamReply();
       else if (m.type === "reply_delta") appendStreamDelta(m.delta);
       else if (m.type === "reply") { finishStreamReply(m.reply); if (m.tools_used && m.tools_used.length) firePulse(); }
@@ -4284,6 +4461,12 @@
         proxmoxBar.classList.add("online");
         if (cpuFill) { cpuFill.style.width = `${Math.min(100, data.cpu_pct)}%`; cpuFill.classList.toggle("high", data.cpu_pct > 85); }
         if (cpuVal) cpuVal.textContent = `${data.cpu_pct}%`;
+        // La carga real del servidor mueve el ambiente: cuando el nodo suda, el
+        // campo se densifica. Es telemetría que se siente antes de leerse.
+        systemLoadTarget = Math.max(
+          systemLoadTarget * 0.5,
+          Math.min(1, (Number(data.cpu_pct) || 0) / 100 * 0.7 + (Number(data.ram_pct) || 0) / 100 * 0.3)
+        );
         if (ramFill) { ramFill.style.width = `${Math.min(100, data.ram_pct)}%`; ramFill.classList.toggle("high", data.ram_pct > 85); }
         if (ramVal) ramVal.textContent = `${data.ram_pct}%`;
         if (diskFill) { diskFill.style.width = `${Math.min(100, data.disk_pct)}%`; diskFill.classList.toggle("high", data.disk_pct > 90); }

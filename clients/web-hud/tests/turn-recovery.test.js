@@ -59,6 +59,8 @@ function montar({ vozRota = false } = {}) {
     "let activeReplyText='', replyTextComplete=false, streamDirectedToBoard=false;",
     "let currentTurnPresented=false, automaticTurn=false, requestStartedAt=0;",
     "let firstDeltaSeen=false, streamTokenIndex=0;",
+    // El cierre de turno devuelve el ambiente a la calma.
+    "let systemLoadTarget = 0;",
     "const logEl={scrollTop:0,scrollHeight:0};",
     "const document={createElement:()=>({style:{},classList:{add(){},remove(){}},appendChild(){},set textContent(v){},get textContent(){return '';}})};",
     "let voiceSocket=null, currentToolCard=null, ws={readyState:1,send(){}};",
