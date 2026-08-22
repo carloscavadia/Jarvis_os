@@ -17,9 +17,9 @@ class ShowInWorkspaceTool(Tool):
         "usa format='json' con un array de objetos que compartan las mismas claves: el "
         "pizarrón deduce las columnas, agrupa por la categoría natural, cuenta cada grupo y "
         "ofrece un filtro. Un texto ya maquetado a mano pierde todo eso. "
-        "Después responde en el chat con el análisis —cuántos hay, cómo se reparten, qué "
-        "destaca—, nunca duplicando el contenido ni limitándote a decir que está en el "
-        "pizarrón."
+        "El pizarrón y el chat se reparten el trabajo sin solaparse: aquí van los datos, "
+        "y en el chat solo su lectura —cuántos hay, cómo se reparten, qué destaca—. No "
+        "enumeres en el chat lo que ya está aquí, ni te limites a decir que está aquí."
     )
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",

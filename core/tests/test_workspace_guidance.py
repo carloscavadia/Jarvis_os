@@ -24,9 +24,21 @@ def test_sin_el_pizarron_activo_no_se_habla_de_el():
 
 def test_el_analisis_va_en_el_chat_no_solo_el_aviso():
     prompt = _prompt()
-    assert "el análisis va en el chat" in prompt
+    assert "el chat lleva la lectura" in prompt
     # La frase que causaba el problema no debe volver.
     assert "indica que el detalle está visible en el pizarrón" not in prompt
+
+
+def test_chat_y_pizarron_se_reparten_el_trabajo_sin_solaparse():
+    """No son dos copias del mismo contenido: uno lleva los datos, otro su lectura."""
+    prompt = _prompt()
+    assert "complementarios, nunca redundantes" in prompt
+    assert "el pizarrón lleva los datos" in prompt
+    # La regla operativa, no solo el principio.
+    assert "no lo escribas en el chat" in prompt
+    assert "no enumeres allí elementos" in prompt
+    # Y en el sentido contrario.
+    assert "el pizarrón no repite tu conclusión" in prompt
 
 
 def test_se_dice_que_es_lo_que_hay_que_resumir_de_una_lista():
@@ -50,5 +62,6 @@ def test_las_listas_deben_ir_como_json_estructurado():
 def test_la_herramienta_lo_repite_donde_el_modelo_lo_lee_en_cada_llamada():
     definicion = ShowInWorkspaceTool().definition()
     assert "array de objetos" in definicion["description"]
+    assert "se reparten el trabajo sin solaparse" in definicion["description"]
     assert "json" in definicion["input_schema"]["properties"]["format"]["description"]
     assert "nombre legible" in definicion["input_schema"]["properties"]["content"]["description"]

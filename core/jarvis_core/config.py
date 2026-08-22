@@ -626,12 +626,16 @@ class Settings:
                 "objetos con las mismas claves en todos: el pizarrón los agrupa, cuenta y "
                 "filtra solo. Un texto ya formateado a mano le quita esa capacidad. Incluye "
                 "en cada objeto el nombre legible además del identificador técnico.\n\n"
-                "El detalle va al pizarrón, pero **el análisis va en el chat**: no repitas allí "
-                "el contenido, resume lo que significa. Para una lista, eso es cuántos "
-                "elementos hay, cómo se reparten por categoría y qué destaca —lo que está "
-                "encendido, lo que falla, lo que requiere atención—. Responde a lo que el "
-                "usuario preguntaba. Decir solo que dejaste el detalle en el pizarrón no es "
-                "una respuesta: es anunciar que no has respondido."
+                "El chat y el pizarrón son complementarios, nunca redundantes: el pizarrón "
+                "lleva los datos —qué hay, elemento por elemento— y el chat lleva la lectura "
+                "de esos datos —qué significan—. Si algo se puede leer en el pizarrón, no lo "
+                "escribas en el chat: no enumeres allí elementos, ni copies filas, ni "
+                "describas las columnas. Y al revés, el pizarrón no repite tu conclusión.\n\n"
+                "Lo que sí va en el chat es la respuesta a lo que el usuario preguntaba. Para "
+                "una lista, eso es cuántos elementos hay, cómo se reparten por categoría y qué "
+                "destaca: lo que está encendido, lo que falla, lo que pide atención, lo "
+                "inesperado. Decir solo que dejaste el detalle en el pizarrón no es una "
+                "respuesta: es anunciar que no has respondido."
             )
         if self.connectors_enabled:
             base += (
