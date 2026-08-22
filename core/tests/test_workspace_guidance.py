@@ -51,7 +51,25 @@ def test_anunciar_sin_responder_esta_explicitamente_prohibido():
     assert "no es una respuesta" in _prompt()
 
 
-def test_las_listas_deben_ir_como_json_estructurado():
+def test_no_se_copia_al_pizarron_lo_que_ya_muestra_una_herramienta():
+    """Pedirlo costaba miles de tokens de regeneración y colgaba el turno.
+
+    Con 148 entidades de Home Assistant, el modelo tenía que reescribir la lista
+    entera como JSON para pasarla a `show_in_workspace` —hasta 12.000 caracteres
+    por esquema—. El HUD se quedaba minutos en «JARVIS está respondiendo…»
+    generando algo que el pizarrón ya mostraba solo desde el evento de la
+    herramienta.
+    """
+    prompt = _prompt()
+    assert "ya aparece solo en el pizarrón" in prompt
+    assert "No lo copies" in prompt
+    assert "Úsalo únicamente para contenido que compongas tú" in prompt
+    assert "No lo uses para repetir lo que devolvió otra herramienta" in (
+        ShowInWorkspaceTool().definition()["description"]
+    )
+
+
+def test_las_listas_propias_deben_ir_como_json_estructurado():
     prompt = _prompt()
     assert "array de objetos" in prompt
     assert "las mismas claves" in prompt

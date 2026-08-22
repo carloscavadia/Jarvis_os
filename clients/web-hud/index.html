@@ -2727,8 +2727,8 @@
     // Marcarlo completo antes de cerrar: `runSpeechQueue` gira en espera de
     // esta bandera, y sin ella seguiría dando vueltas sin volver a reposo.
     replyTextComplete = true;
-    addLine("SISTEMA", "El servidor no cerró el turno. Puedes volver a escribir; "
-      + "si se repite, revisa: docker compose logs --tail 50 gateway", "system");
+    addLine("SISTEMA", "JARVIS lleva 45 s sin dar señales. Te devuelvo el teclado; "
+      + "si solo estaba tardando, su respuesta aparecerá igualmente.", "system");
     finishStreamReply();
     setBusy(false);
   }

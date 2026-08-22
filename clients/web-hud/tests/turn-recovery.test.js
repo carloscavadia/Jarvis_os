@@ -137,7 +137,7 @@ prueba("un turno sin frame final acaba desbloqueando el compositor", () => {
   // Sin esta bandera la cola de voz gira sin volver nunca a reposo.
   assert.strictEqual(e.replyTextComplete, true, "la cola de voz se quedaría girando");
   assert.ok(
-    H.registro.some(([, texto]) => /no cerró el turno/.test(texto)),
+    H.registro.some(([, texto]) => /sin dar señales/.test(texto)),
     "hay que decirle al usuario por qué se desbloqueó",
   );
 });
