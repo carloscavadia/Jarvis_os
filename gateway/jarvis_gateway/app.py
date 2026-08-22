@@ -280,13 +280,19 @@ def _workspace_presentation(
     if presentation_format not in {"text", "code", "json", "table", "markdown"}:
         presentation_format = "text"
     language = arguments.get("language", "")
-    return {
+    # El mismo recorte que el resto de salidas: una lista que se pase de largo
+    # debe llegar con menos registros, no partida a mitad de un objeto.
+    body, clipped = _public_tool_output(content)
+    presentation: dict[str, object] = {
         "title": title.strip()[:100] or "Presentación de JARVIS",
-        "content": content[:12000],
+        "content": body,
         "format": presentation_format,
         "language": str(language)[:32],
         "keep_open": arguments.get("keep_open", True) is not False,
     }
+    if clipped is not None:
+        presentation["clipped"] = clipped
+    return presentation
 
 
 def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | None:

@@ -2124,6 +2124,7 @@
         format: event.presentation.format,
         language: event.presentation.language,
         keepOpen: event.presentation.keep_open !== false,
+        clipped: event.presentation.clipped || null,
       });
       if (event.goal) showGoalProgress(event.goal);
       return;

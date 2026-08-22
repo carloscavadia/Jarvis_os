@@ -85,3 +85,34 @@ def test_una_lista_suelta_tambien_se_reduce_sin_romperse():
     datos = json.loads(salida)
     assert isinstance(datos, list) and 0 < len(datos) < 3000
     assert recorte["kind"] == "json"
+
+
+def test_una_presentacion_con_una_lista_larga_llega_como_json_valido():
+    """El camino deliberado: JARVIS llama a `show_in_workspace` con la lista.
+
+    Antes este camino tenía el mismo corte por caracteres, así que una lista que
+    se pasara de largo llegaba rota igual que la salida automática.
+    """
+    from jarvis_gateway.app import _workspace_presentation
+
+    entidades = [
+        {
+            "entity_id": f"light.dispositivo_del_salon_numero_{i}",
+            "name": f"Lámpara del salón número {i}",
+            "domain": "light",
+            "state": "on" if i % 2 else "off",
+        }
+        for i in range(300)
+    ]
+    contenido = json.dumps(entidades, ensure_ascii=False, separators=(",", ":"))
+    assert len(contenido) > _TOOL_OUTPUT_MAX_CHARS
+
+    presentacion = _workspace_presentation(
+        "show_in_workspace",
+        {"title": "Dispositivos", "content": contenido, "format": "json"},
+    )
+
+    assert presentacion["format"] == "json"
+    datos = json.loads(presentacion["content"])  # el pizarrón hace justo esto
+    assert 0 < len(datos) < 300
+    assert presentacion["clipped"]["total"] == 300

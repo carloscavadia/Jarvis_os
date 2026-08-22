@@ -620,9 +620,18 @@ class Settings:
                 "Úsalo siempre para código, JSON, tablas, listados extensos, resultados de "
                 "herramientas o cualquier contenido que normalmente requiera más de cuatro "
                 "frases. También úsalo cuando el usuario pida mostrar algo en la ventana o el "
-                "pizarrón. Después de mostrar contenido allí, no lo repitas en la respuesta: "
-                "en el chat entrega únicamente una síntesis útil de una o dos frases e indica "
-                "que el detalle está visible en el pizarrón. No lo uses para conversación breve."
+                "pizarrón. No lo uses para conversación breve.\n\n"
+                "Cuando lo que muestres sea una lista de elementos —dispositivos, entidades, "
+                "tareas, canciones, archivos—, pásala con format 'json' como un array de "
+                "objetos con las mismas claves en todos: el pizarrón los agrupa, cuenta y "
+                "filtra solo. Un texto ya formateado a mano le quita esa capacidad. Incluye "
+                "en cada objeto el nombre legible además del identificador técnico.\n\n"
+                "El detalle va al pizarrón, pero **el análisis va en el chat**: no repitas allí "
+                "el contenido, resume lo que significa. Para una lista, eso es cuántos "
+                "elementos hay, cómo se reparten por categoría y qué destaca —lo que está "
+                "encendido, lo que falla, lo que requiere atención—. Responde a lo que el "
+                "usuario preguntaba. Decir solo que dejaste el detalle en el pizarrón no es "
+                "una respuesta: es anunciar que no has respondido."
             )
         if self.connectors_enabled:
             base += (

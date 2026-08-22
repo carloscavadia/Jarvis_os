@@ -12,8 +12,14 @@ class ShowInWorkspaceTool(Tool):
     description = (
         "Abre el pizarrón visual del HUD para mostrar código, JSON, tablas, listados o "
         "resultados extensos. Úsalo siempre que el contenido supere cuatro frases o sea "
-        "estructurado. Después responde en el chat con solo una síntesis de una o dos frases; "
-        "nunca dupliques allí el contenido del pizarrón."
+        "estructurado. "
+        "Para una lista de elementos (dispositivos, entidades, tareas, canciones, archivos) "
+        "usa format='json' con un array de objetos que compartan las mismas claves: el "
+        "pizarrón deduce las columnas, agrupa por la categoría natural, cuenta cada grupo y "
+        "ofrece un filtro. Un texto ya maquetado a mano pierde todo eso. "
+        "Después responde en el chat con el análisis —cuántos hay, cómo se reparten, qué "
+        "destaca—, nunca duplicando el contenido ni limitándote a decir que está en el "
+        "pizarrón."
     )
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",
@@ -28,11 +34,18 @@ class ShowInWorkspaceTool(Tool):
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 12000,
-                "description": "Contenido exacto que se mostrará.",
+                "description": (
+                    "Contenido exacto que se mostrará. Con format='json', un array de "
+                    "objetos con las mismas claves; incluye en cada uno el nombre legible "
+                    "además del identificador técnico."
+                ),
             },
             "format": {
                 "type": "string",
                 "enum": ["text", "code", "json", "table", "markdown"],
+                "description": (
+                    "'json' para listas de elementos: el pizarrón las agrupa y cuenta solo."
+                ),
             },
             "language": {
                 "type": "string",
