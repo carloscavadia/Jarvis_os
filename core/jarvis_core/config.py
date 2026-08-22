@@ -122,6 +122,19 @@ class Settings:
     #: decidia llamar a `recall`: lo normal era que no recordara nada. 0 lo
     #: desactiva y vuelve al comportamiento anterior.
     memory_facts_in_prompt: int = 12
+    # --- Memoria semántica ---
+    #: auto | local | openai | off. `auto` prefiere el modelo local —lo que
+    #: JARVIS sabe de su jefe es justo lo que no conviene mandar fuera— y solo
+    #: recurre al endpoint compatible si no hay ninguno instalado.
+    embeddings_provider: str = "auto"
+    #: Multilingüe a propósito: los modelos entrenados solo en inglés fallan
+    #: justo con lo que se les va a pedir aquí.
+    embeddings_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    #: Modelo de embeddings del endpoint compatible (NVIDIA NIM y similares).
+    embeddings_remote_model: str = "nvidia/nv-embedqa-e5-v5"
+    #: Por debajo de esto, dos hechos no se parecen lo bastante como para que
+    #: valga la pena ocupar sitio en el prompt con ellos.
+    embeddings_min_similarity: float = 0.35
 
     # --- Tareas / proactividad ---
     # Zona horaria para interpretar «mañana a las 8». Vacío = la del sistema,
@@ -391,6 +404,17 @@ class Settings:
             memory_db_path=os.environ.get("JARVIS_MEMORY_DB", "data/jarvis_memory.db"),
             memory_facts_in_prompt=max(
                 0, int(os.environ.get("JARVIS_MEMORY_FACTS_IN_PROMPT", "12"))
+            ),
+            embeddings_provider=os.environ.get("JARVIS_EMBEDDINGS", "auto").strip().lower(),
+            embeddings_model=os.environ.get(
+                "JARVIS_EMBEDDINGS_MODEL",
+                "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+            ),
+            embeddings_remote_model=os.environ.get(
+                "JARVIS_EMBEDDINGS_REMOTE_MODEL", "nvidia/nv-embedqa-e5-v5"
+            ),
+            embeddings_min_similarity=float(
+                os.environ.get("JARVIS_EMBEDDINGS_MIN_SIMILARITY", "0.35")
             ),
             tasks_db_path=os.environ.get("JARVIS_TASKS_DB", "data/jarvis_tasks.db"),
             goals_db_path=os.environ.get("JARVIS_GOALS_DB", "data/jarvis_goals.db"),

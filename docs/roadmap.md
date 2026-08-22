@@ -56,8 +56,8 @@ desde el coche". Cada fase deja algo usable.
       por correo desde `send_email`.
 - [x] Los hechos recordados se le ponen delante al modelo en cada turno, sin que
       tenga que consultarlos.
-- [ ] Memoria semántica con embeddings (búsqueda por significado; hoy es por
-      coincidencia de texto y recencia).
+- [x] Memoria semántica con embeddings: busca por significado. Modelo local
+      (nada sale de la red) o endpoint compatible como NVIDIA NIM.
 - [ ] Aprendizaje de preferencias del usuario a lo largo del tiempo.
 - [ ] Panel web de administración.
 

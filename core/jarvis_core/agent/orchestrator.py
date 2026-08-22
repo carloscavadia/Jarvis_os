@@ -106,7 +106,14 @@ class Orchestrator:
             return []
         vistos: dict[str, str] = {}
         try:
-            relevantes = self._memory.recall(user_message, limit=self._memory_facts)
+            # Por significado si hay embeddings; si no, por texto. Un hecho
+            # guardado como «mi coche es un Tesla» debe salir al preguntar por
+            # «el vehículo», y por texto eso no ocurría nunca.
+            relevantes = self._memory.recall_semantic(
+                user_message,
+                limit=self._memory_facts,
+                min_similarity=self._settings.embeddings_min_similarity,
+            )
             recientes = self._memory.recall("", limit=self._memory_facts)
         except Exception:
             logger.warning("No pude leer la memoria para este turno", exc_info=True)

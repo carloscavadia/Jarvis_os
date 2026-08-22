@@ -20,6 +20,7 @@ from jarvis_core.agent.orchestrator import Orchestrator
 from jarvis_core.config import Settings
 from jarvis_core.llm.factory import build_llm
 from jarvis_core.memory.store import MemoryStore
+from jarvis_core.memory.embeddings import build_embedder
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.builtin import build_default_registry
 
@@ -51,7 +52,7 @@ def _load_dotenv() -> None:
 
 
 def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
-    memory = MemoryStore(settings.memory_db_path)
+    memory = MemoryStore(settings.memory_db_path, embedder=build_embedder(settings))
     tasks = TaskStore(settings.tasks_db_path)
     emotion = EmotionState()
     registry = build_default_registry(settings, memory, tasks, emotion)

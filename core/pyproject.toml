@@ -30,6 +30,13 @@ voice = [
     # así que la etapa que escucha siempre no depende de ningún servicio externo.
     "openwakeword>=0.6",
 ]
+# Memoria semántica: busca por significado en vez de por coincidencia de texto.
+# Es una capa fina sobre el torch que Kokoro ya trae con el extra `voice`.
+# Alternativa sin instalar nada: JARVIS_EMBEDDINGS=openai, que reutiliza el
+# endpoint compatible ya configurado (NVIDIA NIM sirve embeddings).
+memory = [
+    "sentence-transformers>=3.0",
+]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
