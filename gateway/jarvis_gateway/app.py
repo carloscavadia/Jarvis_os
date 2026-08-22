@@ -35,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.connectors.runtime import ConnectorRuntime
 from jarvis_core.mcp.store import MCPServerRecord
+from jarvis_core.offline import offline_violations
 from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
@@ -467,6 +468,7 @@ async def health() -> dict[str, object]:
         "voice": "on" if settings.voice_enabled else "off",
         "realtime_voice": "on" if realtime_voice.enabled else "off",
         "connectors": "on" if settings.connectors_enabled else "off",
+        "offline": "on" if settings.offline_mode else "off",
         # Permite detectar de un vistazo que el HUD y el gateway van desparejados,
         # que es la causa típica de que una función "esté" pero no haga nada.
         # Se comprueba que el cliente se construya, no que la URL no esté
@@ -507,7 +509,7 @@ async def serve_hud() -> Response:
 
 
 @app.get("/ready")
-async def ready() -> dict[str, str]:
+async def ready() -> dict[str, object]:
     """Comprueba configuración mínima sin consumir una llamada al proveedor."""
     errors: list[str] = []
     provider = settings.llm_provider.lower()
@@ -554,7 +556,15 @@ async def ready() -> dict[str, str]:
             status_code=503,
             detail={"status": "not_ready", "missing_or_invalid": errors},
         )
-    return {"status": "ready", "provider": settings.llm_provider}
+    listo: dict[str, object] = {"status": "ready", "provider": settings.llm_provider}
+    if settings.offline_mode:
+        # El modo offline es una promesa sobre tus datos: hay que poder
+        # comprobarla de un vistazo, no auditando diez variables a mano.
+        incumplimientos = offline_violations(settings)
+        listo["offline"] = not incumplimientos
+        if incumplimientos:
+            listo["offline_violations"] = incumplimientos
+    return listo
 
 
 def _require_connector_store():

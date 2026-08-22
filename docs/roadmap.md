@@ -24,7 +24,9 @@ desde el coche". Cada fase deja algo usable.
       y sin invalidar la caché del modelo.
 - [x] Caché de prompt: el prefijo estable (herramientas + prompt de sistema) se
       cachea, y lo que cambia cada turno va en una capa aparte.
-- [ ] Proveedor `OllamaProvider` para modelos locales (offline/privacidad).
+- [x] Modo offline verificable (`JARVIS_OFFLINE`): apaga lo que sale a internet y
+      `/ready` confirma si se cumple. Ollama ya funcionaba por el proveedor
+      compatible con OpenAI, así que no hacía falta un proveedor propio.
 - [x] Suite de tests del bucle de agente y del registro de herramientas.
 
 ## Fase 2 — Voz

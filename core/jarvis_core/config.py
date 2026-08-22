@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from jarvis_core.offline import apply_offline_mode
+
 
 def _get_bool(name: str, default: bool) -> bool:
     val = os.environ.get(name)
@@ -147,6 +149,14 @@ class Settings:
     scheduler_enabled: bool = True
     scheduler_poll_seconds: float = 5.0
 
+    # --- Modo offline ---
+    #: Garantiza que nada sale de tu red: apaga la voz de OpenAI, la búsqueda
+    #: web y los embeddings remotos, y `/ready` reporta lo que aún incumpla.
+    offline_mode: bool = False
+    #: Nombres de tu LAN que no se pueden reconocer como internos por su forma
+    #: (un dominio propio apuntando a una IP privada, por ejemplo).
+    offline_allowed_hosts: list[str] = field(default_factory=list)
+
     # --- Herramientas ---
     enable_shell: bool = True
     shell_allowlist: list[str] = field(
@@ -270,7 +280,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        return cls(
+        settings = cls(
             llm_provider=os.environ.get("JARVIS_LLM_PROVIDER", "anthropic"),
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
             model=os.environ.get("JARVIS_MODEL", "claude-opus-5"),
@@ -425,6 +435,8 @@ class Settings:
             timezone=os.environ.get("JARVIS_TIMEZONE", "").strip(),
             scheduler_enabled=_get_bool("JARVIS_SCHEDULER_ENABLED", True),
             scheduler_poll_seconds=float(os.environ.get("JARVIS_SCHEDULER_POLL", "5")),
+            offline_mode=_get_bool("JARVIS_OFFLINE", False),
+            offline_allowed_hosts=_get_list("JARVIS_OFFLINE_ALLOWED_HOSTS", []),
             enable_shell=_get_bool("JARVIS_ENABLE_SHELL", True),
             shell_allowlist=_get_list(
                 "JARVIS_SHELL_ALLOWLIST", DEFAULT_SHELL_ALLOWLIST
@@ -602,6 +614,11 @@ class Settings:
                 float(os.environ.get("JARVIS_APPROVAL_TIMEOUT_SECONDS", "120")),
             ),
         )
+        # Un único punto donde el modo offline apaga lo que sale a internet.
+        # Aplicarlo aquí y no en cada punto de uso es lo que hace imposible
+        # olvidarse de una ruta.
+        apply_offline_mode(settings)
+        return settings
 
     def system_prompt(self) -> str:
         """Prompt de sistema que define la personalidad y las reglas de JARVIS."""
