@@ -108,6 +108,21 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return list(self._tools)
 
+    def subset(self, names: list[str]) -> ToolRegistry:
+        """Vista acotada con solo algunas herramientas, compartiendo instancias.
+
+        Es lo que permite dar a un subagente un conjunto reducido sin duplicar
+        estado ni perder las guardas: la herramienta es **el mismo objeto**, así
+        que el workspace confinado, la lista blanca del shell y la marca de
+        `requires_confirmation` siguen siendo exactamente las mismas.
+        """
+        acotado = ToolRegistry()
+        for nombre in names:
+            herramienta = self._tools.get(nombre)
+            if herramienta is not None:
+                acotado._tools[nombre] = herramienta
+        return acotado
+
     async def execute(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         """Ejecuta una herramienta por nombre, capturando errores."""
         tool = self._tools.get(name)

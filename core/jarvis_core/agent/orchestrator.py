@@ -12,6 +12,7 @@ Mantiene el historial de la conversación (memoria de corto plazo) en el propio 
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -27,6 +28,15 @@ from jarvis_core.tools.base import ToolRegistry, ToolResult
 from jarvis_core.tools.clipping import clip_structured
 
 logger = logging.getLogger("jarvis.orchestrator")
+
+#: Política de confirmación del turno en curso. Un subagente se lanza desde
+#: dentro de una herramienta, que no recibe el `confirm` del canal; sin esto,
+#: encender una luz delegando en el agente de casa se saltaría la aprobación que
+#: sí pide hacerlo directamente. La degradación segura es que, sin política, la
+#: herramienta sensible se deniega —igual que en el agente principal—.
+active_confirm: contextvars.ContextVar[ConfirmFn | None] = contextvars.ContextVar(
+    "jarvis_active_confirm", default=None
+)
 
 # Callback opcional para pedir confirmación antes de ejecutar herramientas sensibles.
 # Recibe (nombre_herramienta, argumentos) y devuelve True para permitir.
@@ -241,23 +251,31 @@ class Orchestrator:
                 if on_tool_event is not None:
                     await on_tool_event("proposed", call.name, call.input, None)
 
-                allowed = await self._maybe_confirm(call.name, call.input, confirm)
-                if not allowed:
-                    if on_tool_event is not None:
-                        await on_tool_event("denied", call.name, call.input, None)
-                    results.append(
-                        {
-                            "id": call.id,
-                            "name": call.name,
-                            "content": "El usuario ha denegado la ejecución de esta herramienta.",
-                            "is_error": True,
-                        }
-                    )
-                    continue
+                # La política de confirmación queda publicada durante toda la
+                # ejecución: un subagente se lanza desde dentro de una
+                # herramienta y necesita heredarla, o encender una luz delegando
+                # se saltaría la aprobación que sí pide hacerlo directamente.
+                token = active_confirm.set(confirm or self._confirm)
+                try:
+                    allowed = await self._maybe_confirm(call.name, call.input, confirm)
+                    if not allowed:
+                        if on_tool_event is not None:
+                            await on_tool_event("denied", call.name, call.input, None)
+                        results.append(
+                            {
+                                "id": call.id,
+                                "name": call.name,
+                                "content": "El usuario ha denegado la ejecución de esta herramienta.",
+                                "is_error": True,
+                            }
+                        )
+                        continue
 
-                if on_tool_event is not None:
-                    await on_tool_event("running", call.name, call.input, None)
-                result = await self._registry.execute(call.name, call.input)
+                    if on_tool_event is not None:
+                        await on_tool_event("running", call.name, call.input, None)
+                    result = await self._registry.execute(call.name, call.input)
+                finally:
+                    active_confirm.reset(token)
                 if on_tool_event is not None:
                     # El cliente recibe el resultado íntegro: tiene su propio
                     # recorte y sabe presentarlo. Al modelo se le da menos.

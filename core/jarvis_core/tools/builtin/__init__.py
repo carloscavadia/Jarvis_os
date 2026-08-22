@@ -77,6 +77,7 @@ def build_default_registry(
     mcp_manager: MCPManager | None = None,
     skill_manager: SkillManager | None = None,
     calendar: CalendarStore | None = None,
+    llm: object | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -185,4 +186,13 @@ def build_default_registry(
 
         register_calendar_tools(registry, calendar, settings.timezone)
     register_music_tools(registry, build_navidrome_client(settings))
+    if llm is not None and settings.subagents_enabled:
+        # Al final a propósito: los especialistas se ofrecen según lo que de
+        # verdad haya quedado registrado, no según una lista fija.
+        from jarvis_core.agent.subagents import available_subagents
+        from jarvis_core.tools.builtin.delegation import register_delegation_tool
+
+        register_delegation_tool(
+            registry, llm, settings, available_subagents(registry)
+        )
     return registry

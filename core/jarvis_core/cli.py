@@ -57,8 +57,10 @@ def _build(settings: Settings) -> tuple[Orchestrator, MemoryStore, TaskStore]:
     tasks = TaskStore(settings.tasks_db_path)
     emotion = EmotionState()
     calendar = CalendarStore(settings.calendar_db_path)
-    registry = build_default_registry(settings, memory, tasks, emotion, calendar=calendar)
     llm = build_llm(settings)
+    registry = build_default_registry(
+        settings, memory, tasks, emotion, calendar=calendar, llm=llm
+    )
     orchestrator = Orchestrator(
         llm,
         registry,

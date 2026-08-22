@@ -45,7 +45,9 @@ desde el coche". Cada fase deja algo usable.
       mini calendario del HUD. Los recordatorios ya los cubre el motor de tareas.
 - [x] Lectura del estado del servidor Proxmox (CPU/RAM/disco de los nodos).
 - [ ] Control del propio servidor Proxmox (arrancar/parar VMs y LXC).
-- [ ] Multiagente: subagentes "casa", "investigación", "código".
+- [x] Multiagente: subagentes "casa", "investigación", "código" y "agenda", cada uno
+      con su propio conjunto acotado de herramientas. Heredan las aprobaciones y
+      no pueden volver a delegar.
 - [x] Motor de objetivos persistentes con planes, verificación y progreso en el HUD.
 
 ## Fase 4 — Dispositivos físicos

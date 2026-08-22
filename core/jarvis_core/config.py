@@ -165,6 +165,9 @@ class Settings:
 
     # --- Límites de seguridad ---
     max_tool_iterations: int = 12
+    #: Especialistas con su propio conjunto acotado de herramientas. Cada
+    #: uno ve menos, así que arrastra menos contexto y se equivoca menos.
+    subagents_enabled: bool = True
     max_history_items: int = 80
     #: Tope por llamada al proveedor. Sin él, un proveedor que se atasca cuelga
     #: el turno entero: el gateway solo manda el mensaje final cuando el bucle de
@@ -444,6 +447,7 @@ class Settings:
             max_tool_iterations=max(
                 1, int(os.environ.get("JARVIS_MAX_TOOL_ITERATIONS", "12"))
             ),
+            subagents_enabled=_get_bool("JARVIS_SUBAGENTS", True),
             max_history_items=max(
                 10, int(os.environ.get("JARVIS_MAX_HISTORY_ITEMS", "80"))
             ),
@@ -728,6 +732,17 @@ class Settings:
                 "En Home Assistant, cuando el usuario pregunte por todos sus dispositivos, "
                 "entidades, luces o sensores, usa homeassistant.entities con payload vacío "
                 "o con el filtro domain apropiado; no pidas entity_id para descubrirlos."
+            )
+        if self.subagents_enabled:
+            base += (
+                "\n\nPuedes delegar en especialistas con delegate_to_agent. Hazlo "
+                "cuando la tarea caiga de lleno en el terreno de uno de ellos y "
+                "requiera varios pasos: cada especialista ve solo sus herramientas, "
+                "así que trabaja con menos ruido que tú. Para una consulta directa "
+                "de un solo paso, usa tú la herramienta y ahorra la vuelta. El "
+                "encargo debe ser autónomo: el especialista no ve vuestra "
+                "conversación. Su informe es materia prima para tu respuesta, no la "
+                "respuesta: reelabóralo, no lo pegues."
             )
         if self.persona_extra:
             base += f"\n\nReglas adicionales de la casa:\n{self.persona_extra}"

@@ -76,6 +76,7 @@ class SessionManager:
                     mcp_manager=self.mcp_manager,
                     skill_manager=self.skill_manager,
                     calendar=self.calendar,
+                    llm=llm,
                 )
                 orch = Orchestrator(
                     llm, registry, self._settings, emotion=emotion, memory=self.memory
