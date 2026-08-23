@@ -33,6 +33,12 @@ function extractFunction(name) {
   return js.slice(match.index, index + 1) + `\nharness.${name} = ${name};`;
 }
 
+function extractConst(name) {
+  const match = new RegExp(`\\n  const ${name} = \\{[\\s\\S]*?\\n  \\};`).exec(js);
+  if (!match) throw new Error(`No encuentro la constante ${name}`);
+  return match[0] + `\nharness.${name} = ${name};`;
+}
+
 function extractBinding(name) {
   const match = new RegExp(`\\n  (?:const|let) ${name} = [^\\n]*;`).exec(js);
   if (!match) throw new Error(`No encuentro la variable ${name}`);
@@ -71,7 +77,17 @@ function makeElement(tag) {
     replaceChildren(...nodes) { el.children = []; el.append(...nodes); },
     remove() { if (el.parent) el.parent.children = el.parent.children.filter(c => c !== el); el.parent = null; },
     addEventListener(type, fn) { (el.listeners[type] = el.listeners[type] || []).push(fn); },
-    dispatch(type, event = {}) { for (const fn of el.listeners[type] || []) fn({ preventDefault() {}, ...event }); },
+    dispatch(type, event = {}) {
+      const base = { preventDefault() {}, target: el };
+      for (const fn of el.listeners[type] || []) fn({ ...base, ...event });
+    },
+    closest(selector) {
+      // Solo lo que usa el código: coincidencia por nombre de etiqueta.
+      const etiquetas = selector.split(",").map(s => s.trim().toUpperCase());
+      let nodo = el;
+      while (nodo) { if (etiquetas.includes(nodo.tagName)) return nodo; nodo = nodo.parent; }
+      return null;
+    },
     getBoundingClientRect() {
       return {
         left: parseFloat(el.style.left) || el.box.left,
@@ -110,6 +126,8 @@ new Function("harness", [
   extractFunction("openWindow"),
   extractFunction("youtubeVideoId"),
   extractFunction("youtubeEmbedUrl"),
+  extractConst("YOUTUBE_PLAYER_ERRORS"),
+  extractFunction("youtubePlayerError"),
   extractBinding("BROWSER_VIEWPORT"),
   extractFunction("browserPagePoint"),
 ].join("\n"))(harness);
@@ -260,6 +278,26 @@ const VIEWPORT = { width: 1440, height: 900 };
   assert.ok(left < VIEWPORT.width && top < VIEWPORT.height, "no se puede arrastrar fuera de la pantalla");
   head.dispatch("pointerup", { pointerId: 2 });
 
+  // Un pointerdown sobre un botón de la barra NO arranca un arrastre.
+  //
+  // Este es el fallo que se me escapó: los tests cerraban las ventanas llamando
+  // a closeWindow(), nunca pulsando la ×. Al capturar el puntero en la barra,
+  // el pointerup dejaba de caer sobre el botón y el clic no llegaba a
+  // dispararse: las ventanas no se podían cerrar con el ratón.
+  const cerrar = head.children.find(c => c.textContent === "×");
+  assert.ok(cerrar, "la barra de título tiene que tener botón de cerrar");
+  const antesLeft = win.frame.style.left;
+  head.dispatch("pointerdown", { button: 0, clientX: 700, clientY: 110, pointerId: 9, target: cerrar });
+  assert.ok(!win.frame.classList.contains("dragging"), "pulsar la × no puede iniciar un arrastre");
+  head.dispatch("pointermove", { clientX: 900, clientY: 400, pointerId: 9 });
+  assert.strictEqual(win.frame.style.left, antesLeft, "la ventana no se mueve al pulsar un botón");
+  head.dispatch("pointerup", { pointerId: 9 });
+
+  // Y el botón sigue cerrando de verdad.
+  cerrar.onclick();
+  assert.ok(!openWindowsMap.has("drag"), "la × tiene que cerrar la ventana");
+  openWindow({ id: "drag", title: "Arrastrable", kind: "" });
+
   // La esquina redimensiona en vez de mover.
   const grip = win.frame.children[2];
   win.frame.style.left = "100px"; win.frame.style.top = "100px";
@@ -283,12 +321,52 @@ const VIEWPORT = { width: 1440, height: 900 };
 
 // ── YouTube: la URL del iframe la componemos nosotros ─────────────────────
 
-assert.strictEqual(
-  youtubeEmbedUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
-  "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0",
-);
-assert.strictEqual(youtubeEmbedUrl("dQw4w9WgXcQ"), "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0");
-assert.strictEqual(youtubeEmbedUrl("https://youtu.be/dQw4w9WgXcQ"), "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0");
+{
+  const esperado = "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&enablejsapi=1";
+  for (const entrada of [
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "dQw4w9WgXcQ",
+    "https://youtu.be/dQw4w9WgXcQ",
+  ]) {
+    assert.strictEqual(youtubeEmbedUrl(entrada), esperado, `mal embebido: ${entrada}`);
+  }
+
+  // El origen viaja al reproductor. Sin él —y sin cabecera Referer— YouTube
+  // responde «Error 153» y no arranca: es lo que pasaba por tener el iframe con
+  // referrerPolicy="no-referrer".
+  const conOrigen = youtubeEmbedUrl("dQw4w9WgXcQ", "https://jarvis.example");
+  assert.ok(conOrigen.includes("origin=https%3A%2F%2Fjarvis.example"), conOrigen);
+  assert.ok(conOrigen.includes("enablejsapi=1"), "sin enablejsapi el reproductor no puede avisar de errores");
+
+  // Un origen opaco (`null`) no se manda: rompería la comprobación en vez de
+  // ayudarla.
+  assert.ok(!youtubeEmbedUrl("dQw4w9WgXcQ", "null").includes("origin="));
+}
+
+// Y el iframe NO puede llevar referrerPolicy="no-referrer": esa era la causa
+// del Error 153. Se comprueba sobre el código real, porque es una línea que se
+// vuelve a colar con facilidad «por privacidad» sin ver el efecto.
+{
+  const bloque = js.slice(js.indexOf('if (kind === "video")'), js.indexOf('if (kind === "web")'));
+  assert.ok(bloque.length > 0, "no encuentro el visor de vídeo");
+  // Sin los comentarios: uno de ellos explica precisamente por qué no debe
+  // estar, y si no se quitan el test se encuentra a sí mismo.
+  const codigo = bloque.replace(/\/\/[^\n]*/g, "");
+  assert.ok(
+    !/referrerPolicy\s*=\s*["']no-referrer["']/.test(codigo),
+    "el iframe de YouTube no puede ocultar el origen: el reproductor lo rechaza",
+  );
+}
+
+// Los errores del reproductor se traducen a algo que se entiende.
+{
+  assert.match(harness.youtubePlayerError(150), /no permite verlo fuera de YouTube/);
+  assert.match(harness.youtubePlayerError(101), /no permite verlo fuera de YouTube/);
+  assert.match(harness.youtubePlayerError(153), /rechazado/);
+  assert.match(harness.youtubePlayerError(100), /ya no existe|privado/);
+  // Un código que no conocemos no deja al usuario sin explicación.
+  assert.ok(harness.youtubePlayerError(999).length > 10);
+}
 
 // Un dominio que solo empieza por youtube.com no es YouTube. Es el caso que de
 // verdad importa: engaña a cualquier comprobación con startswith, y lo que

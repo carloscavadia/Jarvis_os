@@ -2336,6 +2336,14 @@
     let origin = null;
     handle.addEventListener("pointerdown", event => {
       if (event.button !== undefined && event.button !== 0) return;
+      // Un botón dentro de la barra de título no arrastra: cierra o maximiza.
+      // Sin esto no había forma de cerrar una ventana. `setPointerCapture` manda
+      // todos los eventos siguientes a la barra, así que el `pointerup` ya no
+      // caía sobre el botón y el clic nunca llegaba a dispararse; el
+      // `preventDefault` de aquí abajo remata lo poco que quedaba. Se veía como
+      // botones que sencillamente no responden.
+      const objetivo = event.target;
+      if (objetivo && typeof objetivo.closest === "function" && objetivo.closest("button, a")) return;
       if (win.frame.classList.contains("maximized") && mode === "resize") return;
       focusWindow(win.id);
       const rect = win.frame.getBoundingClientRect();
@@ -2468,9 +2476,34 @@
   //: construimos nosotros a partir del identificador: si aceptáramos la URL tal
   //: cual viniera, cualquier cadena que empezase por youtube.com podría
   //: arrastrar detrás un destino distinto, y el iframe se lo comería.
-  function youtubeEmbedUrl(raw) {
+  function youtubeEmbedUrl(raw, origin = "") {
     const id = youtubeVideoId(raw);
-    return id ? `https://www.youtube-nocookie.com/embed/${id}?rel=0` : "";
+    if (!id) return "";
+    // `enablejsapi` es lo que permite que el reproductor nos cuente por qué no
+    // arranca; sin él, un vídeo que no se deja incrustar es un rectángulo gris
+    // sin explicación. `origin` va con él: la API lo exige para hablar con la
+    // página que la incrusta.
+    const params = new URLSearchParams({ rel: "0", enablejsapi: "1" });
+    if (origin && origin !== "null") params.set("origin", origin);
+    return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
+  }
+
+  //: Lo que el reproductor de YouTube devuelve cuando no puede reproducir.
+  //: Los códigos 101 y 150 son el mismo caso —el dueño no permite incrustar el
+  //: vídeo—, y el 153 aparece cuando el reproductor no ve el origen que lo
+  //: incrusta. Ninguno tiene arreglo desde aquí: lo único útil es decir qué
+  //: pasa y abrirlo donde sí funciona.
+  const YOUTUBE_PLAYER_ERRORS = {
+    2: "El enlace del vídeo no es válido.",
+    5: "Este vídeo no se puede reproducir en el navegador.",
+    100: "El vídeo ya no existe o es privado.",
+    101: "El dueño de este vídeo no permite verlo fuera de YouTube.",
+    150: "El dueño de este vídeo no permite verlo fuera de YouTube.",
+    153: "YouTube ha rechazado incrustar este vídeo desde aquí.",
+  };
+
+  function youtubePlayerError(code) {
+    return YOUTUBE_PLAYER_ERRORS[Number(code)] || "El vídeo no se pudo reproducir aquí.";
   }
 
   function youtubeVideoId(raw) {
@@ -2488,6 +2521,56 @@
       if (!candidate && parsed.pathname.startsWith("/shorts/")) candidate = parsed.pathname.slice(8);
     }
     return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
+  }
+
+  //: El origen desde el que habla el reproductor. Todo mensaje que no venga de
+  //: aquí se ignora: `window.message` lo puede disparar cualquiera.
+  const YOUTUBE_EMBED_ORIGIN = "https://www.youtube-nocookie.com";
+
+  // Pregunta al reproductor cómo le va y cuenta lo que responda.
+  //
+  // Sin esto, un vídeo que su dueño no deja incrustar es un rectángulo gris con
+  // un error en inglés dentro de un iframe que no podemos leer. El protocolo es
+  // el de la API de YouTube: la página manda «listening» y a partir de ahí el
+  // reproductor le envía sus eventos.
+  function escucharErroresDeYouTube(win, frame, videoId) {
+    const alRecibir = evento => {
+      // La ventana pudo cerrarse: sin esto el oyente sobrevive a su iframe.
+      if (!frame.isConnected) { window.removeEventListener("message", alRecibir); return; }
+      if (evento.origin !== YOUTUBE_EMBED_ORIGIN || evento.source !== frame.contentWindow) return;
+      let datos;
+      try { datos = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data; }
+      catch { return; }
+      if (!datos || datos.event !== "onError") return;
+      window.removeEventListener("message", alRecibir);
+      mostrarVideoNoIncrustable(win, frame, videoId, youtubePlayerError(datos.info));
+    };
+    window.addEventListener("message", alRecibir);
+    frame.addEventListener("load", () => {
+      try {
+        frame.contentWindow.postMessage(
+          JSON.stringify({ event: "listening", id: 1, channel: "widget" }),
+          YOUTUBE_EMBED_ORIGIN,
+        );
+      } catch { /* si no se puede hablar con el reproductor, se queda como estaba */ }
+    });
+  }
+
+  // Cuando el vídeo no se puede ver aquí, lo útil no es el error: es el enlace.
+  function mostrarVideoNoIncrustable(win, frame, videoId, motivo) {
+    frame.remove();
+    win.body.replaceChildren();
+    viewerNote(win.body, motivo);
+    const caja = document.createElement("div");
+    caja.style.cssText = "display:flex; justify-content:center; padding:22px;";
+    const enlace = document.createElement("a");
+    enlace.className = "jwin-btn";
+    enlace.href = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    enlace.target = "_blank"; enlace.rel = "noopener noreferrer";
+    enlace.textContent = "▶ VER EN YOUTUBE";
+    enlace.style.cssText = "text-decoration:none; padding:10px 18px; font-size:11px;";
+    caja.appendChild(enlace);
+    win.body.appendChild(caja);
   }
 
   function viewerRawUrl(path) {
@@ -2535,14 +2618,19 @@
     }
 
     if (kind === "video") {
-      const embed = youtubeEmbedUrl(view.embed || view.url || "");
+      const id = youtubeVideoId(view.embed || view.url || "");
+      const embed = youtubeEmbedUrl(id, location.origin);
       if (!embed) { viewerNote(win.body, "No reconozco ese vídeo de YouTube."); return win; }
       const frame = document.createElement("iframe");
       frame.src = embed;
       frame.title = view.title || "Vídeo";
       frame.allow = "accelerometer; encrypted-media; picture-in-picture; fullscreen";
-      frame.referrerPolicy = "no-referrer";
+      // Aquí NO se pone referrerPolicy="no-referrer". Lo tuve puesto y era la
+      // causa del «Error 153»: sin cabecera Referer el reproductor no puede
+      // comprobar qué página lo incrusta y se niega a arrancar. Ocultar el
+      // origen a YouTube tampoco aportaba nada: ya se le está pidiendo el vídeo.
       win.body.appendChild(frame);
+      escucharErroresDeYouTube(win, frame, id);
       return win;
     }
 
