@@ -290,6 +290,12 @@
      clic a las coordenadas reales de la pestaña. */
   .browser-shot img { display: block; width: 100%; height: auto; cursor: pointer; }
 
+  /* Un borrador no es una tarea vencida ni una programada: es una nota a la
+     que le falta un dato. Ámbar, como todo lo que espera algo del usuario. */
+  .task-item.draft .task-bar { background: #ffc98a; }
+  .task-item.draft .task-badge { color: #ffc98a; border-color: rgba(255,201,138,.4); }
+  .task-item.draft .task-countdown { color: #ffc98a; letter-spacing: .08em; }
+
   /* ── Vista de día: lo que ocurre y lo que vence, juntos ── */
   .day-timeline { list-style: none; margin: 0; padding: 6px 0; }
   .day-item {
@@ -5479,16 +5485,20 @@
 
       // Barra de estado lateral
       const bar = document.createElement("div"); bar.className = "task-bar";
-      const isOverdue = task.next_run && (task.next_run < Date.now() / 1000);
+      // Un borrador guarda como `next_run` su hora de creación, que es relleno:
+      // tratarla como fecha lo pintaría en rojo y con cuenta atrás vencida desde
+      // el primer segundo, que es justo el equívoco que el borrador evita.
+      const isDraft = task.status === "draft";
+      const isOverdue = !isDraft && task.next_run && (task.next_run < Date.now() / 1000);
       const isRecurring = task.kind === "recurring";
-      item.classList.add(isOverdue ? "overdue" : isRecurring ? "recurring" : "scheduled");
+      item.classList.add(isDraft ? "draft" : isOverdue ? "overdue" : isRecurring ? "recurring" : "scheduled");
 
       const body = document.createElement("div"); body.className = "task-body";
 
       // Cabecera: tipo + título
       const head = document.createElement("div"); head.className = "task-head-row";
       const badge = document.createElement("span"); badge.className = "task-badge";
-      badge.textContent = isRecurring ? "RECURRENTE" : "PROGRAMADA";
+      badge.textContent = isDraft ? "FALTA FECHA" : isRecurring ? "RECURRENTE" : "PROGRAMADA";
       const titleEl = document.createElement("div"); titleEl.className = "task-t-title";
       titleEl.textContent = task.title;
       head.append(badge, titleEl);
@@ -5496,9 +5506,11 @@
       // Tiempo con countdown en tiempo real
       const timeRow = document.createElement("div"); timeRow.className = "task-time-row";
       const timeEl = document.createElement("span"); timeEl.className = "task-countdown";
-      timeEl.dataset.nextRun = task.next_run || 0;
-      timeEl.textContent = formatTaskTime(task.next_run);
-      if (task.interval_seconds) {
+      // Sin fecha no hay cuenta atrás que enseñar. El dataset se deja vacío para
+      // que el refresco periódico no vuelva a poner una hora inventada encima.
+      timeEl.dataset.nextRun = isDraft ? "" : (task.next_run || 0);
+      timeEl.textContent = isDraft ? "SIN FECHA · PENDIENTE DE CONFIRMAR" : formatTaskTime(task.next_run);
+      if (task.interval_seconds && !isDraft) {
         const interval = document.createElement("span"); interval.className = "task-interval";
         interval.textContent = `↻ ${formatInterval(task.interval_seconds)}`;
         timeRow.append(timeEl, interval);
@@ -5524,6 +5536,7 @@
     if (!window._taskCountdownInterval) {
       window._taskCountdownInterval = setInterval(() => {
         document.querySelectorAll(".task-countdown").forEach(el => {
+          if (!el.dataset.nextRun) return;   // borrador: no hay nada que contar
           el.textContent = formatTaskTime(parseFloat(el.dataset.nextRun));
         });
       }, 30000);
@@ -5539,7 +5552,11 @@
     if (diff < 60) return `${Math.round(diff)}s`;
     if (diff < 3600) return `${Math.ceil(diff / 60)} min`;
     if (diff < 86400) {
-      const h = Math.floor(diff / 3600); const m = Math.ceil((diff % 3600) / 60);
+      // Se redondea UNA vez, a minutos, y luego se parte. Redondear las horas y
+      // los minutos por separado dejaba que el `ceil` de los minutos llegase a
+      // 60 sin llevarse la hora: 7200 s se leían como «1h 60m».
+      const minutos = Math.round(diff / 60);
+      const h = Math.floor(minutos / 60); const m = minutos % 60;
       return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
     const days = Math.floor(diff / 86400);

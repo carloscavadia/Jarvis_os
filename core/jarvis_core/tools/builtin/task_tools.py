@@ -42,8 +42,8 @@ def resolve_zone(name: str = "") -> datetime.tzinfo | None:
 
 def _resolve_next_run(
     delay_seconds: float | None, at: str | None, zone: datetime.tzinfo | None = None
-) -> float:
-    """Epoch de la primera ejecución, a partir de un retardo o de un ISO 8601."""
+) -> float | None:
+    """Epoch de la primera ejecución, o None si no se indicó ninguno."""
     if at:
         dt = datetime.datetime.fromisoformat(at)
         if dt.tzinfo is None:
@@ -52,8 +52,11 @@ def _resolve_next_run(
         return dt.timestamp()
     if delay_seconds is not None:
         return time.time() + float(delay_seconds)
-    # Sin momento indicado: dentro de un minuto por defecto.
-    return time.time() + 60
+    # Sin momento indicado no hay hora que devolver. Antes esto valía «dentro de
+    # un minuto», que no es lo que nadie quiso decir jamás: quien no da fecha no
+    # está pidiendo un aviso inmediato. Quien llame decide qué hacer con la
+    # ausencia; `schedule_task` la convierte en un borrador y pregunta.
+    return None
 
 
 def format_when(epoch: float, zone: datetime.tzinfo | None = None) -> str:
@@ -82,7 +85,12 @@ class ScheduleTaskTool(Tool):
         "'dame el resumen del estado del sistema'). Indica CUÁNDO con 'at' (fecha/hora "
         "ISO 8601, p.ej. 2026-08-13T08:00:00) o con 'delay_seconds'. Para algo recurrente, "
         "añade 'repeat_seconds' (86400 = cada día). Usa antes system_info para saber la "
-        "hora actual si necesitas calcular una hora concreta."
+        "hora actual si necesitas calcular una hora concreta.\n\n"
+        "NUNCA te inventes la fecha ni la hora. Si el usuario no las ha dicho, llama "
+        "igualmente sin 'at' ni 'delay_seconds': se anota como borrador, no avisa de "
+        "nada, y entonces le preguntas cuándo es. Decir «te lo he agendado el lunes 24 "
+        "a las 17:00» cuando nadie ha dicho ni el día ni la hora es peor que no "
+        "apuntarlo: el usuario se queda creyendo que hay una cita a esa hora."
     )
     input_schema: dict[str, Any] = {
         "type": "object",
@@ -178,8 +186,28 @@ class ScheduleTaskTool(Tool):
         # Es lo que hace que anotar «vence el viernes» sirva de algo sin tener
         # que calcular a mano cuándo recordarlo; y si el plazo es más inmediato
         # que la antelación, el aviso se pega al plazo en vez de irse al pasado.
-        if vence is not None and at is None and delay_seconds is None:
+        if vence is not None and next_run is None:
             next_run = max(vence - DUE_REMINDER_LEAD_SECONDS, time.time() + 60)
+
+        # Nadie dijo cuándo. Se anota como BORRADOR y se pide la fecha, en vez de
+        # inventarse una. Es la diferencia entre «lo tengo apuntado, ¿qué día
+        # era?» y «tienes una cita el lunes 24 a las 17:00» cuando nadie ha dicho
+        # ni el día ni la hora.
+        if next_run is None:
+            task_id = self._store.add(
+                title=title, prompt=prompt, next_run=time.time(),
+                interval_seconds=repeat_seconds, priority=priority,
+                category=category, due_at=None, status="draft",
+            )
+            return ToolResult(
+                content=(
+                    f"Tarea #{task_id} '{title}' anotada SIN FECHA, como borrador. "
+                    "No va a avisar de nada hasta que tenga una. "
+                    "Pregúntale al usuario qué día y a qué hora es, dile que la has "
+                    "anotado mientras tanto, y NO des por buena ninguna fecha que no "
+                    "te haya dicho él. Cuando te la dé, usa reschedule_task."
+                )
+            )
 
         if not math.isfinite(next_run) or next_run < time.time() - 1:
             return ToolResult(content="La primera ejecución no puede estar en el pasado.", is_error=True)
@@ -246,6 +274,14 @@ class ListTasksTool(Tool):
             elif t.due_at is not None:
                 flags.insert(0, f"vence {format_when(t.due_at, self._zone)}")
             suffix = f"  [{' · '.join(flags)}]" if flags else ""
+            if t.status == "draft":
+                # Un borrador no tiene hora: enseñar la de creación como si la
+                # tuviera es justo el equívoco que el borrador viene a evitar.
+                lines.append(
+                    f"#{t.id} '{t.title}' → SIN FECHA (borrador: pregúntale al "
+                    f"usuario cuándo es y usa reschedule_task)"
+                )
+                continue
             lines.append(f"#{t.id} '{t.title}' → {when}{recur}{suffix}")
         return ToolResult(content="\n".join(lines))
 

@@ -26,9 +26,23 @@ import time
 from dataclasses import dataclass
 
 ACTIVE_STATUSES = ("pending", "running")
+#: Un borrador: se anotó, pero le falta algo para poder programarse —hoy, la
+#: fecha—. Existe porque «sin fecha» tiene que poder representarse.
+#:
+#: Antes no se podía: si no se indicaba momento, la tarea se creaba «dentro de un
+#: minuto», que no es lo que nadie quiso decir nunca. Al modelo le quedaban dos
+#: salidas —preguntar, o inventarse una fecha— y se inventaba: «tienes una cita
+#: el lunes 24 a las 17:00» cuando nadie había dicho ni el día ni la hora. La
+#: forma de que no invente es que decir «no sé cuándo» sea una opción.
+#:
+#: `due()` filtra por status = 'pending', así que un borrador NUNCA se dispara.
 TASK_STATUSES = (
-    "pending", "running", "done", "failed", "cancelled", "paused",
+    "pending", "running", "done", "failed", "cancelled", "paused", "draft",
 )
+#: Lo que sigue abierto: lo activo y lo que aún es borrador. Es lo que se lista
+#: por defecto —un borrador invisible se olvidaría, que es justo lo contrario de
+#: lo que se busca al anotarlo—.
+OPEN_STATUSES = (*ACTIVE_STATUSES, "draft")
 PRIORITIES = ("low", "normal", "high")
 
 #: Intentos por ejecución antes de darla por fallida, y espera entre ellos.
@@ -221,8 +235,11 @@ class TaskStore:
         priority: str = "normal",
         category: str = "",
         due_at: float | None = None,
+        status: str = "pending",
     ) -> int:
         kind = "recurring" if interval_seconds else "once"
+        if status not in TASK_STATUSES:
+            status = "pending"
         if priority not in PRIORITIES:
             priority = "normal"
         with self._lock:
@@ -231,10 +248,10 @@ class TaskStore:
                 INSERT INTO tasks
                     (title, prompt, kind, next_run, interval_seconds, enabled,
                      created_at, status, priority, category, due_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?, 'pending', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                 """,
                 (title, prompt, kind, next_run, interval_seconds, time.time(),
-                 priority, category.strip()[:64], due_at),
+                 status, priority, category.strip()[:64], due_at),
             )
             self._conn.commit()
             return int(cur.lastrowid)
@@ -261,7 +278,7 @@ class TaskStore:
         query = "SELECT * FROM tasks"
         params: list[object] = []
         wanted = statuses if statuses is not None else (
-            None if include_disabled else ACTIVE_STATUSES
+            None if include_disabled else OPEN_STATUSES
         )
         clauses = []
         if wanted:
@@ -457,6 +474,11 @@ class TaskStore:
         task = self.get(task_id)
         if task is None or task.status in {"cancelled", "done", "failed"}:
             return None
+        # Un borrador solo deja de serlo cuando llega una fecha DE VERDAD.
+        # Heredar la suya —que es la de creación, un relleno— lo pondría a
+        # dispararse de inmediato, que es el fallo que el borrador evita.
+        if task.status == "draft" and next_run is None:
+            return None
         new_next = next_run if next_run is not None else task.next_run
         if clear_interval:
             new_interval, kind = None, "once"
@@ -466,7 +488,12 @@ class TaskStore:
             new_interval, kind = task.interval_seconds, task.kind
         with self._lock, self._conn:
             self._conn.execute(
-                "UPDATE tasks SET next_run=?, interval_seconds=?, kind=?, attempts=0 "
+                # El borrador se promueve aquí: darle fecha es exactamente lo
+                # que le faltaba. Sin esto se quedaría en borrador para siempre
+                # y no se dispararía nunca, con la fecha ya puesta.
+                "UPDATE tasks SET next_run=?, interval_seconds=?, kind=?, attempts=0, "
+                "status=CASE WHEN status='draft' THEN 'pending' ELSE status END, "
+                "enabled=CASE WHEN status='draft' THEN 1 ELSE enabled END "
                 "WHERE id=?",
                 (new_next, new_interval, kind, task_id),
             )

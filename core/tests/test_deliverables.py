@@ -248,3 +248,95 @@ def test_lo_cancelado_desaparece_del_calendario_pero_lo_cumplido_no(store):
     store.complete(hecha)
     titulos = [t.title for t in store.due_between(ahora, ahora + 86400)]
     assert titulos == ["Hecha"]
+
+
+# ── Sin fecha: el borrador que evita que se invente una ──────────────────────
+#
+# El caso real: «recuérdame que tengo una cita por videollamada con los que me
+# van a remodelar el apartamento». Nadie dijo cuándo, y la respuesta fue «ya
+# tienes la cita agendada para el lunes 24 de agosto a las 17:00». Ni el día ni
+# la hora salieron del usuario.
+#
+# La causa de fondo era que «sin fecha» no se podía representar: sin momento
+# indicado, la tarea se creaba «dentro de un minuto». Al modelo le quedaban dos
+# salidas —preguntar, o inventar— y una de las dos estaba a un paso.
+
+def test_sin_fecha_se_anota_como_borrador_en_vez_de_inventar(store):
+    salida = asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Cita videollamada remodelación", prompt="recuérdame la cita"
+        )
+    )
+    assert not salida.is_error
+    assert "SIN FECHA" in salida.content
+    # Y el resultado le dice qué hacer: preguntar.
+    assert "pregúntale" in salida.content.lower()
+    tarea = store.get(1)
+    assert tarea.status == "draft"
+    assert tarea.due_at is None
+
+
+def test_un_borrador_no_avisa_nunca(store):
+    """Lo peor sería que saltara: un aviso a una hora que nadie acordó."""
+    asyncio.run(ScheduleTaskTool(store, UTC).run(title="Cita", prompt="recuérdame"))
+    # Ni ahora ni dentro de un año.
+    assert store.due(time.time() + 1) == []
+    assert store.due(time.time() + 365 * 86400) == []
+
+
+def test_un_borrador_se_ve_en_el_listado(store):
+    """Un borrador invisible se olvida, que es lo contrario de anotarlo."""
+    asyncio.run(ScheduleTaskTool(store, UTC).run(title="Cita", prompt="recuérdame"))
+    assert [t.title for t in store.list()] == ["Cita"]
+    salida = asyncio.run(ListTasksTool(store, UTC).run())
+    assert "SIN FECHA" in salida.content
+    # Y no enseña la hora de creación como si fuera la de la cita.
+    assert "borrador" in salida.content.lower()
+
+
+def test_el_borrador_se_convierte_en_tarea_cuando_llega_la_fecha(store):
+    asyncio.run(ScheduleTaskTool(store, UTC).run(title="Cita", prompt="recuérdame"))
+    cuando = time.time() + 3 * 86400
+    tarea = store.reschedule(1, cuando)
+    assert tarea.status == "pending"
+    assert abs(tarea.next_run - cuando) < 1
+    assert store.due(cuando + 1)
+
+
+def test_un_borrador_no_se_promueve_sin_una_fecha_de_verdad(store):
+    """Heredar la suya —la de creación— lo pondría a dispararse de inmediato."""
+    asyncio.run(ScheduleTaskTool(store, UTC).run(title="Cita", prompt="recuérdame"))
+    assert store.reschedule(1) is None
+    assert store.get(1).status == "draft"
+    assert store.due(time.time() + 1) == []
+
+
+def test_con_fecha_no_hay_borrador(store):
+    """Lo que sí se sabe se programa: el borrador es solo para lo que falta."""
+    asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Cita", prompt="recuérdame", at=iso(3 * 86400)
+        )
+    )
+    assert store.get(1).status == "pending"
+
+
+def test_un_plazo_tambien_basta_para_no_ser_borrador(store):
+    asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Informe", prompt="avisa", due_at=iso(5 * 86400)
+        )
+    )
+    assert store.get(1).status == "pending"
+
+
+def test_la_herramienta_dice_en_su_descripcion_que_no_invente():
+    """La regla vive donde el modelo la lee justo antes de decidir."""
+    descripcion = ScheduleTaskTool.description
+    assert "NUNCA te inventes la fecha" in descripcion
+
+
+def test_el_prompt_del_sistema_prohibe_inventar_datos():
+    from jarvis_core.config import Settings
+
+    assert "NUNCA inventes fechas" in Settings().system_prompt()

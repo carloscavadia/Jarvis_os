@@ -33,8 +33,11 @@ function extractFunction(name) {
 }
 
 const harness = {};
-new Function("harness", [extractFunction("dayTimeline")].join("\n"))(harness);
-const { dayTimeline } = harness;
+new Function("harness", [
+  extractFunction("dayTimeline"),
+  extractFunction("formatTaskTime"),
+].join("\n"))(harness);
+const { dayTimeline, formatTaskTime } = harness;
 
 const DIA = 1_800_000_000;          // inicio de un día cualquiera
 const FIN = DIA + 86400;
@@ -138,5 +141,31 @@ const h = horas => DIA + horas * 3600;
 // Y un día vacío no revienta.
 assert.strictEqual(dayTimeline(DIA, FIN, {}).total, 0);
 assert.strictEqual(dayTimeline(DIA, FIN).total, 0);
+
+// ── La cuenta atrás de una tarea ────────────────────────────────────────────
+
+{
+  const dentroDe = segundos => formatTaskTime(Date.now() / 1000 + segundos);
+
+  // 7200 s son dos horas. Se leían como «1h 60m»: las horas y los minutos se
+  // redondeaban por separado, y el `ceil` de los minutos podía llegar a 60 sin
+  // llevarse la hora.
+  assert.strictEqual(dentroDe(7200), "2h");
+  assert.strictEqual(dentroDe(3600), "1h");
+  assert.strictEqual(dentroDe(3600 * 3 - 1), "3h");
+  assert.strictEqual(dentroDe(5400), "1h 30m");
+
+  // Nunca puede salir un número de minutos que no existe en un reloj.
+  for (let s = 3600; s < 86400; s += 137) {
+    const texto = dentroDe(s);
+    const m = /(\d+)h (\d+)m/.exec(texto);
+    if (m) assert.ok(Number(m[2]) < 60, `minutos imposibles en ${texto} (${s}s)`);
+  }
+
+  // Y los extremos siguen siendo lo que eran.
+  assert.strictEqual(formatTaskTime(0), "Pendiente");
+  assert.strictEqual(dentroDe(-600), "VENCIDA");
+  assert.strictEqual(dentroDe(-5), "AHORA");
+}
 
 console.log("day.test.js OK");
