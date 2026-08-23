@@ -124,6 +124,13 @@ def build_default_registry(
             max_bytes=settings.web_max_download_bytes,
             brave_api_key=settings.brave_search_api_key,
         )
+    if settings.internet_access_enabled and settings.browser_enabled:
+        # Conducir un navegador es salir a la red igual que fetch_web_page, así
+        # que va detrás del mismo interruptor y además del suyo propio.
+        from jarvis_core.browser import get_browser_session
+        from jarvis_core.tools.builtin.browser_tool import register_browser_tool
+
+        register_browser_tool(registry, get_browser_session(settings))
     if settings.hud_workspace_enabled:
         registry.register(ShowInWorkspaceTool())
         # El visor vive con el pizarrón: los dos son la parte visual del HUD, y

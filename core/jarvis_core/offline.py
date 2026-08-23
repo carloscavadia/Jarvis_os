@@ -102,6 +102,10 @@ def apply_offline_mode(settings) -> None:
     settings.realtime_conversation_enabled = False
     # Búsqueda y lectura web: internet público por definición.
     settings.internet_access_enabled = False
+    # El navegador sale a internet igual, y con un motor de render entero
+    # detrás. Apagarlo explícitamente y no confiar en que dependa del anterior:
+    # si mañana se registra por su cuenta, el modo offline seguiría cerrado.
+    settings.browser_enabled = False
     # Embeddings: si el endpoint no es interno, se cae al modelo local.
     if settings.embeddings_provider in {"openai", "nvidia", "remote"} and not is_private_endpoint(
         settings.openai_base_url, tuple(settings.offline_allowed_hosts)

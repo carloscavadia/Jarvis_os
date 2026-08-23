@@ -37,6 +37,13 @@ voice = [
 memory = [
     "sentence-transformers>=3.0",
 ]
+# Navegador real que JARVIS conduce. Aparte porque Chromium son cientos de megas
+# y no todo el mundo lo quiere en su servidor; sin este extra, la herramienta
+# `browse` simplemente no se registra y el resto funciona igual.
+# Después de instalarlo hace falta bajar el motor:  playwright install chromium
+browser = [
+    "playwright>=1.45",
+]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",

@@ -24,6 +24,22 @@ COPY clients/ ./clients/
 # El núcleo con soporte OpenAI/NVIDIA y voz local Whisper + Kokoro.
 RUN pip install --no-cache-dir "./core[openai,voice]" ./gateway
 
+# Navegador que JARVIS conduce. Opcional y apagado por defecto: Chromium y sus
+# librerías añaden ~700 MB a la imagen, así que solo entra si se pide
+# explícitamente. Para construir con él:
+#   docker compose build --build-arg INSTALL_BROWSER=true
+# y después JARVIS_BROWSER_ENABLED=true en el .env.
+ARG INSTALL_BROWSER=false
+# Fuera de /root a propósito: el contenedor corre como el usuario `jarvis`, que
+# no puede leer el home de root. Con la ruta por defecto la imagen se construye
+# sin quejarse y luego Chromium no arranca en ejecución.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN if [ "$INSTALL_BROWSER" = "true" ]; then \
+      pip install --no-cache-dir "./core[browser]" \
+      && playwright install --with-deps chromium \
+      && chmod -R a+rX /opt/ms-playwright; \
+    fi
+
 # Modelo de la palabra de activación (~6 MB). Se baja aquí, como root, porque
 # openWakeWord lo guarda dentro de site-packages: en ejecución el usuario jarvis
 # no podría escribir ahí. Además evita depender de la red en el primer arranque.

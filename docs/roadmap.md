@@ -40,6 +40,11 @@ desde el coche". Cada fase deja algo usable.
 - [x] Domótica: Home Assistant (entidades, estado y servicios) como módulo de
       conector, con matriz táctil en el HUD.
 - [x] Búsqueda web y lectura HTTPS pública con protección SSRF y fuentes visibles.
+- [x] Navegador real que JARVIS conduce paso a paso (Chromium headless): busca, entra
+      en un resultado, lee, vuelve. Se ve en una ventana del HUD y el usuario puede
+      pinchar sobre la misma pestaña. Opcional y apagado por defecto.
+- [x] Visor de ventanas flotantes: imagen, PDF, documento del workspace, vídeo de
+      YouTube y página web. Se arrastran, se redimensionan y conviven con el pizarrón.
 - [x] Correo saliente por SMTP (`send_email`), con aprobación humana.
 - [x] Calendario: agenda local con eventos, consulta por rango y vista en el
       mini calendario del HUD. Los recordatorios ya los cubre el motor de tareas.
@@ -47,6 +52,8 @@ desde el coche". Cada fase deja algo usable.
       VMs y contenedores. (Antes solo lo pintaba el HUD; el agente no tenía
       herramienta y no podía responder por Proxmox.)
 - [ ] Control del propio servidor Proxmox (arrancar/parar VMs y LXC).
+- [ ] Que el navegador rellene formularios de varios pasos por su cuenta (hoy escribe
+      en un campo y pulsa Enter; encadenar un alta entera aún lo dirige el usuario).
 - [x] Multiagente: subagentes "casa", "investigación", "código" y "agenda", cada uno
       con su propio conjunto acotado de herramientas. Heredan las aprobaciones y
       no pueden volver a delegar.

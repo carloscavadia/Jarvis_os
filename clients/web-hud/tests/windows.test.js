@@ -110,9 +110,11 @@ new Function("harness", [
   extractFunction("openWindow"),
   extractFunction("youtubeVideoId"),
   extractFunction("youtubeEmbedUrl"),
+  extractBinding("BROWSER_VIEWPORT"),
+  extractFunction("browserPagePoint"),
 ].join("\n"))(harness);
 
-const { clampWindowBox, nextWindowPosition, openWindow, closeWindow, closeTopWindow, focusWindow, youtubeEmbedUrl } = harness;
+const { clampWindowBox, nextWindowPosition, openWindow, closeWindow, closeTopWindow, focusWindow, youtubeEmbedUrl, browserPagePoint } = harness;
 const openWindowsMap = harness.openWindows();
 const VIEWPORT = { width: 1440, height: 900 };
 
@@ -299,6 +301,34 @@ for (const malo of [
   "",
 ]) {
   assert.strictEqual(youtubeEmbedUrl(malo), "", `no debería embeber: ${malo}`);
+}
+
+// ── Navegador: el clic tiene que caer donde el usuario cree ───────────────
+//
+// El navegador corre en el servidor a 1280×800, pero la captura se escala al
+// ancho de la ventana. Sin traducir las coordenadas, el clic aterriza en otro
+// sitio y parece que el navegador va por libre.
+
+{
+  // Ventana a media escala: pinchar en el centro de la imagen es el centro real.
+  const media = { width: 640, height: 400 };
+  assert.deepStrictEqual(browserPagePoint(320, 200, media), { x: 640, y: 400 });
+  assert.deepStrictEqual(browserPagePoint(0, 0, media), { x: 0, y: 0 });
+
+  // A escala 1:1 las coordenadas pasan tal cual.
+  const igual = { width: 1280, height: 800 };
+  assert.deepStrictEqual(browserPagePoint(100, 250, igual), { x: 100, y: 250 });
+
+  // Un clic en el borde, o fuera por un píxel de redondeo, se queda dentro de
+  // la pestaña: una coordenada de 1280 en una ventana de 1280 de ancho está
+  // fuera del área válida y Playwright la rechazaría.
+  const borde = browserPagePoint(640, 400, media);
+  assert.ok(borde.x < 1280 && borde.y < 800);
+  const fuera = browserPagePoint(-50, 99999, media);
+  assert.deepStrictEqual(fuera, { x: 0, y: 799 });
+
+  // Y si aún no se conoce el tamaño mostrado, no se rompe.
+  assert.deepStrictEqual(browserPagePoint(10, 10, null), { x: 10, y: 10 });
 }
 
 console.log("windows.test.js OK");

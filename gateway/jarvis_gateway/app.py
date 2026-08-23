@@ -285,6 +285,34 @@ def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | 
     return progress if isinstance(progress, dict) and "goal_id" in progress else None
 
 
+def _browser_view(name: str, result: ToolResult | None) -> dict[str, object] | None:
+    """Traduce un paso del navegador en la ventana que lo enseña.
+
+    Sale del resultado y no de los argumentos porque lo que hay que enseñar es
+    dónde acabó la navegación, que casi nunca es lo que se pidió: una búsqueda
+    redirige, un enlace lleva a otro sitio.
+
+    La captura no viaja aquí. Baja solo un número de versión, y el HUD pide la
+    imagen a `/browser/screenshot`. Meter un PNG en base64 en el mensaje del
+    WebSocket serían cientos de kilobytes por paso en un canal que también lleva
+    el texto que se está hablando.
+    """
+    if name != "browse" or result is None or result.is_error:
+        return None
+    try:
+        paso = json.loads(result.content)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(paso, dict) or "url" not in paso:
+        return None
+    return {
+        "url": str(paso.get("url", "")),
+        "title": str(paso.get("title", "")),
+        "version": int(paso.get("screenshot_version", 0) or 0),
+        "links": paso.get("links") if isinstance(paso.get("links"), list) else [],
+    }
+
+
 def _viewer_presentation(
     name: str, arguments: dict[str, object]
 ) -> dict[str, object] | None:
@@ -1324,6 +1352,85 @@ async def web_navigate(req: WebNavigateRequest):
     }
 
 
+# ── Navegador ──
+
+class BrowserActRequest(BaseModel):
+    """Lo que el usuario hace con el ratón sobre la captura del navegador."""
+
+    action: str
+    x: int = 0
+    y: int = 0
+    amount: int = 700
+
+
+@app.get("/browser/screenshot")
+async def browser_screenshot(token: str = "", v: int = 0):
+    """La última captura del navegador.
+
+    Autentica por `?token=` por lo mismo que `/workspace/file/raw`: un `<img
+    src>` no puede llevar cabeceras. El parámetro `v` no se usa aquí; está para
+    que el navegador no sirva la captura anterior desde su caché cuando la
+    página ha cambiado pero la URL no.
+    """
+    del v
+    if not runtime.valid_api_key(token):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas.")
+    from jarvis_core.browser import get_browser_session
+
+    sesion = get_browser_session(settings)
+    if not sesion.last_screenshot:
+        raise HTTPException(status_code=404, detail="Todavía no hay ninguna captura.")
+    return Response(
+        content=sesion.last_screenshot,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
+
+
+@app.post("/browser/act", dependencies=[Depends(require_api_key)])
+async def browser_act(req: BrowserActRequest):
+    """Un clic o un desplazamiento del usuario sobre la ventana del navegador.
+
+    Que el usuario pueda tocar la misma pestaña que conduce JARVIS es el punto:
+    si algo se atasca —una cookie que tapa la página, un campo que hay que
+    rellenar— se resuelve a mano y JARVIS sigue desde ahí, en vez de quedarse
+    dando vueltas.
+    """
+    if not settings.browser_enabled:
+        raise HTTPException(status_code=403, detail="El navegador está desactivado.")
+    from jarvis_core.browser import BrowserUnavailable, get_browser_session
+
+    sesion = get_browser_session(settings)
+    accion = (req.action or "").strip().lower()
+    try:
+        if accion == "click":
+            vista = await sesion.click_point(req.x, req.y)
+        elif accion == "scroll":
+            vista = await sesion.scroll(req.amount)
+        elif accion == "back":
+            vista = await sesion.back()
+        elif accion == "read":
+            vista = await sesion.read()
+        else:
+            raise HTTPException(status_code=400, detail="Acción no soportada.")
+    except BrowserUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Fallo al operar el navegador (%s): %s", accion, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+    return {
+        "url": vista.url,
+        "title": vista.title,
+        "version": sesion.screenshot_version,
+    }
+
+
 # ── Self-Healing Server & Log Monitor Endpoints ──
 
 @app.get("/config.js")
@@ -1953,6 +2060,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                     goal = _goal_progress(name, result)
                     if goal is not None:
                         payload["goal"] = goal
+                    navegador = _browser_view(name, result)
+                    if navegador is not None:
+                        # El usuario ve la página, no el JSON que lee el modelo:
+                        # enseñar las dos cosas es justo la redundancia que el
+                        # pizarrón y el chat tienen prohibida.
+                        payload.pop("output", None)
+                        payload.pop("output_clipped", None)
+                        payload["browser"] = navegador
                     music = _music_command(name, result)
                     if music is not None:
                         # La orden va al reproductor del HUD; el texto crudo de la

@@ -23,6 +23,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+      args:
+        # Chromium para que JARVIS conduzca un navegador de verdad. Añade unos
+        # 700 MB a la imagen, así que va aparte: ponlo a true en el .env
+        # (INSTALL_BROWSER=true) y reconstruye. Después hace falta también
+        # JARVIS_BROWSER_ENABLED=true para que la herramienta se registre.
+        INSTALL_BROWSER: ${INSTALL_BROWSER:-false}
     container_name: jarvis-gateway
     restart: always
     env_file:

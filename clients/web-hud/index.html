@@ -283,6 +283,13 @@
     .jwin-grip { display: none; }
   }
 
+  .browser-bar { display: flex; align-items: center; gap: 8px; }
+  .browser-url { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--core); }
+  .browser-shot { display: block; }
+  /* La captura se escala al ancho de la ventana; `browserPagePoint` traduce el
+     clic a las coordenadas reales de la pestaña. */
+  .browser-shot img { display: block; width: 100%; height: auto; cursor: pointer; }
+
   /* ── Vista de lista analizada ── */
   .ds-note {
     margin: 0 0 9px; padding: 6px 9px; border-radius: 5px;
@@ -2593,6 +2600,100 @@
       pre.textContent = `No se pudo leer el documento: ${error && error.message ? error.message : error}`;
     }
     return win;
+  }
+
+  // ── Navegador ─────────────────────────────────────────────────────────────
+  //: El navegador corre en el servidor, así que lo que se ve aquí es una
+  //: captura. Para que un clic caiga donde el usuario cree, hay que traducir
+  //: las coordenadas de la imagen mostrada —que puede estar escalada— a las de
+  //: la pestaña real. Sin esta conversión el clic aterriza en otro sitio y
+  //: parece que el navegador va por libre.
+  const BROWSER_VIEWPORT = { width: 1280, height: 800 };
+
+  function browserPagePoint(offsetX, offsetY, rendered) {
+    const ancho = rendered && rendered.width ? rendered.width : BROWSER_VIEWPORT.width;
+    const alto = rendered && rendered.height ? rendered.height : BROWSER_VIEWPORT.height;
+    const x = Math.round((offsetX / ancho) * BROWSER_VIEWPORT.width);
+    const y = Math.round((offsetY / alto) * BROWSER_VIEWPORT.height);
+    return {
+      x: Math.min(Math.max(x, 0), BROWSER_VIEWPORT.width - 1),
+      y: Math.min(Math.max(y, 0), BROWSER_VIEWPORT.height - 1),
+    };
+  }
+
+  function browserShotUrl(version) {
+    // La versión va en la URL para saltarse la caché: sin ella el navegador
+    // reutiliza la captura anterior y la ventana se queda congelada en el paso
+    // de antes aunque la página haya cambiado.
+    return `${gatewayHttpBase()}/browser/screenshot?token=${encodeURIComponent(hubKey())}&v=${version}`;
+  }
+
+  let browserState = { version: 0, url: "" };
+
+  // Enseña el paso que acaba de dar JARVIS, y deja que el usuario toque la
+  // misma pestaña. Eso último es el punto: si algo se atasca —un aviso de
+  // cookies que tapa la página, un campo que hay que rellenar— se resuelve a
+  // mano y JARVIS sigue desde ahí.
+  function showBrowserView(view) {
+    if (!view) return null;
+    browserState = { version: view.version || 0, url: view.url || "" };
+    const win = openWindow({ id: "browser", title: view.title || view.url || "NAVEGADOR", kind: "NAVEGADOR", width: 900, height: 660 });
+
+    const barra = document.createElement("div");
+    barra.className = "jwin-note browser-bar";
+    const direccion = document.createElement("span");
+    direccion.className = "browser-url";
+    direccion.textContent = view.url || "";
+    const atras = document.createElement("button");
+    atras.type = "button"; atras.className = "jwin-btn"; atras.textContent = "◀ ATRÁS";
+    atras.onclick = () => browserAct({ action: "back" });
+    const recargar = document.createElement("button");
+    recargar.type = "button"; recargar.className = "jwin-btn"; recargar.textContent = "↻";
+    recargar.setAttribute("aria-label", "Volver a mirar la página");
+    recargar.onclick = () => browserAct({ action: "read" });
+    barra.append(atras, recargar, direccion);
+    win.body.appendChild(barra);
+
+    const lienzo = document.createElement("div");
+    lienzo.className = "browser-shot";
+    const captura = document.createElement("img");
+    captura.src = browserShotUrl(browserState.version);
+    captura.alt = "Captura de la página que está viendo JARVIS";
+    captura.draggable = false;
+    captura.onerror = () => { captura.hidden = true; viewerNote(lienzo, "Todavía no hay captura de la página."); };
+    captura.addEventListener("click", event => {
+      const caja = captura.getBoundingClientRect();
+      const punto = browserPagePoint(event.clientX - caja.left, event.clientY - caja.top, caja);
+      browserAct({ action: "click", x: punto.x, y: punto.y });
+    });
+    lienzo.addEventListener("wheel", event => {
+      event.preventDefault();
+      browserAct({ action: "scroll", amount: Math.round(event.deltaY) || 700 });
+    }, { passive: false });
+    lienzo.appendChild(captura);
+    win.body.appendChild(lienzo);
+
+    win.refresh = (version, url, title) => {
+      browserState = { version, url: url || browserState.url };
+      captura.hidden = false;
+      captura.src = browserShotUrl(version);
+      direccion.textContent = browserState.url;
+      win.setTitle(title || browserState.url, "NAVEGADOR");
+    };
+    return win;
+  }
+
+  async function browserAct(orden) {
+    const win = openWindows.get("browser");
+    if (!win) return;
+    try {
+      const data = await connectorRequest("/browser/act", {
+        method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify(orden),
+      });
+      if (win.refresh) win.refresh(data.version || browserState.version + 1, data.url, data.title);
+    } catch (error) {
+      viewerNote(win.body, `El navegador no pudo hacerlo: ${error && error.message ? error.message : error}`);
+    }
   }
 
   //: Cómo se presenta cada tipo de petición. El icono y el título hacen que se

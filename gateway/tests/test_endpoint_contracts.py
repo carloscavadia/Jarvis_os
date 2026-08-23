@@ -32,13 +32,14 @@ TOKEN_IN_QUERY = {
     "/music/stream/{song_id}",
     "/music/cover/{cover_id}",
     "/workspace/file/raw",
+    "/browser/screenshot",
 }
 
 #: Tienen su propia credencial, la de n8n, no la del gateway.
 CONNECTOR_KEY = {"/connectors/chat", "/connectors/events"}
 
 EXPECTED_ROUTES = {
-    "/agents/swarm", "/chat",
+    "/agents/swarm", "/browser/act", "/browser/screenshot", "/chat",
     "/connector-modules", "/connector-modules/test", "/connector-modules/{name}",
     "/connectors/chat", "/connectors/events",
     "/goals/current", "/goals/{goal_id}/control",

@@ -105,6 +105,17 @@ CAPABILITIES: tuple[Capability, ...] = (
         ),
     ),
     Capability(
+        "navegador", "Conducir un navegador real: buscar, entrar en un resultado, leer, volver.",
+        tools=("browse",),
+        enabled_by="JARVIS_BROWSER_ENABLED",
+        how=(
+            "Necesita Chromium en el servidor: reconstruir la imagen con "
+            "INSTALL_BROWSER=true y poner JARVIS_BROWSER_ENABLED=true. Sirve para lo "
+            "que fetch_web_page no alcanza: páginas que se montan con JavaScript, "
+            "formularios y resultados que hay que ir abriendo."
+        ),
+    ),
+    Capability(
         "visor", "Enseñar algo para mirarlo: una imagen, un PDF, un documento, un vídeo o una web.",
         tools=("open_viewer", "show_in_workspace"),
         enabled_by="JARVIS_HUD_WORKSPACE_ENABLED",

@@ -245,6 +245,11 @@ class Settings:
     web_request_timeout_seconds: float = 15.0
     web_max_download_bytes: int = 1024 * 1024
     brave_search_api_key: str = ""
+    #: Navegador real (Playwright + Chromium). Apagado por defecto: Chromium pesa
+    #: cientos de megas y no todo el mundo lo quiere en su servidor.
+    browser_enabled: bool = False
+    browser_timeout_seconds: float = 25.0
+    browser_max_text_chars: int = 6000
     hud_workspace_enabled: bool = False
     connectors_enabled: bool = False
     connector_db_path: str = "data/jarvis_connectors.db"
@@ -544,6 +549,15 @@ class Settings:
                 ),
             ),
             internet_access_enabled=_get_bool("JARVIS_INTERNET_ACCESS_ENABLED", False),
+            browser_enabled=_get_bool("JARVIS_BROWSER_ENABLED", False),
+            browser_timeout_seconds=max(
+                5.0,
+                min(90.0, float(os.environ.get("JARVIS_BROWSER_TIMEOUT_SECONDS", "25"))),
+            ),
+            browser_max_text_chars=max(
+                1000,
+                min(20000, int(os.environ.get("JARVIS_BROWSER_MAX_TEXT_CHARS", "6000"))),
+            ),
             web_request_timeout_seconds=max(
                 3.0,
                 min(

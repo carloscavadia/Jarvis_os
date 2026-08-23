@@ -5,6 +5,8 @@ archivo nunca entra en la conversación. Y sale ya validada, porque lo que el
 HUD recibe acaba dentro de un `<img>` o de un `<iframe>`.
 """
 
+import json
+
 from fastapi.testclient import TestClient
 from jarvis_gateway import app as gateway_module
 from jarvis_gateway import runtime
@@ -103,3 +105,77 @@ def test_sin_llave_no_se_sirve_nada(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime.settings, "workspace_root", str(raiz))
     with TestClient(gateway_module.app) as client:
         assert client.get("/workspace/file/raw?path=informe.pdf&token=no").status_code == 401
+
+
+# ── Navegador ────────────────────────────────────────────────────────────────
+
+def test_el_paso_del_navegador_no_manda_la_captura_por_el_websocket():
+    """Baja un número de versión, no el PNG.
+
+    Un PNG en base64 son cientos de kilobytes por paso, en el mismo canal que
+    lleva el texto que se está hablando. El HUD pide la imagen aparte.
+    """
+    from jarvis_core.tools.base import ToolResult
+    from jarvis_gateway.app import _browser_view
+
+    resultado = ToolResult(content=json.dumps({
+        "url": "https://cocina.example/paella",
+        "title": "La paella",
+        "text": "Arroz y azafrán",
+        "links": [{"index": 1, "text": "Siguiente", "url": "https://cocina.example/2"}],
+        "screenshot_version": 4,
+    }))
+    vista = _browser_view("browse", resultado)
+    assert vista["version"] == 4
+    assert vista["url"] == "https://cocina.example/paella"
+    assert "text" not in vista
+
+
+def test_un_paso_fallido_no_abre_ventana():
+    from jarvis_core.tools.base import ToolResult
+    from jarvis_gateway.app import _browser_view
+
+    assert _browser_view("browse", ToolResult(content="no se pudo", is_error=True)) is None
+    assert _browser_view("fetch_web_page", ToolResult(content='{"url":"x"}')) is None
+
+
+def test_la_captura_pide_llave():
+    with TestClient(gateway_module.app) as client:
+        assert client.get("/browser/screenshot?token=no-es").status_code == 401
+
+
+def test_sin_captura_todavia_no_inventa_una():
+    from jarvis_core import browser as browser_module
+
+    browser_module.reset_browser_session()
+    with TestClient(gateway_module.app) as client:
+        assert client.get("/browser/screenshot?token=ci-test-key").status_code == 404
+
+
+def test_la_captura_no_se_cachea(monkeypatch):
+    """Si el navegador la sirviera desde caché, la ventana se quedaría congelada."""
+    from jarvis_core import browser as browser_module
+
+    browser_module.reset_browser_session()
+    sesion = browser_module.get_browser_session(runtime.settings)
+    sesion.last_screenshot = b"\x89PNG-de-mentira"
+    try:
+        with TestClient(gateway_module.app) as client:
+            respuesta = client.get("/browser/screenshot?token=ci-test-key&v=3")
+        assert respuesta.status_code == 200
+        assert respuesta.headers["content-type"] == "image/png"
+        assert respuesta.headers["cache-control"] == "no-store"
+    finally:
+        browser_module.reset_browser_session()
+
+
+def test_con_el_navegador_apagado_no_se_puede_operar(monkeypatch):
+    monkeypatch.setattr(runtime.settings, "browser_enabled", False)
+    with TestClient(gateway_module.app) as client:
+        respuesta = client.post("/browser/act", headers=KEY, json={"action": "click", "x": 1, "y": 1})
+    assert respuesta.status_code == 403
+
+
+def test_operar_el_navegador_pide_llave():
+    with TestClient(gateway_module.app) as client:
+        assert client.post("/browser/act", json={"action": "back"}).status_code == 401
