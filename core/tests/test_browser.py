@@ -30,6 +30,7 @@ class FakePage:
         self.rueda = []
         self.rellenos = []
         self.capturas = 0
+        self.esperas = []
         self.mouse = self
         self.keyboard = self
 
@@ -56,7 +57,12 @@ class FakePage:
         self.capturas += 1
         return b"PNG" + str(self.capturas).encode()
 
-    async def wait_for_load_state(self, *args, **kwargs):
+    async def wait_for_load_state(self, estado=None, **kwargs):
+        self.esperas.append(estado)
+        # `networkidle` no llega nunca en sitios que sondean sin parar. El doble
+        # lo imita: si el codigo no lo tolerase, cada paso moriria ahi.
+        if estado == "networkidle":
+            raise TimeoutError("networkidle nunca llega en este sitio")
         return None
 
     async def fill(self, selector, text):
@@ -298,3 +304,30 @@ def test_un_destino_privado_vuelve_como_error_util_y_no_como_excepcion(sesion):
 def test_pulsar_sin_numero_se_rechaza(sesion):
     s, _ = sesion
     assert asyncio.run(BrowseTool(s).run(action="click")).is_error
+
+
+def test_se_espera_a_que_la_pagina_se_pinte_antes_de_capturar(sesion):
+    """La captura no puede tomarse en `domcontentloaded`.
+
+    En un sitio montado con JavaScript, ese momento llega mucho antes de que
+    haya nada en pantalla: la foto sale siendo el esqueleto de carga. Y como no
+    se volvia a capturar, la ventana se quedaba «cargando» para siempre aunque
+    la pagina ya estuviera lista por dentro.
+    """
+    s, lanzador = sesion
+    asyncio.run(s.open("https://cocina.example/paella"))
+    assert "load" in lanzador.page.esperas
+    assert "networkidle" in lanzador.page.esperas
+
+
+def test_que_networkidle_no_llegue_nunca_no_rompe_el_paso(sesion):
+    """Un sitio que sondea al servidor sin parar nunca queda quieto.
+
+    Que la espera se agote no es un error: es que la pagina ya no va a estar mas
+    quieta. Si se propagase, YouTube y cualquier sitio con sondeo continuo
+    fallarian en cada paso.
+    """
+    s, _ = sesion
+    vista = asyncio.run(s.open("https://cocina.example/paella"))
+    assert vista.title == "La paella de verdad"
+    assert s.last_screenshot.startswith(b"PNG")

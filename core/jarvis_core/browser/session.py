@@ -246,8 +246,28 @@ class BrowserSession:
             )
         return self._page
 
+    async def _settle(self, page) -> None:
+        """Deja que la página acabe de pintarse antes de mirarla.
+
+        Las navegaciones esperan a `domcontentloaded`, que en un sitio montado
+        con JavaScript llega mucho antes de que haya nada en pantalla. Si se
+        captura ahí, la foto es el esqueleto de carga —y como no se volvía a
+        capturar nunca, la ventana se quedaba «cargando» para siempre aunque la
+        página ya estuviera lista por dentro.
+
+        Las dos esperas van con presupuesto y sin propagar el fallo: `networkidle`
+        no llega nunca en sitios que sondean el servidor sin parar, y que no
+        llegue no es un error, es que la página ya no va a estar más quieta.
+        """
+        for estado, presupuesto in (("load", 6000), ("networkidle", 3000)):
+            try:
+                await page.wait_for_load_state(estado, timeout=presupuesto)
+            except Exception:
+                pass
+
     async def _look(self, page) -> PageView:
         """Después de cada paso: dónde estamos, qué pone y qué se puede pulsar."""
+        await self._settle(page)
         url = page.url
         # La redirección es el caso que importa: la comprobación de antes miró la
         # URL que pedimos, no adonde hemos acabado.

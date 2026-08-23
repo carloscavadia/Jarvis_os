@@ -2721,6 +2721,22 @@
   }
 
   let browserState = { version: 0, url: "" };
+  let browserRefreshTimers = [];
+
+  //: Cuándo se vuelve a mirar la página sola, en milisegundos desde el paso.
+  //: El servidor ya espera a que se asiente antes de capturar, pero un sitio
+  //: pesado puede seguir pintando después de eso; sin estos dos vistazos, lo que
+  //: se quedó a medias se queda a medias en pantalla para siempre.
+  const BROWSER_REFRESH_DELAYS = [1500, 4000];
+
+  function programarRefrescoDelNavegador() {
+    for (const timer of browserRefreshTimers) clearTimeout(timer);
+    // Los refrescos piden 'read', que no vuelve a programar nada: si lo hiciera,
+    // la ventana estaría recapturando la página para siempre.
+    browserRefreshTimers = BROWSER_REFRESH_DELAYS.map(
+      espera => setTimeout(() => { if (openWindows.has("browser")) browserAct({ action: "read" }); }, espera),
+    );
+  }
 
   // Enseña el paso que acaba de dar JARVIS, y deja que el usuario toque la
   // misma pestaña. Eso último es el punto: si algo se atasca —un aviso de
@@ -2765,6 +2781,8 @@
     lienzo.appendChild(captura);
     win.body.appendChild(lienzo);
 
+    programarRefrescoDelNavegador();
+
     win.refresh = (version, url, title) => {
       browserState = { version, url: url || browserState.url };
       captura.hidden = false;
@@ -2783,6 +2801,7 @@
         method: "POST", headers: connectorApiHeaders(true), body: JSON.stringify(orden),
       });
       if (win.refresh) win.refresh(data.version || browserState.version + 1, data.url, data.title);
+      if (orden.action !== "read") programarRefrescoDelNavegador();
     } catch (error) {
       viewerNote(win.body, `El navegador no pudo hacerlo: ${error && error.message ? error.message : error}`);
     }

@@ -39,6 +39,12 @@ function extractConst(name) {
   return match[0] + `\nharness.${name} = ${name};`;
 }
 
+function extractConstList(name) {
+  const match = new RegExp(`\\n  const ${name} = \\[[^\\]]*\\];`).exec(js);
+  if (!match) throw new Error(`No encuentro la lista ${name}`);
+  return match[0] + `\nharness.${name} = ${name};`;
+}
+
 function extractBinding(name) {
   const match = new RegExp(`\\n  (?:const|let) ${name} = [^\\n]*;`).exec(js);
   if (!match) throw new Error(`No encuentro la variable ${name}`);
@@ -407,6 +413,49 @@ for (const malo of [
 
   // Y si aún no se conoce el tamaño mostrado, no se rompe.
   assert.deepStrictEqual(browserPagePoint(10, 10, null), { x: 10, y: 10 });
+}
+
+// ── El navegador vuelve a mirar solo ──────────────────────────────────────
+//
+// El servidor ya espera a que la página se asiente antes de capturar, pero un
+// sitio pesado sigue pintando después. Sin estos vistazos, lo que se quedó a
+// medias se queda a medias en pantalla para siempre: es lo que se veía como
+// «el sitio se queda loading».
+
+{
+  const programadas = [];
+  const realSetTimeout = global.setTimeout;
+  const realClearTimeout = global.clearTimeout;
+  global.setTimeout = (fn, ms) => { programadas.push({ fn, ms }); return programadas.length; };
+  global.clearTimeout = () => {};
+
+  const h2 = {};
+  new Function("harness", [
+    extractBinding("browserRefreshTimers"),
+    extractConstList("BROWSER_REFRESH_DELAYS"),
+    extractFunction("programarRefrescoDelNavegador"),
+  ].join("\n"))(h2);
+  // `openWindows` y `browserAct` los resuelve el cierre en tiempo de ejecución;
+  // aquí solo se comprueba el calendario, que es lo que decide si la ventana se
+  // desatasca o no.
+  global.openWindows = new Map([["browser", {}]]);
+  let lecturas = 0;
+  global.browserAct = orden => { lecturas += 1; assert.strictEqual(orden.action, "read"); };
+
+  h2.programarRefrescoDelNavegador();
+  assert.deepStrictEqual(programadas.map(p => p.ms), [1500, 4000], "hacen falta dos vistazos, no uno");
+
+  for (const p of programadas) p.fn();
+  assert.strictEqual(lecturas, 2, "los dos refrescos tienen que pedir una captura nueva");
+
+  // Y un refresco NO puede volver a programarse a sí mismo: sería recapturar la
+  // página para siempre.
+  const antes = programadas.length;
+  global.browserAct({ action: "read" });
+  assert.strictEqual(programadas.length, antes, "un 'read' no puede encadenar más refrescos");
+
+  global.setTimeout = realSetTimeout;
+  global.clearTimeout = realClearTimeout;
 }
 
 console.log("windows.test.js OK");
