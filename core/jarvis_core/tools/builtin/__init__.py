@@ -192,7 +192,9 @@ def build_default_registry(
     # La introspección va la última: describe lo que hay registrado, así que
     # tiene que ver el registro completo.
     from jarvis_core.tools.builtin.introspection import register_introspection_tool
+    from jarvis_core.tools.builtin.requests_tool import register_request_tool
 
+    register_request_tool(registry)
     register_introspection_tool(registry, settings)
     if llm is not None and settings.subagents_enabled:
         # Al final a propósito: los especialistas se ofrecen según lo que de

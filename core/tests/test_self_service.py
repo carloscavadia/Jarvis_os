@@ -185,3 +185,89 @@ def test_el_prompt_le_prohibe_rendirse_sin_mirar():
     assert "Rendirse sin haber mirado" in prompt
     # Y le dice qué hacer después de averiguarlo.
     assert "learn_skill" in prompt
+
+
+def test_el_prompt_le_dice_que_pida_lo_que_falta_formalmente():
+    """Mencionarlo de pasada no basta: se lee y se olvida."""
+    prompt = Settings().system_prompt()
+    assert "request_from_user" in prompt
+    assert "Nunca pidas que te escriban un secreto en el chat" in prompt
+
+
+def test_el_prompt_le_prohibe_quedarse_parado_esperando():
+    """Bloquearse por una credencial cuando el resto era posible es rendirse."""
+    assert "rendirse con otro nombre" in Settings().system_prompt()
+
+
+# ── Pedir lo que hace falta ──
+
+def _pedir(**campos):
+    from jarvis_core.tools.builtin.requests_tool import RequestFromUserTool
+
+    return asyncio.run(RequestFromUserTool().run(**campos))
+
+
+def test_una_peticion_valida_se_acepta():
+    resultado = _pedir(
+        kind="credential",
+        what="el token de API de Proxmox",
+        why="para leer el estado del servidor",
+        where="JARVIS_PROXMOX_TOKEN_SECRET en el .env",
+    )
+    assert not resultado.is_error
+
+
+def test_pedir_una_credencial_sin_decir_donde_se_pone_se_rechaza():
+    """Si no, el usuario se queda con el problema pero sin la solución."""
+    resultado = _pedir(kind="credential", what="un token", why="para algo")
+    assert resultado.is_error
+    assert "dónde se pone" in resultado.content
+
+
+def test_una_peticion_sin_para_que_se_rechaza():
+    """El usuario decide mejor si sabe qué desbloquea."""
+    assert _pedir(kind="setting", what="una URL", why="  ").is_error
+
+
+def test_una_decision_sin_alternativas_no_es_una_decision():
+    assert _pedir(kind="decision", what="¿cómo lo hago?", why="hay dos formas").is_error
+
+
+def test_una_decision_con_alternativas_si():
+    assert not _pedir(
+        kind="decision", what="¿cómo consulto Proxmox?", why="hay dos vías",
+        options=["Token de API", "Por SSH"],
+    ).is_error
+
+
+def test_el_tipo_tiene_que_ser_uno_de_los_conocidos():
+    resultado = _pedir(kind="telepatia", what="x", why="y")
+    assert resultado.is_error
+    assert "credential" in resultado.content
+
+
+def test_la_descripcion_prohibe_pedir_secretos_por_el_chat():
+    """Un token tecleado en la conversación entra en el historial y viaja al
+    modelo en cada turno posterior."""
+    from jarvis_core.tools.builtin.requests_tool import RequestFromUserTool
+
+    descripcion = RequestFromUserTool().definition()["description"]
+    assert "nunca pidas que te lo escriban en el chat" in descripcion
+
+
+def test_el_gateway_convierte_la_peticion_en_algo_presentable():
+    from jarvis_gateway.app import _capability_request
+
+    presentable = _capability_request("request_from_user", {
+        "kind": "credential", "what": "El token de Proxmox",
+        "why": "para leer el servidor", "where": "JARVIS_PROXMOX_TOKEN_SECRET",
+    })
+
+    assert presentable["kind"] == "credential"
+    assert presentable["where"] == "JARVIS_PROXMOX_TOKEN_SECRET"
+
+
+def test_otras_herramientas_no_generan_tarjeta():
+    from jarvis_gateway.app import _capability_request
+
+    assert _capability_request("create_file", {"path": "x"}) is None

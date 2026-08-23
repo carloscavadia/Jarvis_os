@@ -242,6 +242,29 @@ def _workspace_presentation(
     return presentation
 
 
+def _capability_request(name: str, arguments: dict[str, object]) -> dict[str, object] | None:
+    """Convierte una petición del agente en algo que el HUD puede presentar.
+
+    Va por su propio campo y no por el texto de la respuesta: una petición
+    perdida en un párrafo se lee y se olvida; una tarjeta con lo que falta y
+    dónde ponerlo se puede accionar.
+    """
+    if name != "request_from_user":
+        return None
+    kind = str(arguments.get("kind", ""))
+    what = str(arguments.get("what", "")).strip()
+    if not kind or not what:
+        return None
+    opciones = arguments.get("options")
+    return {
+        "kind": kind,
+        "what": what[:120],
+        "why": str(arguments.get("why", "")).strip()[:300],
+        "where": str(arguments.get("where", "")).strip()[:300],
+        "options": [str(o)[:80] for o in opciones][:5] if isinstance(opciones, list) else [],
+    }
+
+
 def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | None:
     if (
         name
@@ -1860,6 +1883,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 presentation = _workspace_presentation(name, arguments)
                 if presentation is not None:
                     payload["presentation"] = presentation
+                peticion = _capability_request(name, arguments)
+                if peticion is not None:
+                    payload["request"] = peticion
                 if result is not None:
                     if presentation is None:
                         output, clipped = _public_tool_output(result.content)

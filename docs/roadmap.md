@@ -75,6 +75,9 @@ desde el coche". Cada fase deja algo usable.
       exactamente, y guardar lo resuelto como habilidad o memoria.
 - [ ] Que proponga y registre servidores MCP por su cuenta cuando la capacidad
       exista ahí fuera.
+- [x] Pedir lo que le falta (`request_from_user`): el HUD lo presenta como una
+      tarjeta accionable, con el dónde separado del qué. Un secreto nunca se pide
+      por el chat: acabaría en el historial y viajaría al modelo cada turno.
 - [ ] Que detecte credenciales configuradas sin herramienta que las use y lo avise.
 
 ## Ideas / backlog
