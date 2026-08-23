@@ -57,10 +57,33 @@ class Task:
     attempts: int = 0
     last_error: str = ""
     last_result: str = ""
+    #: Cuándo vence el entregable. Es OTRA cosa que `next_run`, y por eso es un
+    #: campo aparte: `next_run` es cuándo actúa JARVIS y `due_at` es cuándo tiene
+    #: que estar hecho. Confundirlos era justo lo que impedía anotar un plazo:
+    #: programar «el informe vence el viernes» hacía que el viernes JARVIS
+    #: ejecutara algo, en vez de avisar de que vencía.
+    due_at: float | None = None
+    #: Marca de que ya se avisó del vencimiento, para no repetirlo en cada vuelta
+    #: del planificador. Una tarea vencida se ve en el HUD todo el tiempo; el
+    #: aviso se manda una vez.
+    due_notified: bool = False
 
     @property
     def is_recurring(self) -> bool:
         return self.kind == "recurring" and bool(self.interval_seconds)
+
+    def is_overdue(self, now: float) -> bool:
+        """Vencida: tenía plazo, pasó, y sigue sin cerrarse.
+
+        Se calcula, no se guarda. Un estado 'overdue' almacenado necesitaría que
+        algo lo fuese poniendo al día y quedaría desfasado en cuanto el
+        planificador estuviera parado un rato.
+        """
+        return (
+            self.due_at is not None
+            and self.due_at < now
+            and self.status in ACTIVE_STATUSES
+        )
 
 
 @dataclass
@@ -119,6 +142,8 @@ class TaskStore:
                 "attempts": "INTEGER NOT NULL DEFAULT 0",
                 "last_error": "TEXT NOT NULL DEFAULT ''",
                 "last_result": "TEXT NOT NULL DEFAULT ''",
+                "due_at": "REAL",
+                "due_notified": "INTEGER NOT NULL DEFAULT 0",
             }
             for column, definition in added.items():
                 if column not in existing:
@@ -136,6 +161,11 @@ class TaskStore:
 
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(status, next_run)"
+            )
+            # El calendario pregunta por rango de fechas de entrega, no de
+            # ejecución: sin este índice esa consulta recorre la tabla entera.
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at)"
             )
             self._conn.execute(
                 """
@@ -175,6 +205,8 @@ class TaskStore:
             attempts=r["attempts"],
             last_error=r["last_error"],
             last_result=r["last_result"],
+            due_at=r["due_at"],
+            due_notified=bool(r["due_notified"]),
         )
 
     # ── Alta y consulta ──────────────────────────────────────────────────────
@@ -188,6 +220,7 @@ class TaskStore:
         *,
         priority: str = "normal",
         category: str = "",
+        due_at: float | None = None,
     ) -> int:
         kind = "recurring" if interval_seconds else "once"
         if priority not in PRIORITIES:
@@ -197,11 +230,11 @@ class TaskStore:
                 """
                 INSERT INTO tasks
                     (title, prompt, kind, next_run, interval_seconds, enabled,
-                     created_at, status, priority, category)
-                VALUES (?, ?, ?, ?, ?, 1, ?, 'pending', ?, ?)
+                     created_at, status, priority, category, due_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?, 'pending', ?, ?, ?)
                 """,
                 (title, prompt, kind, next_run, interval_seconds, time.time(),
-                 priority, category.strip()[:64]),
+                 priority, category.strip()[:64], due_at),
             )
             self._conn.commit()
             return int(cur.lastrowid)
@@ -439,6 +472,65 @@ class TaskStore:
             )
         return self.get(task_id)
 
+    # ── Entregables ──────────────────────────────────────────────────────────
+
+    def due_between(self, start: float, end: float) -> list[Task]:
+        """Tareas cuya ENTREGA cae en el rango. Es lo que consulta el calendario.
+
+        Ojo con qué fecha se filtra: por `due_at`, no por `next_run`. Preguntar
+        por la de ejecución devolvería el día en que JARVIS avisa, que no es el
+        día en que la cosa vence, y el calendario mostraría los avisos en vez de
+        los plazos.
+        """
+        # Lo cancelado no aparece: cancelar dice que eso ya no va a hacerse, y
+        # seguir pintándolo en el calendario sería enseñar un plazo que no
+        # existe. Lo cumplido sí sigue saliendo —el HUD lo tacha—, porque un día
+        # pasado tiene que poder contar lo que se entregó.
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM tasks WHERE due_at IS NOT NULL "
+                "AND due_at >= ? AND due_at < ? AND status != 'cancelled' "
+                "ORDER BY due_at ASC",
+                (start, end),
+            ).fetchall()
+        return [self._row_to_task(row) for row in rows]
+
+    def overdue(self, now: float, *, only_unnotified: bool = False) -> list[Task]:
+        """Lo que venció y sigue abierto."""
+        query = (
+            "SELECT * FROM tasks WHERE due_at IS NOT NULL AND due_at < ? "
+            f"AND status IN ({','.join('?' * len(ACTIVE_STATUSES))})"
+        )
+        params: list[object] = [now, *ACTIVE_STATUSES]
+        if only_unnotified:
+            query += " AND due_notified = 0"
+        query += " ORDER BY due_at ASC"
+        with self._lock:
+            rows = self._conn.execute(query, params).fetchall()
+        return [self._row_to_task(row) for row in rows]
+
+    def mark_due_notified(self, task_id: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE tasks SET due_notified = 1 WHERE id = ?", (task_id,)
+            )
+            self._conn.commit()
+
+    def complete(self, task_id: int) -> Task | None:
+        """Cierra un entregable a mano.
+
+        Hacía falta un cierre propio: 'done' solo lo ponía el planificador tras
+        ejecutar, y cancelar dice otra cosa —que ya no va a hacerse—. Un
+        entregable que entregas no está cancelado.
+        """
+        with self._lock:
+            self._conn.execute(
+                "UPDATE tasks SET status = 'done', enabled = 0 WHERE id = ?",
+                (task_id,),
+            )
+            self._conn.commit()
+        return self.get(task_id)
+
     def update(
         self,
         task_id: int,
@@ -447,9 +539,19 @@ class TaskStore:
         prompt: str | None = None,
         priority: str | None = None,
         category: str | None = None,
+        due_at: float | None = None,
+        clear_due: bool = False,
     ) -> Task | None:
         fields: list[str] = []
         params: list[object] = []
+        if clear_due:
+            # Quitar el plazo también rearma el aviso: si más adelante se le pone
+            # otra fecha, tiene que volver a avisar.
+            fields.append("due_at=NULL")
+            fields.append("due_notified=0")
+        elif due_at is not None:
+            fields.append("due_at=?"); params.append(due_at)
+            fields.append("due_notified=0")
         if title is not None:
             fields.append("title=?"); params.append(title.strip()[:200])
         if prompt is not None:

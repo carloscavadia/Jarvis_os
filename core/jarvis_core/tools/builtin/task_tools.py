@@ -16,6 +16,10 @@ from jarvis_core.tools.base import Tool, ToolResult
 
 MIN_REPEAT_SECONDS = 60.0
 MAX_TEXT_CHARS = 4000
+#: Con cuánta antelación se avisa de un entregable cuando no se dijo otra cosa.
+#: Un día: lo bastante pronto para poder hacer algo, lo bastante tarde para que
+#: el aviso siga siendo sobre esto y no una nota que se olvida.
+DUE_REMINDER_LEAD_SECONDS = 86400.0
 
 
 def resolve_zone(name: str = "") -> datetime.tzinfo | None:
@@ -108,6 +112,16 @@ class ScheduleTaskTool(Tool):
                 "type": "string", "maxLength": 64,
                 "description": "Etiqueta para agrupar (casa, trabajo, salud…).",
             },
+            "due_at": {
+                "type": "string",
+                "description": (
+                    "Fecha/hora ISO 8601 en que VENCE el entregable. Es distinto de 'at': "
+                    "'at' es cuándo actúas tú, 'due_at' es cuándo tiene que estar hecho. "
+                    "Si el usuario dice «para el viernes», eso es 'due_at'. Ponlo siempre "
+                    "que haya un plazo: aparece en el calendario, avisa la víspera y, si "
+                    "pasa sin cerrarse, queda marcado como vencido."
+                ),
+            },
         },
         "required": ["title", "prompt"],
         "additionalProperties": False,
@@ -126,6 +140,7 @@ class ScheduleTaskTool(Tool):
         repeat_seconds: float | None = None,
         priority: str = "normal",
         category: str = "",
+        due_at: str | None = None,
         **kwargs: Any,
     ) -> ToolResult:
         title = title.strip()
@@ -145,20 +160,41 @@ class ScheduleTaskTool(Tool):
                 content=f"'repeat_seconds' debe ser finito y al menos {MIN_REPEAT_SECONDS:g}.",
                 is_error=True,
             )
+        vence: float | None = None
+        if due_at:
+            try:
+                vence = _resolve_next_run(None, due_at, self._zone)
+            except (TypeError, ValueError, OverflowError) as exc:
+                return ToolResult(content=f"Fecha de entrega inválida: {exc}", is_error=True)
+            if not math.isfinite(vence):
+                return ToolResult(content="Fecha de entrega inválida.", is_error=True)
+
         try:
             next_run = _resolve_next_run(delay_seconds, at, self._zone)
         except (TypeError, ValueError, OverflowError) as exc:
             return ToolResult(content=f"Fecha/hora inválida: {exc}", is_error=True)
+
+        # Con plazo y sin momento de actuar, el aviso se pone solo la víspera.
+        # Es lo que hace que anotar «vence el viernes» sirva de algo sin tener
+        # que calcular a mano cuándo recordarlo; y si el plazo es más inmediato
+        # que la antelación, el aviso se pega al plazo en vez de irse al pasado.
+        if vence is not None and at is None and delay_seconds is None:
+            next_run = max(vence - DUE_REMINDER_LEAD_SECONDS, time.time() + 60)
+
         if not math.isfinite(next_run) or next_run < time.time() - 1:
             return ToolResult(content="La primera ejecución no puede estar en el pasado.", is_error=True)
 
         task_id = self._store.add(
             title=title, prompt=prompt, next_run=next_run,
             interval_seconds=repeat_seconds, priority=priority, category=category,
+            due_at=vence,
         )
         when = format_when(next_run, self._zone)
         recur = f", {humanize_interval(repeat_seconds)}" if repeat_seconds else ""
-        return ToolResult(content=f"Tarea #{task_id} '{title}' programada para {when}{recur}.")
+        plazo = f" Vence el {format_when(vence, self._zone)}." if vence is not None else ""
+        return ToolResult(
+            content=f"Tarea #{task_id} '{title}' programada para {when}{recur}.{plazo}"
+        )
 
 
 class ListTasksTool(Tool):
@@ -187,6 +223,7 @@ class ListTasksTool(Tool):
         tasks = self._store.list(include_disabled=bool(include_finished))
         if not tasks:
             return ToolResult(content="No hay tareas programadas.")
+        ahora = time.time()
         lines = []
         for t in tasks:
             when = format_when(t.next_run, self._zone)
@@ -202,9 +239,42 @@ class ListTasksTool(Tool):
             # sin él, «programada» y «lleva tres días fallando» se ven igual.
             if t.last_error:
                 flags.append(f"último fallo: {t.last_error[:80]}")
+            # El plazo va delante de todo lo demás: entre «se ejecuta el martes»
+            # y «venció hace dos días», lo segundo es lo que hay que ver primero.
+            if t.is_overdue(ahora):
+                flags.insert(0, f"VENCIDA el {format_when(t.due_at, self._zone)}")
+            elif t.due_at is not None:
+                flags.insert(0, f"vence {format_when(t.due_at, self._zone)}")
             suffix = f"  [{' · '.join(flags)}]" if flags else ""
             lines.append(f"#{t.id} '{t.title}' → {when}{recur}{suffix}")
         return ToolResult(content="\n".join(lines))
+
+
+class CompleteTaskTool(Tool):
+    name = "complete_task"
+    description = (
+        "Marca un entregable como HECHO. Úsalo cuando el usuario diga que ya lo "
+        "entregó, lo terminó o lo resolvió. No es lo mismo que cancel_task: cancelar "
+        "dice que ya no va a hacerse, y esto dice que está hecho."
+    )
+    input_schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {"task_id": {"type": "integer", "description": "Id de la tarea."}},
+        "required": ["task_id"],
+        "additionalProperties": False,
+    }
+
+    def __init__(self, store: TaskStore, zone: datetime.tzinfo | None = None) -> None:
+        self._store = store
+        self._zone = zone
+
+    async def run(self, task_id: int = 0, **kwargs: Any) -> ToolResult:
+        del kwargs
+        tarea = self._store.get(int(task_id))
+        if tarea is None:
+            return ToolResult(content=f"No existe la tarea #{task_id}.", is_error=True)
+        self._store.complete(int(task_id))
+        return ToolResult(content=f"Tarea #{task_id} '{tarea.title}' marcada como hecha.")
 
 
 class CancelTaskTool(Tool):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import hashlib
 import json
 import logging
@@ -39,6 +40,7 @@ from jarvis_core.offline import offline_violations
 from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.tasks.scheduler import Scheduler
 from jarvis_core.tasks.store import Task
+from jarvis_core.tools.builtin.task_tools import resolve_zone
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.tools.clipping import clip_structured
@@ -443,10 +445,30 @@ async def _on_task_fire(task: Task) -> str:
     return reply.text
 
 
+async def _on_task_overdue(task: Task) -> None:
+    """Avisa de un entregable que se pasó de fecha.
+
+    No pasa por el modelo a propósito. Perseguir un plazo es un hecho, no una
+    redacción: gastar una llamada al proveedor —y decenas de segundos— para
+    decir «venció el informe» sería caro y además podría fallar justo cuando
+    hace falta. El aviso sale directo, y JARVIS ya lo tiene delante en el
+    listado si el usuario pregunta.
+    """
+    cuando = datetime.datetime.fromtimestamp(
+        task.due_at or time.time(), tz=resolve_zone(settings.timezone)
+    ).strftime("%d/%m a las %H:%M")
+    await notifier.broadcast(
+        f"Venció «{task.title}» ({cuando}) y sigue sin cerrarse.",
+        source="task",
+        task_title=task.title,
+    )
+
+
 scheduler = Scheduler(
     store=sessions.tasks,
     on_fire=_on_task_fire,
     poll_interval=settings.scheduler_poll_seconds,
+    on_overdue=_on_task_overdue,
 )
 
 
@@ -883,6 +905,30 @@ async def calendar_events(days: int = 30, limit: int = 200) -> dict[str, object]
     eventos = sessions.calendar.range(
         ahora - 86400, ahora + ventana * 86400, limit=max(1, min(int(limit), 500))
     )
+    # Los entregables entran en el calendario, pero NO se copian a su base:
+    # la tarea sigue siendo el único sitio donde vive su plazo. Duplicar el dato
+    # obligaría a mantener dos copias sincronizadas, y en cuanto una se moviera
+    # el calendario estaría mintiendo. Aquí se refleja al vuelo, con `source`
+    # para que el HUD sepa qué es cada cosa.
+    vencimientos = sessions.tasks.due_between(ahora - 86400, ahora + ventana * 86400)
+    entregas = [
+        {
+            "id": f"task-{tarea.id}",
+            "task_id": tarea.id,
+            "title": tarea.title,
+            "description": tarea.prompt,
+            "location": "",
+            "starts_at": tarea.due_at,
+            "ends_at": tarea.due_at,
+            "all_day": False,
+            "source": "task",
+            "status": tarea.status,
+            "priority": tarea.priority,
+            "overdue": tarea.is_overdue(ahora),
+        }
+        for tarea in vencimientos
+        if tarea.due_at is not None
+    ]
     return {
         "events": [
             {
@@ -893,10 +939,12 @@ async def calendar_events(days: int = 30, limit: int = 200) -> dict[str, object]
                 "starts_at": e.starts_at,
                 "ends_at": e.ends_at,
                 "all_day": e.all_day,
+                "source": "calendar",
             }
             for e in eventos
         ],
-        "total": len(eventos),
+        "deliverables": entregas,
+        "total": len(eventos) + len(entregas),
     }
 
 

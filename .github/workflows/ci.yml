@@ -65,6 +65,9 @@ jobs:
       - name: Test HUD floating windows
         run: node clients/web-hud/tests/windows.test.js
 
+      - name: Test HUD day view
+        run: node clients/web-hud/tests/day.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -19,6 +19,8 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from jarvis_core.tools.builtin.task_tools import DUE_REMINDER_LEAD_SECONDS
+
 from jarvis_gateway import runtime
 from jarvis_gateway.runtime import require_api_key
 
@@ -37,11 +39,17 @@ class TaskCreateRequest(BaseModel):
     prompt: str
     next_run: float | None = None
     interval_seconds: float | None = None
+    #: Cuándo vence el entregable, si lo hay. Distinto de `next_run`, que es
+    #: cuándo actúa JARVIS. Sin este campo, el botón «+ TAREA» del HUD no podía
+    #: crear nada con plazo y la sinergia con el calendario quedaba solo del
+    #: lado del agente.
+    due_at: float | None = None
 
 
 @router.get("/tasks", dependencies=[Depends(require_api_key)])
 async def list_tasks(include_disabled: bool = True):
     tasks = runtime.sessions.tasks.list(include_disabled=include_disabled)
+    ahora = time.time()
     return {
         "tasks": [
             {
@@ -62,6 +70,8 @@ async def list_tasks(include_disabled: bool = True):
                 "attempts": t.attempts,
                 "last_error": t.last_error,
                 "last_result": t.last_result,
+                "due_at": t.due_at,
+                "overdue": t.is_overdue(ahora),
             }
             for t in tasks
         ],
@@ -84,11 +94,20 @@ async def create_task(req: TaskCreateRequest):
         raise HTTPException(
             status_code=422, detail="La repetición mínima es de 60 segundos."
         )
+    due_at = req.due_at
+    if due_at is not None and not math.isfinite(due_at):
+        raise HTTPException(status_code=422, detail="La fecha de entrega no es válida.")
+    # Con plazo y sin momento de actuar, el aviso se pone solo la víspera: es la
+    # misma regla que aplica la herramienta del agente, para que crear la tarea
+    # desde el HUD o pidiéndoselo a JARVIS dé el mismo resultado.
+    if due_at is not None and not req.next_run:
+        next_run = max(due_at - DUE_REMINDER_LEAD_SECONDS, time.time() + 60)
     task_id = runtime.sessions.tasks.add(
         title=req.title,
         prompt=req.prompt,
         next_run=next_run,
         interval_seconds=interval,
+        due_at=due_at,
     )
     return {"status": "ok", "task_id": task_id, "message": f"Tarea creada con ID {task_id}"}
 
@@ -118,6 +137,21 @@ async def control_task(task_id: int, req: TaskControlRequest):
     task = runtime.sessions.tasks.get(task_id)
     return {"status": "ok", "task": {"id": task.id, "status": task.status,
                                      "next_run": task.next_run}}
+
+
+@router.post("/tasks/{task_id}/complete", dependencies=[Depends(require_api_key)])
+async def complete_task(task_id: int):
+    """Marca un entregable como hecho.
+
+    Aparte de cancelar a propósito: cancelar dice que ya no va a hacerse, y esto
+    dice que está hecho. Con el mismo botón para las dos cosas, el historial no
+    distinguiría lo que se entregó de lo que se abandonó.
+    """
+    task = runtime.sessions.tasks.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="La tarea no existe.")
+    runtime.sessions.tasks.complete(task_id)
+    return {"status": "ok", "task": {"id": task_id, "status": "done"}}
 
 
 @router.get("/tasks/history", dependencies=[Depends(require_api_key)])

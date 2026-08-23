@@ -290,6 +290,32 @@
      clic a las coordenadas reales de la pestaña. */
   .browser-shot img { display: block; width: 100%; height: auto; cursor: pointer; }
 
+  /* ── Vista de día: lo que ocurre y lo que vence, juntos ── */
+  .day-timeline { list-style: none; margin: 0; padding: 6px 0; }
+  .day-item {
+    display: grid; grid-template-columns: 66px 18px 1fr auto auto;
+    align-items: center; gap: 9px;
+    padding: 9px 13px; border-bottom: 1px solid var(--hairline);
+    font: 11px var(--mono);
+  }
+  .day-item:last-child { border-bottom: 0; }
+  .day-time { color: var(--muted); letter-spacing: .06em; font-size: 9.5px; }
+  .day-mark { color: var(--core); text-align: center; }
+  .day-title { color: var(--core-bright); overflow-wrap: anywhere; }
+  .day-meta { color: var(--muted); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; }
+  .day-item.due .day-mark { color: #ffc98a; }
+  .day-item.run .day-mark { color: var(--muted); }
+  /* Vencido es lo único que grita. Si el resto compitiera, dejaría de verse. */
+  .day-item.overdue { background: rgba(255,120,110,.08); }
+  .day-item.overdue .day-mark, .day-item.overdue .day-time { color: #ff8a80; }
+  .day-item.done .day-title { color: var(--muted); text-decoration: line-through; }
+  .day-done { font-size: 8.5px; padding: 4px 8px; }
+  .jwin-note.day-warn { color: #ff8a80; border-color: rgba(255,120,110,.3); }
+  /* El día con algo vencido se marca distinto en el calendario: «tienes cosas»
+     y «se te pasó una» no pueden verse igual. */
+  .wd-dot.overdue { background: #ff8a80; box-shadow: 0 0 7px #ff8a80; }
+  .cal-day.has-overdue { color: #ff8a80; }
+
   /* ── Vista de lista analizada ── */
   .ds-note {
     margin: 0 0 9px; padding: 6px 9px; border-radius: 5px;
@@ -5152,6 +5178,7 @@
   //: El mini calendario solo pintaba fechas y las tareas del scheduler. La
   //: agenda es otra cosa: lo que ocurre, no lo que JARVIS ejecuta.
   let currentEventsList = [];
+  let currentDeliverablesList = [];
 
   function renderMiniCalendar() {
     if (!calGrid) return;
@@ -5175,13 +5202,19 @@
       weekStrip.replaceChildren();
       // Lunes de esta semana
       const dow = (todayDow + 6) % 7; // lunes=0
-      const monday = new Date(now); monday.setDate(todayDate - dow);
+      // A medianoche, no a la hora que sea ahora. `new Date()` arrastra la hora
+      // actual y `setDate` la conserva, así que cada «día» de la tira iba de las
+      // 13:54 a las 13:54 del siguiente. Se notaba poco cuando la tira solo
+      // pintaba un punto; con la vista de día significa que lo de esta mañana
+      // ya no pertenece a hoy y lo de mañana temprano sí.
+      const monday = new Date(now); monday.setHours(0, 0, 0, 0);
+      monday.setDate(todayDate - dow);
       for (let i = 0; i < 7; i++) {
         const d = new Date(monday); d.setDate(monday.getDate() + i);
         const dNum = d.getDate(); const dMonth = d.getMonth();
         const dayTimestampStart = d.getTime() / 1000;
         const dayTimestampEnd = dayTimestampStart + 86400;
-        const agenda = dayAgendaMessage(dayTimestampStart, dayTimestampEnd);
+        const agenda = dayItemsForCell(dayTimestampStart, dayTimestampEnd);
         const hasTask = agenda.total > 0;
         const isToday = dNum === todayDate && dMonth === month;
 
@@ -5193,15 +5226,18 @@
         const numEl = document.createElement("span"); numEl.className = "wd-num";
         numEl.textContent = dNum;
         cell.appendChild(nameEl); cell.appendChild(numEl);
-        if (hasTask) { const dot = document.createElement("span"); dot.className = "wd-dot"; cell.appendChild(dot); }
+        if (hasTask) {
+          const dot = document.createElement("span");
+          // Un día con algo vencido no se marca igual que un día ocupado: la
+          // diferencia entre «tienes cosas» y «se te pasó una» tiene que verse
+          // sin abrir nada.
+          dot.className = agenda.overdue ? "wd-dot overdue" : "wd-dot";
+          cell.appendChild(dot);
+        }
 
         cell.onclick = (ev) => {
           ev.stopPropagation();
-          showHudNotification({
-            title: `AGENDA · ${dNum}/${dMonth + 1}`,
-            message: agenda.total ? agenda.lineas.join("\n") : "Nada este día.",
-            type: agenda.total ? "task" : "system", duration: 3500
-          });
+          openDayWindow(dayTimestampStart, `${dNum}/${dMonth + 1}`);
         };
         weekStrip.appendChild(cell);
       }
@@ -5227,21 +5263,108 @@
       if (day === todayDate) cell.classList.add("today");
       const dayTimestampStart = new Date(year, month, day).getTime() / 1000;
       const dayTimestampEnd = dayTimestampStart + 86400;
-      const agenda = dayAgendaMessage(dayTimestampStart, dayTimestampEnd);
+      const agenda = dayItemsForCell(dayTimestampStart, dayTimestampEnd);
       if (agenda.total) cell.classList.add("has-task");
-      if (agenda.eventos) cell.classList.add("has-event");
+      if (agenda.items.some(i => i.kind === "event")) cell.classList.add("has-event");
+      if (agenda.overdue) cell.classList.add("has-overdue");
       cell.textContent = day;
       cell.onclick = (ev) => {
         ev.stopPropagation();
-        showHudNotification({
-          title: `AGENDA · ${day} ${monthNames[month]}`,
-          message: agenda.total ? agenda.lineas.join("\n") : "Nada programado.",
-          type: agenda.total ? "task" : "system", duration: 4500
-        });
+        openDayWindow(dayTimestampStart, `${day} ${monthNames[month]}`);
       };
       calGrid.appendChild(cell);
     }
 
+  }
+
+  //: Cómo se lee cada cosa del día. El icono y la etiqueta son lo que distingue
+  //: «esto ocurre» de «esto vence» de «esto lo haré yo», que antes vivían en dos
+  //: paneles distintos sin forma de verlos juntos.
+  const DAY_ITEM_KINDS = {
+    event: { icon: "◆", label: "EVENTO" },
+    due:   { icon: "▲", label: "VENCE" },
+    run:   { icon: "▸", label: "AVISO" },
+  };
+
+  function formatDayTime(item) {
+    if (item.allDay) return "TODO EL DÍA";
+    return new Date(item.at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // La vista de día: lo que ocurre y lo que vence, en la misma línea de tiempo.
+  function openDayWindow(startEpoch, etiqueta) {
+    const win = openWindow({
+      id: `day:${Math.round(startEpoch)}`,
+      title: `DÍA · ${etiqueta}`, kind: "AGENDA", width: 560, height: 460,
+    });
+    pintarDia(win, startEpoch);
+    return win;
+  }
+
+  function pintarDia(win, startEpoch) {
+    const agenda = dayItemsForCell(startEpoch, startEpoch + 86400);
+    win.body.replaceChildren();
+
+    if (!agenda.total) {
+      viewerNote(win.body, "Nada este día: ni citas ni entregas.");
+      return;
+    }
+    if (agenda.overdue) {
+      const aviso = viewerNote(win.body, `${agenda.overdue} entrega${agenda.overdue > 1 ? "s" : ""} sin cerrar.`);
+      aviso.classList.add("day-warn");
+    }
+
+    const lista = document.createElement("ul");
+    lista.className = "day-timeline";
+    for (const item of agenda.items) {
+      const estilo = DAY_ITEM_KINDS[item.kind] || DAY_ITEM_KINDS.run;
+      const fila = document.createElement("li");
+      fila.className = `day-item ${item.kind}` + (item.overdue ? " overdue" : "")
+        + (item.status === "done" ? " done" : "");
+
+      const hora = document.createElement("span");
+      hora.className = "day-time"; hora.textContent = formatDayTime(item);
+
+      const marca = document.createElement("span");
+      marca.className = "day-mark"; marca.textContent = estilo.icon;
+      marca.title = estilo.label;
+
+      const texto = document.createElement("span");
+      texto.className = "day-title"; texto.textContent = item.title;
+
+      fila.append(hora, marca, texto);
+      if (item.meta) {
+        const meta = document.createElement("span");
+        meta.className = "day-meta"; meta.textContent = item.meta;
+        fila.appendChild(meta);
+      }
+      // Solo los entregables se pueden cerrar: un evento no se «entrega», y el
+      // aviso de una tarea es su ejecución, no su plazo.
+      if (item.kind === "due" && item.status !== "done" && item.taskId) {
+        const hecho = document.createElement("button");
+        hecho.type = "button"; hecho.className = "jwin-btn day-done";
+        hecho.textContent = "HECHO";
+        hecho.onclick = () => cerrarEntregable(item.taskId, win, startEpoch);
+        fila.appendChild(hecho);
+      }
+      lista.appendChild(fila);
+    }
+    win.body.appendChild(lista);
+  }
+
+  async function cerrarEntregable(taskId, win, startEpoch) {
+    try {
+      await connectorRequest(`/tasks/${taskId}/complete`, {
+        method: "POST", headers: connectorApiHeaders(true),
+      });
+      // Se recargan las dos fuentes: la tarea cambia de estado y el calendario
+      // la refleja. Pintar solo una dejaría la ventana diciendo una cosa y el
+      // panel de tareas otra.
+      await Promise.all([fetchTasks(), fetchCalendarEvents()]);
+      pintarDia(win, startEpoch);
+    } catch (error) {
+      viewerNote(win.body, `No se pudo cerrar: ${error && error.message ? error.message : error}`);
+    }
   }
 
   // ── Tareas & Reminders Manager ──
@@ -5252,34 +5375,74 @@
     try {
       const data = await connectorRequest("/calendar/events", { headers: connectorApiHeaders() });
       currentEventsList = data.events || [];
+      // Los entregables llegan del mismo sitio pero por separado: no son citas,
+      // son plazos, y en la vista del día se leen distinto.
+      currentDeliverablesList = data.deliverables || [];
     } catch (error) {
       currentEventsList = [];
+      currentDeliverablesList = [];
     }
     renderMiniCalendar();
   }
 
-  //: Eventos que se solapan con el día, no solo los que empiezan en él: algo de
-  //: 23:00 a 01:00 pertenece a los dos días.
-  function eventsOnDay(startEpoch, endEpoch) {
-    return currentEventsList.filter(e => e.starts_at < endEpoch && e.ends_at > startEpoch);
+  //: Todo lo que pasa un día, en una sola línea de tiempo.
+  //:
+  //: Tres cosas distintas que antes vivían en dos paneles que no se hablaban:
+  //: lo que OCURRE (un evento), lo que VENCE (un entregable) y lo que JARVIS
+  //: HARÁ (la ejecución de una tarea). Se mezclan ordenadas por hora porque así
+  //: es como se vive el día; el tipo las distingue.
+  //:
+  //: Es una función pura: recibe las listas en vez de leer las globales, para
+  //: poder probarla.
+  function dayTimeline(startEpoch, endEpoch, { events = [], deliverables = [], tasks = [], now = 0 } = {}) {
+    const items = [];
+    for (const e of events) {
+      // Solapamiento, no inicio: algo de 23:00 a 01:00 pertenece a los dos días.
+      if (e.starts_at < endEpoch && e.ends_at > startEpoch) {
+        items.push({ kind: "event", at: e.starts_at, allDay: Boolean(e.all_day),
+                     title: e.title, meta: e.location || "" });
+      }
+    }
+    for (const d of deliverables) {
+      if (d.starts_at >= startEpoch && d.starts_at < endEpoch) {
+        items.push({ kind: "due", at: d.starts_at, taskId: d.task_id, title: d.title,
+                     overdue: Boolean(d.overdue), status: d.status || "",
+                     meta: d.priority && d.priority !== "normal" ? d.priority : "" });
+      }
+    }
+    for (const t of tasks) {
+      if (!t.enabled || t.next_run < startEpoch || t.next_run >= endEpoch) continue;
+      // Si la tarea ya sale como entregable ese mismo día, su aviso sobra: sería
+      // la misma cosa dos veces, que es justo lo que no queremos en el pizarrón
+      // ni aquí.
+      if (items.some(i => i.kind === "due" && i.taskId === t.id)) continue;
+      items.push({ kind: "run", at: t.next_run, taskId: t.id, title: t.title, meta: "" });
+    }
+    // Lo de todo el día primero; el resto por hora.
+    //
+    // `allDay` se normaliza antes de comparar: solo los eventos lo traen, así
+    // que una entrega llegaba con `undefined` y `false === undefined` mandaba
+    // la fila a la rama de «todo el día». El orden salía mezclado según qué
+    // tipos hubiera ese día, que es de los fallos que solo se ven mirando.
+    const todoElDia = item => Boolean(item.allDay);
+    items.sort((a, b) => {
+      if (todoElDia(a) !== todoElDia(b)) return todoElDia(a) ? -1 : 1;
+      return a.at - b.at;
+    });
+    const vencidos = items.filter(i => i.kind === "due" && i.overdue).length;
+    return { items, total: items.length, overdue: vencidos, now };
   }
 
-  function dayAgendaMessage(startEpoch, endEpoch) {
-    const tareas = currentTasksList.filter(
-      t => t.next_run >= startEpoch && t.next_run < endEpoch && t.enabled
-    );
-    const eventos = eventsOnDay(startEpoch, endEpoch);
-    const lineas = [
-      ...eventos.map(e => {
-        const hora = e.all_day
-          ? "todo el día"
-          : new Date(e.starts_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        return `• ${hora} · ${e.title}${e.location ? " — " + e.location : ""}`;
-      }),
-      ...tareas.map(t => `▸ ${t.title}`),
-    ];
-    return { lineas, total: eventos.length + tareas.length, eventos: eventos.length };
+  function dayItemsForCell(startEpoch, endEpoch) {
+    return dayTimeline(startEpoch, endEpoch, {
+      events: currentEventsList,
+      deliverables: currentDeliverablesList,
+      tasks: currentTasksList,
+      now: Date.now() / 1000,
+    });
   }
+
+
 
   async function fetchTasks() {
     if (!tasksList) return;

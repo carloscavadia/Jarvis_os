@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 from jarvis_core.tasks.store import Task, TaskStore
@@ -32,6 +33,9 @@ logger = logging.getLogger("jarvis.scheduler")
 
 #: Devuelve el texto del resultado, que se guarda en el historial.
 OnFire = Callable[[Task], Awaitable[str | None]]
+
+#: Aviso de que un entregable ha vencido sin cerrarse.
+OnOverdue = Callable[[Task], Awaitable[None]]
 
 DEFAULT_TASK_TIMEOUT = 300.0
 DEFAULT_MAX_CONCURRENT = 3
@@ -46,9 +50,11 @@ class Scheduler:
         *,
         task_timeout: float = DEFAULT_TASK_TIMEOUT,
         max_concurrent: int = DEFAULT_MAX_CONCURRENT,
+        on_overdue: OnOverdue | None = None,
     ) -> None:
         self._store = store
         self._on_fire = on_fire
+        self._on_overdue = on_overdue
         self._poll_interval = poll_interval
         self._task_timeout = task_timeout
         self._semaphore = asyncio.Semaphore(max(1, max_concurrent))
@@ -98,9 +104,32 @@ class Scheduler:
                     launched = asyncio.create_task(self._execute(task, run_id))
                     self._running.add(launched)
                     launched.add_done_callback(self._running.discard)
+                await self._chase_overdue()
             except Exception:
                 logger.exception("Error en el bucle del scheduler")
             await asyncio.sleep(self._poll_interval)
+
+    async def _chase_overdue(self) -> None:
+        """Avisa una vez de cada entregable que se pasó de fecha.
+
+        Una sola vez, no en cada vuelta: el bucle pasa cada pocos segundos y
+        avisar siempre sería ruido hasta volverse invisible. Que siga pendiente
+        se ve igual en el HUD, que las pinta vencidas mientras no se cierren.
+
+        Un fallo aquí no puede tumbar el bucle: perseguir un plazo es lo
+        accesorio, ejecutar las tareas es lo principal.
+        """
+        if self._on_overdue is None:
+            return
+        for task in self._store.overdue(time.time(), only_unnotified=True):
+            try:
+                await self._on_overdue(task)
+            except Exception:
+                logger.exception("No se pudo avisar del vencimiento de #%s", task.id)
+                continue
+            # Se marca después de avisar: si el aviso falla, se reintenta en la
+            # vuelta siguiente en vez de perderse.
+            self._store.mark_due_notified(task.id)
 
     async def _execute(self, task: Task, run_id: int) -> None:
         async with self._semaphore:

@@ -38,6 +38,7 @@ from jarvis_core.tools.builtin.shell import ShellTool
 from jarvis_core.tools.builtin.system_info import SystemInfoTool
 from jarvis_core.tools.builtin.task_tools import (
     CancelTaskTool,
+    CompleteTaskTool,
     ListTasksTool,
     PauseTaskTool,
     RescheduleTaskTool,
@@ -57,6 +58,7 @@ __all__ = [
     "TaskHistoryTool",
     "RecallTool",
     "RememberTool",
+    "CompleteTaskTool",
     "ScheduleTaskTool",
     "SetEmotionTool",
     "ShellTool",
@@ -89,6 +91,7 @@ def build_default_registry(
     if tasks is not None:
         zone = resolve_zone(settings.timezone)
         registry.register(ScheduleTaskTool(tasks, zone))
+        registry.register(CompleteTaskTool(tasks, zone))
         registry.register(ListTasksTool(tasks, zone))
         registry.register(CancelTaskTool(tasks, zone))
         registry.register(PauseTaskTool(tasks, zone))
