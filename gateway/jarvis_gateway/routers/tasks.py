@@ -72,6 +72,7 @@ async def list_tasks(include_disabled: bool = True):
                 "last_result": t.last_result,
                 "due_at": t.due_at,
                 "overdue": t.is_overdue(ahora),
+                "time_precision": t.time_precision,
             }
             for t in tasks
         ],

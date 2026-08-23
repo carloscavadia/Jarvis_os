@@ -340,3 +340,122 @@ def test_el_prompt_del_sistema_prohibe_inventar_datos():
     from jarvis_core.config import Settings
 
     assert "NUNCA inventes fechas" in Settings().system_prompt()
+
+
+# ── El día sin la hora ───────────────────────────────────────────────────────
+#
+# Segundo caso real: «recuérdame hoy ir a buscar la medicina del niño». Aquí el
+# usuario SÍ dijo el día. La respuesta fue «te lo he agendado para hoy a las
+# 17:00»: la hora se la inventó —y son las mismas 17:00 del caso anterior—.
+#
+# La causa vuelve a ser que la honestidad no cabía: pasar solo la fecha da
+# medianoche, que para «hoy» ya pasó, y la herramienta lo rechazaba por estar en
+# el pasado. La única llamada que funcionaba era una con hora inventada.
+
+def test_una_fecha_sin_hora_se_reconoce_como_tal():
+    from jarvis_core.tools.builtin.task_tools import is_date_only
+
+    assert is_date_only("2026-08-23") is True
+    assert is_date_only("2026-08-23T17:00:00") is False
+    assert is_date_only("") is False
+    assert is_date_only(None) is False
+
+
+def test_hoy_sin_hora_no_se_va_al_pasado(store):
+    """Medianoche de hoy ya pasó: el aviso tiene que caer por delante."""
+    import datetime as dt
+
+    hoy = dt.date.today().isoformat()
+    salida = asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Medicina del niño", prompt="ir a buscarla", at=hoy
+        )
+    )
+    assert not salida.is_error, salida.content
+    assert store.get(1).next_run > time.time()
+
+
+def test_un_dia_futuro_sin_hora_usa_la_hora_por_defecto(store):
+    import datetime as dt
+
+    manana = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    asyncio.run(
+        ScheduleTaskTool(store, UTC, default_hour=9).run(
+            title="Medicina", prompt="busca", at=manana
+        )
+    )
+    momento = dt.datetime.fromtimestamp(store.get(1).next_run, tz=UTC)
+    assert momento.hour == 9 and momento.minute == 0
+
+
+def test_la_imprecision_se_guarda_y_se_dice(store):
+    """Sin esto, una hora elegida a dedo se lee igual que una acordada."""
+    import datetime as dt
+
+    salida = asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Medicina", prompt="busca",
+            at=(dt.date.today() + dt.timedelta(days=1)).isoformat(),
+        )
+    )
+    assert store.get(1).time_precision == "day"
+    # Y el resultado le dice al modelo que la hora es suya, no del usuario.
+    assert "NO la hora" in salida.content
+    assert "elegido yo" in salida.content
+
+
+def test_con_hora_explicita_no_hay_imprecision(store):
+    asyncio.run(
+        ScheduleTaskTool(store, UTC).run(title="Cita", prompt="avisa", at=iso(3 * 86400))
+    )
+    tarea = store.get(1)
+    assert tarea.time_precision == "exact"
+    assert "elegido yo" not in asyncio.run(ListTasksTool(store, UTC).run()).content
+
+
+def test_dar_la_hora_despues_deja_de_ser_aproximada(store):
+    import datetime as dt
+
+    asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Medicina", prompt="busca",
+            at=(dt.date.today() + dt.timedelta(days=1)).isoformat(),
+        )
+    )
+    assert store.reschedule(1, time.time() + 7200).time_precision == "exact"
+
+
+def test_el_listado_avisa_de_que_la_hora_la_puso_el_sistema(store):
+    import datetime as dt
+
+    asyncio.run(
+        ScheduleTaskTool(store, UTC).run(
+            title="Medicina", prompt="busca",
+            at=(dt.date.today() + dt.timedelta(days=1)).isoformat(),
+        )
+    )
+    assert "hora puesta por el sistema" in asyncio.run(ListTasksTool(store, UTC).run()).content
+
+
+def test_la_hora_por_defecto_es_configurable(store):
+    import datetime as dt
+
+    manana = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+    asyncio.run(
+        ScheduleTaskTool(store, UTC, default_hour=20).run(
+            title="Medicina", prompt="busca", at=manana
+        )
+    )
+    assert dt.datetime.fromtimestamp(store.get(1).next_run, tz=UTC).hour == 20
+
+
+def test_el_prompt_prohibe_los_consejos_con_datos_supuestos():
+    """«Pásate por la farmacia que te pilla de camino» presupone lo que no sabe.
+
+    Un añadido inventado hace dudar de todo lo demás, aunque sea correcto.
+    """
+    from jarvis_core.config import Settings
+
+    prompt = Settings().system_prompt()
+    assert "farmacia" in prompt
+    assert "no añadas recomendaciones" in prompt.lower()

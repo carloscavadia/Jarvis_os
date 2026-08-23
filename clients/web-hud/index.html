@@ -5509,7 +5509,14 @@
       // Sin fecha no hay cuenta atrás que enseñar. El dataset se deja vacío para
       // que el refresco periódico no vuelva a poner una hora inventada encima.
       timeEl.dataset.nextRun = isDraft ? "" : (task.next_run || 0);
-      timeEl.textContent = isDraft ? "SIN FECHA · PENDIENTE DE CONFIRMAR" : formatTaskTime(task.next_run);
+      // «~» delante cuando la hora la puso el sistema porque el usuario solo dio
+      // el día. Sin la marca, una hora elegida a dedo se lee igual que una
+      // acordada, que es la confusión que se está intentando quitar de en medio.
+      const horaAproximada = !isDraft && task.time_precision === "day";
+      timeEl.textContent = isDraft
+        ? "SIN FECHA · PENDIENTE DE CONFIRMAR"
+        : (horaAproximada ? `~${formatTaskTime(task.next_run)}` : formatTaskTime(task.next_run));
+      if (horaAproximada) timeEl.title = "La hora la eligió JARVIS: solo se indicó el día.";
       if (task.interval_seconds && !isDraft) {
         const interval = document.createElement("span"); interval.className = "task-interval";
         interval.textContent = `↻ ${formatInterval(task.interval_seconds)}`;
@@ -5537,7 +5544,8 @@
       window._taskCountdownInterval = setInterval(() => {
         document.querySelectorAll(".task-countdown").forEach(el => {
           if (!el.dataset.nextRun) return;   // borrador: no hay nada que contar
-          el.textContent = formatTaskTime(parseFloat(el.dataset.nextRun));
+          const texto = formatTaskTime(parseFloat(el.dataset.nextRun));
+          el.textContent = el.textContent.startsWith("~") ? `~${texto}` : texto;
         });
       }, 30000);
     }

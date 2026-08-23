@@ -269,6 +269,10 @@ class Settings:
     #: De dónde sale «dónde estoy». La entidad de Home Assistant es la buena; el
     #: par de coordenadas de casa es el respaldo para cuando no la haya.
     #: Vacía = descubrir sola entre las entidades person/device_tracker.
+    #: A qué hora se pone un recordatorio cuando el usuario dice el día pero no
+    #: la hora. Cualquier valor es arbitrario; lo que importa es que JARVIS diga
+    #: que la eligió él y no la dé por acordada.
+    default_reminder_hour: int = 9
     location_entity: str = ""
     home_latitude: float | None = None
     home_longitude: float | None = None
@@ -573,6 +577,9 @@ class Settings:
             ),
             internet_access_enabled=_get_bool("JARVIS_INTERNET_ACCESS_ENABLED", False),
             browser_enabled=_get_bool("JARVIS_BROWSER_ENABLED", False),
+            default_reminder_hour=max(
+                0, min(23, int(os.environ.get("JARVIS_DEFAULT_REMINDER_HOUR", "9")))
+            ),
             location_entity=os.environ.get("JARVIS_LOCATION_ENTITY", "").strip(),
             home_latitude=_optional_float("JARVIS_HOME_LAT"),
             home_longitude=_optional_float("JARVIS_HOME_LON"),
@@ -737,8 +744,14 @@ class Settings:
             "no te haya dado. Si te pide recordar algo y falta el cuándo, anótalo sin "
             "fecha —queda como borrador y no avisa— y pregúntale en la misma respuesta. "
             "«Te lo he agendado el lunes 24 a las 17:00» cuando nadie dijo el día ni la "
-            "hora es peor que no apuntarlo. Al confirmar algo, di exactamente lo que has "
-            "guardado, y si algo falta, dilo."
+            "hora es peor que no apuntarlo. Si te dio el día pero no la hora, di que la "
+            "hora la has elegido tú y ofrécele cambiarla.\n\n"
+            "Esto vale también para los consejos: no añadas recomendaciones que den por "
+            "supuestos hechos que no conoces. «Pásate por la farmacia que te pilla de "
+            "camino» presupone que sabes por dónde va y qué farmacia hay; no lo sabes. "
+            "Un añadido inventado hace dudar de todo lo demás que dices, aunque sea "
+            "correcto. Si quieres sugerir algo así, pregúntalo en vez de afirmarlo.\n\n"
+            "Al confirmar algo, di exactamente lo que has guardado, y si algo falta, dilo."
         )
 
         if self.hud_workspace_enabled:

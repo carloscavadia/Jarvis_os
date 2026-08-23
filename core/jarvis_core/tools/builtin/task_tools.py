@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime
 import math
+import re
 import time
 from typing import Any
 
@@ -20,6 +21,40 @@ MAX_TEXT_CHARS = 4000
 #: Un día: lo bastante pronto para poder hacer algo, lo bastante tarde para que
 #: el aviso siga siendo sobre esto y no una nota que se olvida.
 DUE_REMINDER_LEAD_SECONDS = 86400.0
+#: Hora por defecto cuando el usuario dice el día pero no la hora.
+DEFAULT_REMINDER_HOUR = 9
+#: Si esa hora ya pasó hoy, el aviso no puede irse al pasado ni saltar de golpe:
+#: se pone un poco más adelante, con margen para que no suene a mitad de frase.
+SAME_DAY_LEAD_SECONDS = 1800.0
+
+#: Una fecha sin hora. Es lo que llega cuando el usuario dice «hoy» o «el
+#: viernes» y no dice la hora.
+_DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def is_date_only(at: str | None) -> bool:
+    return bool(at) and bool(_DATE_ONLY_RE.match(str(at).strip()))
+
+
+def apply_default_hour(
+    midnight: float, hour: int, zone: datetime.tzinfo | None = None, now: float | None = None
+) -> float:
+    """Coloca un recordatorio de día suelto a una hora razonable.
+
+    Antes esto no existía y era el segundo motivo por el que el modelo inventaba
+    horas: pasar la fecha honesta —«2026-08-23», sin hora— daba medianoche, que
+    para «hoy» ya pasó, y la herramienta lo rechazaba por estar en el pasado. La
+    única llamada que funcionaba era una con hora inventada.
+
+    Si la hora elegida ya pasó —«recuérdame hoy» dicho por la tarde—, se corre
+    hacia adelante en vez de al pasado.
+    """
+    ahora = time.time() if now is None else now
+    momento = datetime.datetime.fromtimestamp(midnight, tz=zone) if zone else \
+        datetime.datetime.fromtimestamp(midnight).astimezone()
+    objetivo = momento.replace(hour=max(0, min(23, hour)), minute=0, second=0, microsecond=0)
+    epoch = objetivo.timestamp()
+    return epoch if epoch > ahora else ahora + SAME_DAY_LEAD_SECONDS
 
 
 def resolve_zone(name: str = "") -> datetime.tzinfo | None:
@@ -86,11 +121,15 @@ class ScheduleTaskTool(Tool):
         "ISO 8601, p.ej. 2026-08-13T08:00:00) o con 'delay_seconds'. Para algo recurrente, "
         "añade 'repeat_seconds' (86400 = cada día). Usa antes system_info para saber la "
         "hora actual si necesitas calcular una hora concreta.\n\n"
-        "NUNCA te inventes la fecha ni la hora. Si el usuario no las ha dicho, llama "
-        "igualmente sin 'at' ni 'delay_seconds': se anota como borrador, no avisa de "
-        "nada, y entonces le preguntas cuándo es. Decir «te lo he agendado el lunes 24 "
-        "a las 17:00» cuando nadie ha dicho ni el día ni la hora es peor que no "
-        "apuntarlo: el usuario se queda creyendo que hay una cita a esa hora."
+        "NUNCA te inventes la fecha ni la hora.\n"
+        "- Si sabes el DÍA pero no la hora («hoy», «el viernes»), pasa en 'at' solo la "
+        "fecha, sin hora: 2026-08-23. El sistema le pone una hora razonable y te dice "
+        "cuál, para que se la digas al usuario como elección tuya y no como algo "
+        "acordado.\n"
+        "- Si no sabes ni el día, llama sin 'at' ni 'delay_seconds': se anota como "
+        "borrador, no avisa de nada, y entonces le preguntas cuándo es.\n"
+        "Decir «te lo he agendado a las 17:00» cuando nadie ha dicho la hora es peor "
+        "que no apuntarlo: el usuario se queda creyendo que hay algo a esa hora."
     )
     input_schema: dict[str, Any] = {
         "type": "object",
@@ -135,9 +174,15 @@ class ScheduleTaskTool(Tool):
         "additionalProperties": False,
     }
 
-    def __init__(self, store: TaskStore, zone: datetime.tzinfo | None = None) -> None:
+    def __init__(
+        self,
+        store: TaskStore,
+        zone: datetime.tzinfo | None = None,
+        default_hour: int = DEFAULT_REMINDER_HOUR,
+    ) -> None:
         self._store = store
         self._zone = zone
+        self._default_hour = default_hour
 
     async def run(
         self,
@@ -182,6 +227,14 @@ class ScheduleTaskTool(Tool):
         except (TypeError, ValueError, OverflowError) as exc:
             return ToolResult(content=f"Fecha/hora inválida: {exc}", is_error=True)
 
+        # Día sin hora. La fecha sola cae en medianoche, que para «hoy» ya pasó:
+        # sin este ajuste la llamada honesta se rechazaba y solo funcionaba una
+        # con hora inventada.
+        precision = "exact"
+        if next_run is not None and is_date_only(at):
+            next_run = apply_default_hour(next_run, self._default_hour, self._zone)
+            precision = "day"
+
         # Con plazo y sin momento de actuar, el aviso se pone solo la víspera.
         # Es lo que hace que anotar «vence el viernes» sirva de algo sin tener
         # que calcular a mano cuándo recordarlo; y si el plazo es más inmediato
@@ -215,11 +268,21 @@ class ScheduleTaskTool(Tool):
         task_id = self._store.add(
             title=title, prompt=prompt, next_run=next_run,
             interval_seconds=repeat_seconds, priority=priority, category=category,
-            due_at=vence,
+            due_at=vence, time_precision=precision,
         )
         when = format_when(next_run, self._zone)
         recur = f", {humanize_interval(repeat_seconds)}" if repeat_seconds else ""
         plazo = f" Vence el {format_when(vence, self._zone)}." if vence is not None else ""
+        if precision == "day":
+            hora = datetime.datetime.fromtimestamp(next_run, tz=self._zone).strftime("%H:%M")
+            return ToolResult(
+                content=(
+                    f"Tarea #{task_id} '{title}' programada para {when}{recur}.{plazo} "
+                    f"OJO: el usuario dio el día pero NO la hora; las {hora} las he "
+                    "elegido yo. Dilo así al confirmar —que la hora la pusiste tú— y "
+                    "ofrécele cambiarla. No la des por acordada."
+                )
+            )
         return ToolResult(
             content=f"Tarea #{task_id} '{title}' programada para {when}{recur}.{plazo}"
         )
@@ -273,6 +336,8 @@ class ListTasksTool(Tool):
                 flags.insert(0, f"VENCIDA el {format_when(t.due_at, self._zone)}")
             elif t.due_at is not None:
                 flags.insert(0, f"vence {format_when(t.due_at, self._zone)}")
+            if t.time_precision == "day":
+                flags.append("hora puesta por el sistema")
             suffix = f"  [{' · '.join(flags)}]" if flags else ""
             if t.status == "draft":
                 # Un borrador no tiene hora: enseñar la de creación como si la

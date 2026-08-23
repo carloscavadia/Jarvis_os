@@ -77,6 +77,10 @@ class Task:
     #: programar «el informe vence el viernes» hacía que el viernes JARVIS
     #: ejecutara algo, en vez de avisar de que vencía.
     due_at: float | None = None
+    #: 'exact' si la hora la dijo el usuario; 'day' si solo dijo el día y la hora
+    #: la puso el sistema. Se guarda porque cambia lo que JARVIS puede afirmar:
+    #: con 'day' tiene que decir que la hora la eligió él, no darla por acordada.
+    time_precision: str = "exact"
     #: Marca de que ya se avisó del vencimiento, para no repetirlo en cada vuelta
     #: del planificador. Una tarea vencida se ve en el HUD todo el tiempo; el
     #: aviso se manda una vez.
@@ -158,6 +162,7 @@ class TaskStore:
                 "last_result": "TEXT NOT NULL DEFAULT ''",
                 "due_at": "REAL",
                 "due_notified": "INTEGER NOT NULL DEFAULT 0",
+                "time_precision": "TEXT NOT NULL DEFAULT 'exact'",
             }
             for column, definition in added.items():
                 if column not in existing:
@@ -221,6 +226,7 @@ class TaskStore:
             last_result=r["last_result"],
             due_at=r["due_at"],
             due_notified=bool(r["due_notified"]),
+            time_precision=r["time_precision"],
         )
 
     # ── Alta y consulta ──────────────────────────────────────────────────────
@@ -236,6 +242,7 @@ class TaskStore:
         category: str = "",
         due_at: float | None = None,
         status: str = "pending",
+        time_precision: str = "exact",
     ) -> int:
         kind = "recurring" if interval_seconds else "once"
         if status not in TASK_STATUSES:
@@ -247,11 +254,12 @@ class TaskStore:
                 """
                 INSERT INTO tasks
                     (title, prompt, kind, next_run, interval_seconds, enabled,
-                     created_at, status, priority, category, due_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                     created_at, status, priority, category, due_at, time_precision)
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
                 """,
                 (title, prompt, kind, next_run, interval_seconds, time.time(),
-                 status, priority, category.strip()[:64], due_at),
+                 status, priority, category.strip()[:64], due_at,
+                 "day" if time_precision == "day" else "exact"),
             )
             self._conn.commit()
             return int(cur.lastrowid)
@@ -491,7 +499,10 @@ class TaskStore:
                 # El borrador se promueve aquí: darle fecha es exactamente lo
                 # que le faltaba. Sin esto se quedaría en borrador para siempre
                 # y no se dispararía nunca, con la fecha ya puesta.
+                # Dar una hora concreta convierte la precisión en exacta: a
+                # partir de ahí JARVIS ya puede afirmarla sin matices.
                 "UPDATE tasks SET next_run=?, interval_seconds=?, kind=?, attempts=0, "
+                "time_precision='exact', "
                 "status=CASE WHEN status='draft' THEN 'pending' ELSE status END, "
                 "enabled=CASE WHEN status='draft' THEN 1 ELSE enabled END "
                 "WHERE id=?",

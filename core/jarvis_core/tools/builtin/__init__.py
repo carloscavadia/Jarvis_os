@@ -90,7 +90,7 @@ def build_default_registry(
         registry.register(ShellTool(allowlist=settings.shell_allowlist))
     if tasks is not None:
         zone = resolve_zone(settings.timezone)
-        registry.register(ScheduleTaskTool(tasks, zone))
+        registry.register(ScheduleTaskTool(tasks, zone, settings.default_reminder_hour))
         registry.register(CompleteTaskTool(tasks, zone))
         registry.register(ListTasksTool(tasks, zone))
         registry.register(CancelTaskTool(tasks, zone))
