@@ -104,26 +104,132 @@ CAPABILITIES: tuple[Capability, ...] = (
 class DescribeCapabilitiesTool(Tool):
     name = "describe_capabilities"
     description = (
-        "Inventario de lo que puedes hacer ahora mismo y de lo que te falta para lo "
-        "que no. Distingue tres cosas que no son lo mismo: la capacidad no existe, "
-        "está apagada, o le falta una credencial. Úsalo **antes** de decirle al "
-        "usuario que no puedes algo, y también cuando te diga que ya ha configurado "
-        "algo y quieras comprobarlo. No devuelve el valor de ningún secreto."
+        "Lo que eres y de qué eres capaz: tus capacidades y qué le falta a cada una, "
+        "las habilidades que has aprendido y con qué éxito, los especialistas a los "
+        "que puedes delegar, tus límites y qué recuerdas del usuario.\n\n"
+        "Distingue tres cosas que no son lo mismo: la capacidad no existe, está "
+        "apagada, o le falta una credencial. Úsalo **antes** de decirle al usuario "
+        "que no puedes algo, cuando te diga que ya ha configurado algo y quieras "
+        "comprobarlo, y cuando te pregunte qué sabes hacer. Nunca devuelve el valor "
+        "de un secreto ni el contenido de la memoria: para eso está recall."
     )
     input_schema: ClassVar[dict[str, Any]] = {
         "type": "object",
         "properties": {
+            "scope": {
+                "type": "string",
+                "enum": ["all", "capabilities", "skills", "identity", "limits", "memory"],
+                "description": "Qué parte mirar. Por defecto, todo.",
+            },
             "capability": {
                 "type": "string",
-                "description": "Nombre de una capacidad concreta. Vacío = el inventario entero.",
-            }
+                "description": "Una capacidad concreta. Implica scope='capabilities'.",
+            },
         },
         "additionalProperties": False,
     }
 
-    def __init__(self, settings: Settings, registry: ToolRegistry) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        registry: ToolRegistry,
+        skills=None,
+        memory=None,
+        subagents=(),
+    ) -> None:
         self._settings = settings
         self._registry = registry
+        self._skills = skills
+        self._memory = memory
+        self._subagents = list(subagents)
+
+    def _identidad(self) -> list[str]:
+        """Quién es y con qué cerebro piensa."""
+        s = self._settings
+        modelo = {
+            "anthropic": f"{s.model} (Anthropic)",
+            "openai_responses": f"{s.openai_responses_model} (OpenAI)",
+        }.get(s.llm_provider, f"{s.openai_model or 'sin definir'} ({s.openai_base_url or s.llm_provider})")
+        lineas = [
+            "── QUIÉN ERES ──",
+            f"Nombre: {s.persona_name} · idioma: {s.language}",
+            f"Cerebro: {modelo} · esfuerzo: {s.effort}",
+        ]
+        if s.offline_mode:
+            lineas.append("Modo offline activo: nada sale de la red.")
+        if self._persona():
+            lineas.append(f"Reglas de la casa vigentes: {self._persona()}")
+        return lineas
+
+    def _persona(self) -> str:
+        return (self._settings.persona_extra or "").strip()
+
+    def _limites(self) -> list[str]:
+        """Lo que no puede hacer por diseño. Saberlo evita prometer de más."""
+        s = self._settings
+        return [
+            "── TUS LÍMITES ──",
+            f"Hasta {s.max_tool_iterations} pasos de herramientas por turno, "
+            f"y {s.llm_timeout_seconds:.0f} s por llamada al modelo.",
+            f"Recuerdas {s.max_history_items} mensajes de la conversación; "
+            f"lo anterior vive en la memoria si lo guardaste.",
+            f"El resultado de una herramienta se te entrega recortado a "
+            f"{s.max_tool_output_chars} caracteres.",
+            "Las acciones sensibles necesitan la aprobación del usuario en el HUD; "
+            "tú no puedes concedértela.",
+        ]
+
+    def _habilidades(self) -> list[str]:
+        """Lo que ha aprendido por su cuenta, con qué éxito y cuánto lo usa."""
+        if self._skills is None:
+            return ["── HABILIDADES APRENDIDAS ──", "El sistema de habilidades no está activo."]
+        try:
+            aprendidas = self._skills.list_all()
+        except Exception:
+            return ["── HABILIDADES APRENDIDAS ──", "No pude leer el registro de habilidades."]
+        if not aprendidas:
+            return [
+                "── HABILIDADES APRENDIDAS ──",
+                "Ninguna todavía. Cuando resuelvas algo que volverá a hacer falta, "
+                "guárdalo con learn_skill en vez de rehacerlo cada vez.",
+            ]
+        lineas = ["── HABILIDADES APRENDIDAS ──"]
+        for h in aprendidas:
+            estado = "activa" if h.enabled else "pausada"
+            fiabilidad = (
+                f", acierto {h.success_rate * 100:.0f}%" if h.usage_count else ", sin usar aún"
+            )
+            lineas.append(
+                f"- {h.name} ({h.skill_type}, {estado}): {h.description or h.title} "
+                f"· usada {h.usage_count} veces{fiabilidad}"
+            )
+        return lineas
+
+    def _especialistas(self) -> list[str]:
+        if not self._subagents:
+            return []
+        lineas = ["── ESPECIALISTAS A LOS QUE PUEDES DELEGAR ──"]
+        for spec in self._subagents:
+            lineas.append(f"- {spec.name}: {spec.purpose} ({len(spec.tools)} herramientas)")
+        return lineas
+
+    def _memoria(self) -> list[str]:
+        """Cuánto recuerda, no qué. El contenido se consulta con recall."""
+        if self._memory is None:
+            return []
+        try:
+            hechos = self._memory.recall("", limit=100)
+        except Exception:
+            return []
+        if not hechos:
+            return ["── MEMORIA ──", "No recuerdas nada del usuario todavía."]
+        claves = ", ".join(h.key for h in hechos[:12])
+        extra = f" y {len(hechos) - 12} más" if len(hechos) > 12 else ""
+        return [
+            "── MEMORIA ──",
+            f"Recuerdas {len(hechos)} hechos sobre el usuario. Temas: {claves}{extra}. "
+            "Usa recall para leer alguno.",
+        ]
 
     def _report(self, cap: Capability) -> str:
         import os
@@ -151,23 +257,46 @@ class DescribeCapabilitiesTool(Tool):
             linea += f" {cap.how}"
         return linea
 
-    async def run(self, capability: str = "", **kwargs: Any) -> ToolResult:
+    async def run(self, scope: str = "all", capability: str = "", **kwargs: Any) -> ToolResult:
         pedido = capability.strip().lower()
-        catalogo = [c for c in CAPABILITIES if not pedido or c.name == pedido]
-        if pedido and not catalogo:
-            nombres = ", ".join(c.name for c in CAPABILITIES)
-            return ToolResult(
-                f"No conozco la capacidad '{capability}'. Las que sé mirar: {nombres}.",
-                is_error=True,
-            )
+        if pedido:
+            scope = "capabilities"
+        ambito = (scope or "all").strip().lower()
 
-        lineas = [self._report(c) for c in catalogo]
-        if not pedido:
+        if pedido:
+            catalogo = [c for c in CAPABILITIES if c.name == pedido]
+            if not catalogo:
+                nombres = ", ".join(c.name for c in CAPABILITIES)
+                return ToolResult(
+                    f"No conozco la capacidad '{capability}'. Las que sé mirar: {nombres}.",
+                    is_error=True,
+                )
+            return ToolResult(self._report(catalogo[0]))
+
+        secciones: list[str] = []
+        if ambito in {"all", "identity"}:
+            secciones.append("\n".join(self._identidad()))
+        if ambito in {"all", "capabilities"}:
+            lineas = ["── LO QUE PUEDES HACER ──"]
+            lineas += [self._report(c) for c in CAPABILITIES]
             registradas = sorted(self._registry.names())
-            lineas.append("")
-            lineas.append(f"Herramientas registradas ahora mismo ({len(registradas)}): "
-                          + ", ".join(registradas))
-        return ToolResult("\n".join(lineas))
+            lineas.append(f"Herramientas registradas ({len(registradas)}): " + ", ".join(registradas))
+            secciones.append("\n".join(lineas))
+        if ambito in {"all", "skills"}:
+            secciones.append("\n".join(self._habilidades()))
+            especialistas = self._especialistas()
+            if especialistas:
+                secciones.append("\n".join(especialistas))
+        if ambito in {"all", "memory"}:
+            memoria = self._memoria()
+            if memoria:
+                secciones.append("\n".join(memoria))
+        if ambito in {"all", "limits"}:
+            secciones.append("\n".join(self._limites()))
+
+        if not secciones:
+            return ToolResult(f"Ámbito desconocido: '{scope}'.", is_error=True)
+        return ToolResult("\n\n".join(secciones))
 
 
 def _flag(settings: Settings, env_name: str) -> bool:
@@ -182,5 +311,13 @@ def _flag(settings: Settings, env_name: str) -> bool:
     return bool(getattr(settings, atributo, False)) if atributo else False
 
 
-def register_introspection_tool(registry: ToolRegistry, settings: Settings) -> None:
-    registry.register(DescribeCapabilitiesTool(settings, registry))
+def register_introspection_tool(
+    registry: ToolRegistry,
+    settings: Settings,
+    skills=None,
+    memory=None,
+    subagents=(),
+) -> None:
+    registry.register(
+        DescribeCapabilitiesTool(settings, registry, skills, memory, subagents)
+    )

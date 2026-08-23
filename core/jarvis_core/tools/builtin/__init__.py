@@ -195,7 +195,20 @@ def build_default_registry(
     from jarvis_core.tools.builtin.requests_tool import register_request_tool
 
     register_request_tool(registry)
-    register_introspection_tool(registry, settings)
+    # Conocerse a sí mismo incluye lo aprendido y a quién puede delegar, no solo
+    # el catálogo de herramientas: mirar en dos sitios distintos no es conocerse.
+    especialistas = []
+    if llm is not None and settings.subagents_enabled:
+        from jarvis_core.agent.subagents import available_subagents
+
+        especialistas = available_subagents(registry)
+    register_introspection_tool(
+        registry,
+        settings,
+        skills=skill_manager.store if skill_manager is not None else None,
+        memory=memory,
+        subagents=especialistas,
+    )
     if llm is not None and settings.subagents_enabled:
         # Al final a propósito: los especialistas se ofrecen según lo que de
         # verdad haya quedado registrado, no según una lista fija.

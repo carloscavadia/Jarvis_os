@@ -82,7 +82,7 @@ def test_distingue_apagado_de_inexistente(monkeypatch):
 
 def test_el_inventario_lista_lo_que_hay_registrado():
     completo = _describir(Settings())
-    assert "Herramientas registradas ahora mismo" in completo
+    assert "Herramientas registradas" in completo
     assert "proxmox_status" in completo
 
 
@@ -271,3 +271,130 @@ def test_otras_herramientas_no_generan_tarjeta():
     from jarvis_gateway.app import _capability_request
 
     assert _capability_request("create_file", {"path": "x"}) is None
+
+
+# ── Conocerse a sí mismo ──
+
+class _HabilidadFalsa:
+    def __init__(self, name, description, usage_count, success_rate, enabled=True):
+        self.name = name
+        self.title = name
+        self.description = description
+        self.skill_type = "instruction"
+        self.usage_count = usage_count
+        self.success_rate = success_rate
+        self.enabled = enabled
+
+
+class _AlmacenHabilidades:
+    def __init__(self, habilidades):
+        self._h = habilidades
+
+    def list_all(self):
+        return self._h
+
+
+def _mirarse(settings=None, scope="all", **piezas):
+    from jarvis_core.tools.builtin.introspection import DescribeCapabilitiesTool
+
+    registry = ToolRegistry()
+    register_proxmox_tools(registry, settings or Settings())
+    herramienta = DescribeCapabilitiesTool(settings or Settings(), registry, **piezas)
+    return asyncio.run(herramienta.run(scope=scope)).content
+
+
+def test_sabe_con_que_cerebro_piensa():
+    informe = _mirarse(Settings(persona_name="JARVIS", model="claude-opus-5"), "identity")
+    assert "JARVIS" in informe
+    assert "claude-opus-5" in informe
+
+
+def test_conoce_las_reglas_de_la_casa_vigentes():
+    informe = _mirarse(Settings(persona_extra="Trátame de usted."), "identity")
+    assert "Trátame de usted." in informe
+
+
+def test_sabe_cuando_esta_en_modo_offline():
+    assert "offline" in _mirarse(Settings(offline_mode=True), "identity")
+
+
+def test_conoce_sus_propios_limites():
+    """Saber lo que no puede hacer por diseño evita prometer de más."""
+    informe = _mirarse(Settings(max_tool_iterations=12), "limits")
+    assert "12 pasos" in informe
+    assert "aprobación del usuario" in informe
+    assert "no puedes concedértela" in informe
+
+
+def test_consulta_sus_habilidades_aprendidas():
+    informe = _mirarse(scope="skills", skills=_AlmacenHabilidades([
+        _HabilidadFalsa("resumen_diario", "Resume el correo de la mañana", 7, 0.857),
+    ]))
+    assert "resumen_diario" in informe
+    assert "usada 7 veces" in informe
+    assert "86%" in informe, "la fiabilidad importa tanto como la existencia"
+
+
+def test_una_habilidad_sin_estrenar_no_finge_fiabilidad():
+    informe = _mirarse(scope="skills", skills=_AlmacenHabilidades([
+        _HabilidadFalsa("nueva", "Algo", 0, 1.0),
+    ]))
+    assert "sin usar aún" in informe
+    assert "100%" not in informe
+
+
+def test_sin_habilidades_sugiere_aprender_en_vez_de_callar():
+    informe = _mirarse(scope="skills", skills=_AlmacenHabilidades([]))
+    assert "learn_skill" in informe
+
+
+def test_sabe_a_quien_puede_delegar():
+    from jarvis_core.agent.subagents import DEFAULT_SUBAGENTS
+
+    informe = _mirarse(scope="skills", subagents=DEFAULT_SUBAGENTS[:2])
+    assert "ESPECIALISTAS" in informe
+    assert DEFAULT_SUBAGENTS[0].name in informe
+
+
+def test_sabe_cuanto_recuerda_pero_no_lo_vuelca(tmp_path):
+    from jarvis_core.memory.store import MemoryStore
+
+    memoria = MemoryStore(str(tmp_path / "m.db"))
+    memoria.remember("coche", "un Tesla Model 3 azul")
+
+    informe = _mirarse(scope="memory", memory=memoria)
+
+    assert "1 hechos" in informe or "Recuerdas 1" in informe
+    assert "coche" in informe                      # el tema, sí
+    assert "Tesla Model 3 azul" not in informe     # el contenido, no: para eso está recall
+    assert "recall" in informe
+
+
+def test_un_almacen_de_habilidades_roto_no_tumba_la_introspeccion():
+    class Roto:
+        def list_all(self):
+            raise RuntimeError("base bloqueada")
+
+    informe = _mirarse(scope="skills", skills=Roto())
+    assert "No pude leer" in informe
+
+
+def test_el_inventario_completo_reune_todas_las_secciones(tmp_path):
+    from jarvis_core.memory.store import MemoryStore
+
+    informe = _mirarse(
+        scope="all",
+        skills=_AlmacenHabilidades([_HabilidadFalsa("x", "y", 1, 1.0)]),
+        memory=MemoryStore(str(tmp_path / "m.db")),
+    )
+    for seccion in ("QUIÉN ERES", "LO QUE PUEDES HACER", "HABILIDADES APRENDIDAS", "TUS LÍMITES"):
+        assert seccion in informe, f"falta la sección {seccion}"
+
+
+def test_un_ambito_desconocido_se_reporta():
+    from jarvis_core.tools.builtin.introspection import DescribeCapabilitiesTool
+
+    resultado = asyncio.run(
+        DescribeCapabilitiesTool(Settings(), ToolRegistry()).run(scope="telepatia")
+    )
+    assert resultado.is_error

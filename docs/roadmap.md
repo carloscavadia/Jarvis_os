@@ -69,8 +69,9 @@ desde el coche". Cada fase deja algo usable.
 - [ ] Panel web de administración.
 
 ## Fase 6 — Que se resuelva solo
-- [x] Introspección: JARVIS sabe qué puede hacer y qué le falta, y distingue
-      «no existe» de «está apagado» de «falta una credencial».
+- [x] Conocerse a sí mismo: qué es y con qué cerebro piensa, qué puede hacer y qué
+      le falta a cada capacidad, qué habilidades ha aprendido y con qué acierto, a
+      quién puede delegar, cuánto recuerda y cuáles son sus límites.
 - [x] Método ante lo no programado: averiguar antes de rendirse, decir qué falta
       exactamente, y guardar lo resuelto como habilidad o memoria.
 - [ ] Que proponga y registre servidores MCP por su cuenta cuando la capacidad
