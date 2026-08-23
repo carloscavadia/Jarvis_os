@@ -171,6 +171,27 @@ def build_default_registry(
         register_dynamic_connector_tools(
             registry, connector_store, connector_runtime
         )
+    if settings.connectors_enabled and connector_store is not None:
+        # La ubicación sale de Home Assistant, que vive detrás del runtime de
+        # conectores; sin conectores no hay de dónde sacarla, salvo la dirección
+        # fija, que sola no merece una herramienta.
+        from jarvis_core.location.resolver import LocationResolver, Place
+        from jarvis_core.tools.builtin.location_tool import register_location_tool
+
+        casa = None
+        if settings.home_latitude is not None and settings.home_longitude is not None:
+            casa = Place(
+                lat=settings.home_latitude,
+                lon=settings.home_longitude,
+                source="config",
+                label=settings.home_label,
+            )
+        register_location_tool(
+            registry,
+            LocationResolver(
+                connector_runtime, entity_id=settings.location_entity, home=casa
+            ),
+        )
     if mcp_manager is not None:
         for mcp_tool in mcp_manager.get_registered_tools():
             registry.register(mcp_tool)

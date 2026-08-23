@@ -105,6 +105,21 @@ CAPABILITIES: tuple[Capability, ...] = (
         ),
     ),
     Capability(
+        "ubicacion", "Saber dónde está el usuario ahora mismo.",
+        tools=("where_am_i",),
+        env=("JARVIS_LOCATION_ENTITY", "JARVIS_HOME_LAT", "JARVIS_HOME_LON"),
+        enabled_by="JARVIS_CONNECTORS_ENABLED",
+        how=(
+            "Sale de Home Assistant: la app Companion publica la posición del móvil "
+            "en 'person.*' o 'device_tracker.*'. El módulo de Home Assistant necesita "
+            "'homeassistant.state' entre sus acciones de lectura, porque el listado de "
+            "entidades no trae las coordenadas. Sin eso queda la dirección fija del "
+            ".env, que no es dónde está el usuario y hay que decirlo al usarla. "
+            "Por IP no se puede: dentro de la red solo se ve una dirección privada y "
+            "desde fuera sale la del operador."
+        ),
+    ),
+    Capability(
         "navegador", "Conducir un navegador real: buscar, entrar en un resultado, leer, volver.",
         tools=("browse",),
         enabled_by="JARVIS_BROWSER_ENABLED",

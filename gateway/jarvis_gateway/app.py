@@ -1424,6 +1424,55 @@ async def web_navigate(req: WebNavigateRequest):
     }
 
 
+# ── Ubicación ──
+
+def _location_resolver():
+    """El resolutor, montado con la configuración viva.
+
+    Se construye en cada llamada en vez de una vez al arrancar porque los
+    módulos de conector se registran y se quitan en caliente desde el HUD: uno
+    cacheado seguiría buscando Home Assistant donde ya no está.
+    """
+    from jarvis_core.location.resolver import LocationResolver, Place
+
+    casa = None
+    if settings.home_latitude is not None and settings.home_longitude is not None:
+        casa = Place(
+            lat=settings.home_latitude,
+            lon=settings.home_longitude,
+            source="config",
+            label=settings.home_label,
+        )
+    # Sin conectores configurados, `_connector_runtime()` corta con un 503: es
+    # lo correcto para administrar módulos y lo contrario de lo que hace falta
+    # aquí. No tener Home Assistant no es una avería del servicio, es no saber
+    # dónde estás —y para eso está la dirección fija y la nota que la acompaña—.
+    try:
+        entorno = _connector_runtime()
+    except HTTPException:
+        entorno = None
+    return LocationResolver(
+        entorno, entity_id=settings.location_entity, home=casa
+    )
+
+
+@app.get("/location", dependencies=[Depends(require_api_key)])
+async def current_location() -> dict[str, object]:
+    """Dónde está el usuario, y de dónde se sacó.
+
+    La procedencia baja siempre: el HUD tiene que poder decir «tu móvil, hace
+    dos minutos» o «la dirección de casa», porque no son lo mismo y el usuario
+    decide distinto con cada una.
+    """
+    resolucion = await _location_resolver().resolve()
+    if resolucion.place is None:
+        return {"available": False, "note": resolucion.note}
+    cuerpo: dict[str, object] = {"available": True, **resolucion.place.as_dict()}
+    if resolucion.note:
+        cuerpo["note"] = resolucion.note
+    return cuerpo
+
+
 # ── Navegador ──
 
 class BrowserActRequest(BaseModel):

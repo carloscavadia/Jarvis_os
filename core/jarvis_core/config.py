@@ -12,6 +12,22 @@ from dataclasses import dataclass, field
 from jarvis_core.offline import apply_offline_mode
 
 
+def _optional_float(name: str) -> float | None:
+    """Un número del entorno que puede no estar. Vacío y basura son lo mismo: no hay.
+
+    Se devuelve None en vez de 0.0 a propósito: un cero es una coordenada válida
+    —y muy lejos de casa—, así que confundirlo con «sin configurar» pondría al
+    usuario en el Golfo de Guinea sin avisar.
+    """
+    crudo = (os.environ.get(name) or "").strip()
+    if not crudo:
+        return None
+    try:
+        return float(crudo)
+    except ValueError:
+        return None
+
+
 def _get_bool(name: str, default: bool) -> bool:
     val = os.environ.get(name)
     if val is None:
@@ -250,6 +266,13 @@ class Settings:
     browser_enabled: bool = False
     browser_timeout_seconds: float = 25.0
     browser_max_text_chars: int = 6000
+    #: De dónde sale «dónde estoy». La entidad de Home Assistant es la buena; el
+    #: par de coordenadas de casa es el respaldo para cuando no la haya.
+    #: Vacía = descubrir sola entre las entidades person/device_tracker.
+    location_entity: str = ""
+    home_latitude: float | None = None
+    home_longitude: float | None = None
+    home_label: str = "Casa"
     hud_workspace_enabled: bool = False
     connectors_enabled: bool = False
     connector_db_path: str = "data/jarvis_connectors.db"
@@ -550,6 +573,10 @@ class Settings:
             ),
             internet_access_enabled=_get_bool("JARVIS_INTERNET_ACCESS_ENABLED", False),
             browser_enabled=_get_bool("JARVIS_BROWSER_ENABLED", False),
+            location_entity=os.environ.get("JARVIS_LOCATION_ENTITY", "").strip(),
+            home_latitude=_optional_float("JARVIS_HOME_LAT"),
+            home_longitude=_optional_float("JARVIS_HOME_LON"),
+            home_label=os.environ.get("JARVIS_HOME_LABEL", "Casa").strip() or "Casa",
             browser_timeout_seconds=max(
                 5.0,
                 min(90.0, float(os.environ.get("JARVIS_BROWSER_TIMEOUT_SECONDS", "25"))),

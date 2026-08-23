@@ -47,7 +47,7 @@ EXPECTED_ROUTES = {
     "/config.js", "/health", "/hud", "/ready",
     "/homeassistant/entities", "/homeassistant/toggle",
     "/mcp/servers", "/mcp/servers/{name}", "/mcp/servers/{name}/test",
-    "/memory/graph",
+    "/location", "/memory/graph",
     "/music/cover/{cover_id}", "/music/playlist/{playlist_id}", "/music/playlists",
     "/music/random", "/music/search", "/music/status", "/music/stream/{song_id}",
     "/persona",

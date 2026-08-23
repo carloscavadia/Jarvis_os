@@ -99,3 +99,32 @@ def test_cerrar_algo_que_no_existe_da_404():
 def test_cerrar_pide_llave():
     with TestClient(gateway_module.app) as client:
         assert client.post("/tasks/1/complete").status_code == 401
+
+
+# ── Ubicación ────────────────────────────────────────────────────────────────
+
+def test_sin_home_assistant_la_ubicacion_dice_que_falta(monkeypatch):
+    """No inventa coordenadas: dice qué hay que configurar."""
+    monkeypatch.setattr(runtime.settings, "home_latitude", None)
+    monkeypatch.setattr(runtime.settings, "home_longitude", None)
+    with TestClient(gateway_module.app) as client:
+        cuerpo = client.get("/location", headers=KEY).json()
+    assert cuerpo["available"] is False
+    assert cuerpo["note"]
+
+
+def test_la_direccion_fija_vale_pero_se_marca_como_tal(monkeypatch):
+    """«La dirección de casa» y «dónde estás» no son lo mismo, y se distingue."""
+    monkeypatch.setattr(runtime.settings, "home_latitude", 40.4168)
+    monkeypatch.setattr(runtime.settings, "home_longitude", -3.7038)
+    monkeypatch.setattr(runtime.settings, "home_label", "Casa")
+    with TestClient(gateway_module.app) as client:
+        cuerpo = client.get("/location", headers=KEY).json()
+    assert cuerpo["available"] is True
+    assert cuerpo["source"] == "config"
+    assert "no dónde estás ahora" in cuerpo["note"]
+
+
+def test_la_ubicacion_pide_llave():
+    with TestClient(gateway_module.app) as client:
+        assert client.get("/location").status_code == 401

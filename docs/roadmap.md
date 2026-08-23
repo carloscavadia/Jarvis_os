@@ -72,6 +72,11 @@ desde el coche". Cada fase deja algo usable.
       tenga que consultarlos.
 - [x] Memoria semántica con embeddings: busca por significado. Modelo local
       (nada sale de la red) o endpoint compatible como NVIDIA NIM.
+- [x] Saber dónde está el usuario, leyendo `person.*`/`device_tracker.*` de Home
+      Assistant, con la dirección fija del `.env` como respaldo y la procedencia
+      siempre a la vista. Por IP no se hace: dentro de la red solo hay una
+      dirección privada y desde fuera sale la del operador.
+- [ ] Rutas y tiempo de viaje sobre OpenStreetMap partiendo de esa ubicación.
 - [ ] Aprendizaje de preferencias del usuario a lo largo del tiempo.
 - [ ] Panel web de administración.
 
