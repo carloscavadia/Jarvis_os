@@ -206,3 +206,50 @@ def test_una_web_de_verdad_sigue_bajando_como_web():
     )
     assert vista["kind"] == "web"
     assert vista["url"] == "https://es.wikipedia.org/wiki/Paella"
+
+
+def test_el_texto_de_una_pagina_recortada_no_arrastra_el_javascript(monkeypatch):
+    """Lo que apareció en pantalla: el `var ytInitialData = {...}` de YouTube.
+
+    Al recortar la página por tamaño, el último `<script>` queda sin cerrar. El
+    borrado con `<script.*?>.*?</script>` necesita la etiqueta de cierre: no
+    casaba, el barrido de `<...>` se llevaba solo las etiquetas y el cuerpo del
+    script salía tal cual a la vista previa.
+    """
+    recortada = (
+        b"<html><head><title>Canal oficial</title></head><body>"
+        b"<p>About Press Copyright</p>"
+        b'<script nonce="x">var ytInitialData = {"responseContext":{"serviceTrackingParams":'
+        b'[{"service":"GFEEDBACK","params":[{"key":"browse_id","value":"UC5OrDvL9Dscpc'
+    )
+
+    def fake_get(self, url, **kwargs):
+        return "https://www.youtube.com/c/@michaeljackson", "text/html", recortada, True
+
+    monkeypatch.setattr(gateway_module.WebClient, "get", fake_get)
+    with TestClient(gateway_module.app) as client:
+        datos = client.post(
+            "/web/navigate", headers=KEY, json={"url": "https://www.youtube.com/c/@michaeljackson"}
+        ).json()["data"]
+
+    assert datos["title"] == "Canal oficial"
+    assert "About Press Copyright" in datos["preview_text"]
+    for basura in ("ytInitialData", "responseContext", "serviceTrackingParams", "browse_id"):
+        assert basura not in datos["preview_text"], f"el JavaScript sigue saliendo: {basura}"
+
+
+def test_un_style_sin_cerrar_tampoco_ensucia_la_vista(monkeypatch):
+    def fake_get(self, url, **kwargs):
+        return (
+            "https://ejemplo.com/",
+            "text/html",
+            b"<html><body><p>Contenido real</p><style>.x{color:red;background:",
+            True,
+        )
+
+    monkeypatch.setattr(gateway_module.WebClient, "get", fake_get)
+    with TestClient(gateway_module.app) as client:
+        datos = client.post("/web/navigate", headers=KEY, json={"url": "ejemplo.com"}).json()["data"]
+
+    assert "Contenido real" in datos["preview_text"]
+    assert "color:red" not in datos["preview_text"]

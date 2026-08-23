@@ -42,7 +42,11 @@ from jarvis_core.tasks.store import Task
 from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.tools.clipping import clip_structured
-from jarvis_core.tools.builtin.web_tools import WebClient, validate_public_https_url
+from jarvis_core.tools.builtin.web_tools import (
+    WebClient,
+    _TextExtractor,
+    validate_public_https_url,
+)
 from jarvis_core.tools.builtin.viewer import (
     VIEWER_KINDS,
     resolve_kind,
@@ -1350,13 +1354,20 @@ async def web_navigate(req: WebNavigateRequest):
         logger.warning("Error en AI Web Operator al navegar a %s: %s", target_url, exc)
         return {"success": False, "error": str(exc), "url": target_url}
 
+    # El texto se saca con el mismo parser de HTML que usa `fetch_web_page`, y no
+    # con expresiones regulares. La versión anterior borraba los scripts con un
+    # `<script.*?>.*?</script>` no voraz, que necesita encontrar la etiqueta de
+    # cierre. Cuando la página se recorta por tamaño, el último `<script>` queda
+    # abierto: la expresión no casa, el borrado de etiquetas se lleva solo los
+    # `<...>` y el cuerpo del script —el `var ytInitialData = {...}` de YouTube—
+    # aparecía tal cual en la vista previa. El parser lleva un contador de
+    # etiquetas ignoradas, así que un script sin cerrar se traga todo lo que
+    # venga detrás, que es justo lo que hay que hacer.
     html = body.decode("utf-8", errors="ignore")
-    title_match = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
-    title = title_match.group(1).strip() if title_match else final_url
-    clean_text = re.sub(r"<script.*?>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
-    clean_text = re.sub(r"<style.*?>.*?</style>", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
-    clean_text = re.sub(r"<.*?>", " ", clean_text)
-    clean_text = " ".join(clean_text.split())[:1200]
+    extractor = _TextExtractor()
+    extractor.feed(html)
+    title = re.sub(r"\s+", " ", extractor.title).strip() or final_url
+    clean_text = " ".join(extractor.text().split())[:1200]
     if recortada:
         clean_text += " […]"
     return {

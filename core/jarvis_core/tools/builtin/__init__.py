@@ -141,6 +141,7 @@ def build_default_registry(
             registry,
             root=settings.workspace_root,
             max_file_bytes=settings.workspace_max_file_bytes,
+            browser_available=settings.internet_access_enabled and settings.browser_enabled,
         )
     if (
         settings.connectors_enabled

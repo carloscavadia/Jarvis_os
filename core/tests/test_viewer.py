@@ -147,3 +147,28 @@ def test_una_web_que_no_es_youtube_sigue_siendo_web(visor):
     assert resolve_kind("web", "https://es.wikipedia.org/wiki/Paella") == "web"
     # Y la corrección no toca los demás visores.
     assert resolve_kind("image", "https://www.youtube.com/watch?v=yxW5yuzVi8w") == "image"
+
+
+def test_con_navegador_instalado_el_visor_web_manda_usar_browse(tmp_path):
+    """Con navegador no hay razón para enseñar una página como texto.
+
+    `browse` la muestra tal cual se ve. Devolverlo como error con la salida a
+    mano hace que el modelo reintente por el camino bueno, en vez de dar por
+    hecho que enseñó el sitio cuando solo enseñó su texto.
+    """
+    from jarvis_core.tools.builtin.viewer import OpenViewerTool
+
+    raiz = tmp_path / "ws"
+    raiz.mkdir()
+    tool = OpenViewerTool(WorkspaceGuard(str(raiz), 1024), browser_available=True)
+    salida = abrir(tool, kind="web", url="https://es.wikipedia.org/wiki/Paella")
+    assert salida.is_error
+    assert "browse" in salida.content
+
+
+def test_sin_navegador_el_visor_web_sigue_dando_el_texto(visor):
+    tool, _ = visor
+    salida = abrir(tool, kind="web", url="https://es.wikipedia.org/wiki/Paella")
+    assert not salida.is_error
+    # Y avisa de que es texto, para que no se describa una página que no vio.
+    assert "solo texto" in salida.content.lower()

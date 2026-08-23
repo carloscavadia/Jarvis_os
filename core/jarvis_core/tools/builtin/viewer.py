@@ -111,7 +111,8 @@ class OpenViewerTool(Tool):
                 "description": (
                     "'image', 'pdf' y 'document' abren un archivo del workspace por 'path'. "
                     "'video' abre YouTube por 'url' —cualquier enlace de YouTube va aquí, "
-                    "no en 'web'—. 'web' abre por 'url' una página que se lee como texto."
+                    "no en 'web'—. 'web' NO enseña la página: solo saca su texto, porque "
+                    "casi ningún sitio se deja incrustar. Para VER un sitio usa `browse`."
                 ),
             },
             "path": {
@@ -142,8 +143,9 @@ class OpenViewerTool(Tool):
         "additionalProperties": False,
     }
 
-    def __init__(self, guard: WorkspaceGuard) -> None:
+    def __init__(self, guard: WorkspaceGuard, *, browser_available: bool = False) -> None:
         self.guard = guard
+        self.browser_available = browser_available
 
     async def run(
         self,
@@ -174,6 +176,20 @@ class OpenViewerTool(Tool):
             return ToolResult(content=f"Vídeo abierto en el HUD: {title or url}")
 
         if kind == "web":
+            if self.browser_available:
+                # Con navegador instalado no hay razón para enseñar una página
+                # como texto: `browse` la muestra de verdad, tal como se ve. Se
+                # devuelve como error con la salida a mano para que el modelo
+                # reintente por el camino bueno en vez de dar esto por hecho.
+                return ToolResult(
+                    content=(
+                        "Para ver una página usa la herramienta `browse` con "
+                        f"action='open' y url='{url}': la abre en un navegador real y "
+                        "se ve tal cual. El visor 'web' solo saca el texto y existe "
+                        "para cuando no hay navegador."
+                    ),
+                    is_error=True,
+                )
             # La comprobación real de destino la hace validate_public_https_url
             # en el gateway, que es quien va a salir a la red. Aquí basta con no
             # dejar pasar algo que ni siquiera es una URL.
@@ -183,7 +199,12 @@ class OpenViewerTool(Tool):
                 validate_public_https_url(url)
             except ValueError as exc:
                 return ToolResult(content=str(exc), is_error=True)
-            return ToolResult(content=f"Página abierta en el HUD: {title or url}")
+            return ToolResult(
+                content=(
+                    f"Texto de la página en el HUD: {title or url}. Es solo texto, no "
+                    "la página; no describas al usuario cómo se ve."
+                )
+            )
 
         try:
             resolved = self.guard.resolve(path)
@@ -207,5 +228,11 @@ class OpenViewerTool(Tool):
         )
 
 
-def register_viewer_tool(registry: Any, *, root: str, max_file_bytes: int) -> None:
-    registry.register(OpenViewerTool(WorkspaceGuard(root, max_file_bytes)))
+def register_viewer_tool(
+    registry: Any, *, root: str, max_file_bytes: int, browser_available: bool = False
+) -> None:
+    registry.register(
+        OpenViewerTool(
+            WorkspaceGuard(root, max_file_bytes), browser_available=browser_available
+        )
+    )

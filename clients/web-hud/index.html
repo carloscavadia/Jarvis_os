@@ -2551,6 +2551,10 @@
       // rechazan con X-Frame-Options y lo único que se vería es un rectángulo
       // en blanco, sin explicación. Se muestra el texto legible que el gateway
       // ya extrae, y el enlace para abrirla de verdad.
+      // Decir por qué no se ve el sitio. Sin esta línea la ventana parece una
+      // vista previa rota: el usuario espera la página y recibe un muro de
+      // texto sin ninguna pista de que eso es todo lo que puede haber aquí.
+      viewerNote(win.body, "Solo texto: casi ningún sitio se deja incrustar en otra página. Para verlo tal cual, ábrelo en una pestaña o activa el navegador de JARVIS.");
       if (view.url) {
         const link = document.createElement("a");
         link.href = view.url; link.target = "_blank"; link.rel = "noopener noreferrer";
