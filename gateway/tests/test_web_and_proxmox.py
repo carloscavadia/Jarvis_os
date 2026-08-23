@@ -47,7 +47,10 @@ def test_web_navigate_extrae_titulo_y_texto_de_una_pagina_publica(monkeypatch):
     """
 
     def fake_get(self, url, **kwargs):
-        return "https://ejemplo.com/final", "text/html", html
+        # El cuarto valor dice si hubo que recortar la página. Antes pasarse del
+        # tope era un error y no se leía nada; ahora se lee el principio y se
+        # avisa, que es lo que arregló la vista previa de páginas grandes.
+        return "https://ejemplo.com/final", "text/html", html, False
 
     monkeypatch.setattr(gateway_module.WebClient, "get", fake_get)
 

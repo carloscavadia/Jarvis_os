@@ -179,3 +179,30 @@ def test_con_el_navegador_apagado_no_se_puede_operar(monkeypatch):
 def test_operar_el_navegador_pide_llave():
     with TestClient(gateway_module.app) as client:
         assert client.post("/browser/act", json={"action": "back"}).status_code == 401
+
+
+def test_un_enlace_de_youtube_pedido_como_web_baja_como_video():
+    """Lo que se vio en pantalla: JARVIS pidió 'web' para un vídeo de YouTube.
+
+    El HUD intentaba leer la página como texto y la vista previa moría en el
+    tope de descarga. La ventana y la frase de confirmación tienen que coincidir,
+    así que la corrección va en el mismo sitio para los dos.
+    """
+    vista = _viewer_presentation(
+        "open_viewer",
+        {
+            "kind": "web",
+            "url": "https://www.youtube.com/watch?v=yxW5yuzVi8w",
+            "title": "Vídeo musical oficial",
+        },
+    )
+    assert vista["kind"] == "video"
+    assert vista["embed"] == "yxW5yuzVi8w"
+
+
+def test_una_web_de_verdad_sigue_bajando_como_web():
+    vista = _viewer_presentation(
+        "open_viewer", {"kind": "web", "url": "https://es.wikipedia.org/wiki/Paella"}
+    )
+    assert vista["kind"] == "web"
+    assert vista["url"] == "https://es.wikipedia.org/wiki/Paella"

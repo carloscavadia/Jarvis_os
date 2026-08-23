@@ -111,7 +111,19 @@ class WebClient:
         *,
         headers: dict[str, str] | None = None,
         redirects: int = 3,
-    ) -> tuple[str, str, bytes]:
+    ) -> tuple[str, str, bytes, bool]:
+        """Descarga una página pública. Devuelve además si hubo que recortarla.
+
+        Antes, pasarse del tope era un error: «La página supera el límite de
+        descarga», y no se leía nada. Eso no protegía de nada que recortar no
+        proteja igual —el tope existe para acotar la memoria, y en los dos casos
+        se leen los mismos bytes y se para ahí—, pero convertía cualquier página
+        grande en una herramienta que no funciona. Una portada de YouTube pasa de
+        un mega de sobra, y con ella se caía la vista previa entera.
+
+        Ahora se corta y se dice. El principio de una página es justo donde está
+        el título y el texto de cabecera, que es lo que se quería leer.
+        """
         current = validate_public_https_url(url)
         request_headers = {
             "User-Agent": "JARVIS-OS/0.1 (+personal assistant; read-only)",
@@ -137,9 +149,8 @@ class WebClient:
                 if not content_type.startswith(_ALLOWED_CONTENT_TYPES):
                     raise ValueError(f"Tipo de contenido no permitido: {content_type}.")
                 body = response.read(self.max_bytes + 1)
-                if len(body) > self.max_bytes:
-                    raise ValueError("La página supera el límite de descarga.")
-                return current, content_type, body
+                recortada = len(body) > self.max_bytes
+                return current, content_type, body[: self.max_bytes], recortada
         raise ValueError("Demasiadas redirecciones.")
 
 
@@ -175,7 +186,7 @@ class SearchWebTool(Tool):
                     {"q": query, "count": count, "safesearch": "moderate"}
                 )
             )
-            _, _, body = self.client.get(
+            _, _, body, _ = self.client.get(
                 url,
                 headers={
                     "Accept": "application/json",
@@ -193,7 +204,7 @@ class SearchWebTool(Tool):
             url = "https://www.bing.com/search?" + urllib.parse.urlencode(
                 {"q": query, "format": "rss", "count": count}
             )
-            _, _, body = self.client.get(url)
+            _, _, body, _ = self.client.get(url)
             root = ET.fromstring(body)
             lines = []
             for index, item in enumerate(root.findall("./channel/item")[:count], 1):
@@ -235,7 +246,7 @@ class FetchWebPageTool(Tool):
         self.max_text_chars = max_text_chars
 
     def _fetch(self, url: str) -> ToolResult:
-        final_url, content_type, body = self.client.get(url)
+        final_url, content_type, body, recortada = self.client.get(url)
         charset = "utf-8"
         text = body.decode(charset, errors="replace")
         title = ""
@@ -244,9 +255,14 @@ class FetchWebPageTool(Tool):
             parser.feed(text)
             title = re.sub(r"\s+", " ", parser.title).strip()
             text = parser.text()
+        recortada = recortada or len(text) > self.max_text_chars
         text = text[: self.max_text_chars]
+        # Decirlo importa: sin el aviso, el modelo da por completa una página que
+        # solo ha leído por arriba y responde que algo «no aparece» cuando lo que
+        # pasa es que no llegó a esa parte.
+        aviso = "\n\n[Página larga: esto es solo el principio.]" if recortada else ""
         return ToolResult(
-            content=f"FUENTE: {final_url}\nTÍTULO: {title or '(sin título)'}\n\n{text}"
+            content=f"FUENTE: {final_url}\nTÍTULO: {title or '(sin título)'}\n\n{text}{aviso}"
         )
 
     async def run(self, url: str = "", **kwargs: Any) -> ToolResult:

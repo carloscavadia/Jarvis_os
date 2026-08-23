@@ -118,3 +118,32 @@ def test_una_web_privada_no_se_abre(visor):
     tool, _ = visor
     assert abrir(tool, kind="web", url="https://192.168.1.1/").is_error
     assert abrir(tool, kind="web", url="http://ejemplo.com/").is_error
+
+
+# ── Corregir el visor cuando la URL dice otra cosa ────────────────────────────
+
+def test_un_enlace_de_youtube_pedido_como_web_se_abre_como_video(visor):
+    """El caso real: se pidió `kind='web'` para un vídeo de YouTube.
+
+    Es una elección razonable —es una página— y el resultado era absurdo:
+    intentar leerla como texto, tragarse un mega de HTML de la portada y no
+    enseñar el vídeo. Un enlace a un vídeo es un vídeo, lo llame como lo llame
+    quien lo pide.
+    """
+    from jarvis_core.tools.builtin.viewer import resolve_kind
+
+    assert resolve_kind("web", "https://www.youtube.com/watch?v=yxW5yuzVi8w") == "video"
+    assert resolve_kind("web", "https://youtu.be/yxW5yuzVi8w") == "video"
+
+    tool, _ = visor
+    resultado = abrir(tool, kind="web", url="https://www.youtube.com/watch?v=yxW5yuzVi8w")
+    assert not resultado.is_error
+    assert "Vídeo" in resultado.content
+
+
+def test_una_web_que_no_es_youtube_sigue_siendo_web(visor):
+    from jarvis_core.tools.builtin.viewer import resolve_kind
+
+    assert resolve_kind("web", "https://es.wikipedia.org/wiki/Paella") == "web"
+    # Y la corrección no toca los demás visores.
+    assert resolve_kind("image", "https://www.youtube.com/watch?v=yxW5yuzVi8w") == "image"

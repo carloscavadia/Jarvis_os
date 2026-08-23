@@ -43,7 +43,11 @@ from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.tools.clipping import clip_structured
 from jarvis_core.tools.builtin.web_tools import WebClient, validate_public_https_url
-from jarvis_core.tools.builtin.viewer import VIEWER_KINDS, youtube_video_id
+from jarvis_core.tools.builtin.viewer import (
+    VIEWER_KINDS,
+    resolve_kind,
+    youtube_video_id,
+)
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
@@ -326,7 +330,12 @@ def _viewer_presentation(
     if name != "open_viewer":
         return None
     kind = arguments.get("kind")
-    if not isinstance(kind, str) or kind not in VIEWER_KINDS:
+    if not isinstance(kind, str):
+        return None
+    # La misma corrección que hace la herramienta, para que la ventana y la
+    # frase de confirmación no digan cosas distintas.
+    kind = resolve_kind(kind.strip().lower(), str(arguments.get("url") or ""))
+    if kind not in VIEWER_KINDS:
         return None
     vista: dict[str, object] = {"kind": kind, "title": str(arguments.get("title") or "")}
     caption = arguments.get("caption")
@@ -1334,7 +1343,9 @@ async def web_navigate(req: WebNavigateRequest):
         max_bytes=settings.web_max_download_bytes,
     )
     try:
-        final_url, _content_type, body = await asyncio.to_thread(client.get, target_url)
+        final_url, _content_type, body, recortada = await asyncio.to_thread(
+            client.get, target_url
+        )
     except Exception as exc:
         logger.warning("Error en AI Web Operator al navegar a %s: %s", target_url, exc)
         return {"success": False, "error": str(exc), "url": target_url}
@@ -1346,6 +1357,8 @@ async def web_navigate(req: WebNavigateRequest):
     clean_text = re.sub(r"<style.*?>.*?</style>", "", clean_text, flags=re.DOTALL | re.IGNORECASE)
     clean_text = re.sub(r"<.*?>", " ", clean_text)
     clean_text = " ".join(clean_text.split())[:1200]
+    if recortada:
+        clean_text += " […]"
     return {
         "success": True,
         "data": {"title": title, "url": final_url, "preview_text": clean_text},

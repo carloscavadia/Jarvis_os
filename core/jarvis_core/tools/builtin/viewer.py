@@ -71,6 +71,24 @@ def youtube_video_id(raw: str) -> str:
     return candidate if _YOUTUBE_ID.match(candidate) else ""
 
 
+def resolve_kind(kind: str, url: str) -> str:
+    """Corrige el visor cuando la URL dice claramente otra cosa.
+
+    El caso real: se pidió `kind='web'` para un enlace de YouTube. Es una
+    elección razonable —es una página— y el resultado era absurdo: intentar
+    leerla como texto, tragarse un mega de HTML de la portada de YouTube y no
+    enseñar el vídeo. Un enlace a un vídeo es un vídeo, lo llame como lo llame
+    quien lo pide.
+
+    Se corrige aquí y no en el prompt porque un prompt es una sugerencia y esto
+    es una equivalencia: no hay ningún caso en el que abrir un watch?v= de
+    YouTube como página sea lo que alguien quería.
+    """
+    if kind == "web" and youtube_video_id(url):
+        return "video"
+    return kind
+
+
 class OpenViewerTool(Tool):
     name = "open_viewer"
     description = (
@@ -92,7 +110,8 @@ class OpenViewerTool(Tool):
                 "enum": list(VIEWER_KINDS),
                 "description": (
                     "'image', 'pdf' y 'document' abren un archivo del workspace por 'path'. "
-                    "'video' abre YouTube por 'url'. 'web' abre una página pública por 'url'."
+                    "'video' abre YouTube por 'url' —cualquier enlace de YouTube va aquí, "
+                    "no en 'web'—. 'web' abre por 'url' una página que se lee como texto."
                 ),
             },
             "path": {
@@ -136,7 +155,7 @@ class OpenViewerTool(Tool):
         **kwargs: Any,
     ) -> ToolResult:
         del caption, kwargs
-        kind = (kind or "").strip().lower()
+        kind = resolve_kind((kind or "").strip().lower(), url)
         if kind not in VIEWER_KINDS:
             return ToolResult(
                 content=f"Tipo de visor inválido. Usa uno de: {', '.join(VIEWER_KINDS)}.",
