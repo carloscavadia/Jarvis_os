@@ -43,7 +43,9 @@ desde el coche". Cada fase deja algo usable.
 - [x] Correo saliente por SMTP (`send_email`), con aprobación humana.
 - [x] Calendario: agenda local con eventos, consulta por rango y vista en el
       mini calendario del HUD. Los recordatorios ya los cubre el motor de tareas.
-- [x] Lectura del estado del servidor Proxmox (CPU/RAM/disco de los nodos).
+- [x] Lectura del servidor Proxmox desde el agente: estado de los nodos y lista de
+      VMs y contenedores. (Antes solo lo pintaba el HUD; el agente no tenía
+      herramienta y no podía responder por Proxmox.)
 - [ ] Control del propio servidor Proxmox (arrancar/parar VMs y LXC).
 - [x] Multiagente: subagentes "casa", "investigación", "código" y "agenda", cada uno
       con su propio conjunto acotado de herramientas. Heredan las aprobaciones y
@@ -65,6 +67,15 @@ desde el coche". Cada fase deja algo usable.
       (nada sale de la red) o endpoint compatible como NVIDIA NIM.
 - [ ] Aprendizaje de preferencias del usuario a lo largo del tiempo.
 - [ ] Panel web de administración.
+
+## Fase 6 — Que se resuelva solo
+- [x] Introspección: JARVIS sabe qué puede hacer y qué le falta, y distingue
+      «no existe» de «está apagado» de «falta una credencial».
+- [x] Método ante lo no programado: averiguar antes de rendirse, decir qué falta
+      exactamente, y guardar lo resuelto como habilidad o memoria.
+- [ ] Que proponga y registre servidores MCP por su cuenta cuando la capacidad
+      exista ahí fuera.
+- [ ] Que detecte credenciales configuradas sin herramienta que las use y lo avise.
 
 ## Ideas / backlog
 - Integración con cámaras (visión).

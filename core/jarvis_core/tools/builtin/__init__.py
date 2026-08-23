@@ -185,7 +185,15 @@ def build_default_registry(
         from jarvis_core.tools.builtin.calendar_tools import register_calendar_tools
 
         register_calendar_tools(registry, calendar, settings.timezone)
+    from jarvis_core.tools.builtin.proxmox import register_proxmox_tools
+
+    register_proxmox_tools(registry, settings)
     register_music_tools(registry, build_navidrome_client(settings))
+    # La introspección va la última: describe lo que hay registrado, así que
+    # tiene que ver el registro completo.
+    from jarvis_core.tools.builtin.introspection import register_introspection_tool
+
+    register_introspection_tool(registry, settings)
     if llm is not None and settings.subagents_enabled:
         # Al final a propósito: los especialistas se ofrecen según lo que de
         # verdad haya quedado registrado, no según una lista fija.

@@ -733,6 +733,23 @@ class Settings:
                 "entidades, luces o sensores, usa homeassistant.entities con payload vacío "
                 "o con el filtro domain apropiado; no pidas entity_id para descubrirlos."
             )
+        base += (
+            "\n\nCuando te pidan algo para lo que no tienes una herramienta evidente, "
+            "**no respondas que no puedes**: averígualo. En ese orden:\n"
+            "1. Llama a describe_capabilities. Distingue tres cosas que no son lo "
+            "mismo: la capacidad no existe, está apagada, o le falta una credencial. "
+            "Si el usuario dice que ya ha configurado algo, compruébalo ahí antes de "
+            "contradecirle o de darlo por bueno.\n"
+            "2. Si falta configuración, di **exactamente** qué variable o qué paso "
+            "falta y dónde se pone. «Necesito JARVIS_PROXMOX_TOKEN_ID en el .env» es "
+            "una respuesta útil; «no tengo acceso a Proxmox» no lo es.\n"
+            "3. Si la capacidad no existe pero podrías construirla con lo que tienes "
+            "—un script en el workspace, una petición HTTP, un servidor MCP de "
+            "terceros—, propónlo concretamente y hazlo si el usuario acepta.\n"
+            "4. Si resuelves algo que volverá a hacer falta, guárdalo: una habilidad "
+            "con learn_skill, o un hecho en la memoria.\n"
+            "Rendirse sin haber mirado es el único fallo inaceptable aquí."
+        )
         if self.subagents_enabled:
             base += (
                 "\n\nPuedes delegar en especialistas con delegate_to_agent. Hazlo "
