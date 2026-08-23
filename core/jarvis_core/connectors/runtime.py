@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 import uuid
 from typing import Any, ClassVar
-from urllib.parse import quote, urljoin, urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urljoin, urlsplit, urlunsplit
 
 import certifi
 
@@ -377,6 +377,59 @@ class ConnectorRuntime:
             )
         return ToolResult("Acción de Home Assistant no implementada.", is_error=True)
 
+    def _http(
+        self, record: ConnectorRecord, action: str, payload: dict[str, Any]
+    ) -> ToolResult:
+        """Conector genérico contra cualquier API HTTP de tu red.
+
+        Existe para que añadir un servicio nuevo no dependa de que alguien
+        escriba una herramienta a medida. Con esto, JARVIS puede proponerte
+        registrar tu Proxmox, tu NAS o tu impresora 3D y usarlos el mismo día.
+
+        Lo que lo hace seguro es que **el modelo no elige la ruta**: la acción es
+        un `MÉTODO /ruta` que tú declaraste al registrar el módulo, y
+        `_invoke` ya ha comprobado que está en la lista antes de llegar aquí.
+        Sin eso sería un cliente HTTP arbitrario con tus credenciales dentro.
+        """
+        base = validate_connector_url(str(record.config.get("url", ""))).rstrip("/") + "/"
+        secreto = str(record.config["_secrets"].get("token", ""))
+
+        metodo, _, ruta = action.partition(" ")
+        metodo = metodo.upper()
+        if metodo not in {"GET", "POST", "PUT", "DELETE"} or not ruta.startswith("/"):
+            return ToolResult(
+                f"Acción mal formada: '{action}'. Se declara como «GET /ruta» o "
+                "«POST /ruta».",
+                is_error=True,
+            )
+
+        # La cabecera de autenticación es configurable porque no hay dos APIs
+        # que se pongan de acuerdo: Bearer, PVEAPIToken, X-API-Key…
+        cabecera = str(record.config.get("auth_header") or "Authorization")
+        prefijo = str(record.config.get("auth_prefix") or "Bearer ")
+        headers = {
+            "Accept": "application/json,text/plain",
+            "Content-Type": "application/json",
+            "User-Agent": "JARVIS-OS/0.3 http-connector",
+        }
+        if secreto:
+            headers[cabecera] = f"{prefijo}{secreto}"
+
+        url = urljoin(base, ruta.lstrip("/"))
+        # Los parámetros sí vienen del modelo, así que se codifican en vez de
+        # concatenarse: es la diferencia entre un filtro y una ruta inyectada.
+        consulta = payload.get("query")
+        if isinstance(consulta, dict) and consulta:
+            url += ("&" if "?" in url else "?") + urlencode(
+                {str(k): str(v) for k, v in consulta.items()}
+            )
+
+        cuerpo = payload.get("body") if isinstance(payload.get("body"), dict) else None
+        if metodo == "GET":
+            cuerpo = None
+        return self._request(url, method=metodo, headers=headers, payload=cuerpo)
+
+
     def _invoke(
         self, connector: str, action: str, payload: dict[str, Any], write: bool
     ) -> ToolResult:
@@ -429,6 +482,8 @@ class ConnectorRuntime:
             return self._home_assistant(record, action, payload)
         if record.connector_type == "telegram":
             return self._telegram(record, action, payload)
+        if record.connector_type == "http":
+            return self._http(record, action, payload)
         return ToolResult("Tipo de módulo no soportado.", is_error=True)
 
     async def invoke(

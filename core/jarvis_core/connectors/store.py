@@ -15,7 +15,10 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
-SUPPORTED_TYPES = {"n8n", "home_assistant", "telegram"}
+#: `http` es el genérico: cualquier API de tu red, con las rutas que declares
+#: al registrarlo. Existe para que añadir un servicio no dependa de que
+#: alguien escriba una herramienta a medida para él.
+SUPPORTED_TYPES = {"n8n", "home_assistant", "telegram", "http"}
 
 
 @dataclass(frozen=True)

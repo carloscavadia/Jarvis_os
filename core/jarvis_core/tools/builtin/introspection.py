@@ -94,6 +94,17 @@ CAPABILITIES: tuple[Capability, ...] = (
         how="Enciéndelo solo si quieres que JARVIS ejecute código que él mismo escribe.",
     ),
     Capability(
+        "http", "Hablar con cualquier API de la red del usuario (conector HTTP genérico).",
+        tools=("query_connector_module", "run_connector_module_action"),
+        enabled_by="JARVIS_CONNECTORS_ENABLED",
+        how=(
+            "Si un servicio no tiene herramienta propia, propón registrarlo como "
+            "conector de tipo 'http' desde ⚡ CONECTORES: hace falta la URL base, un "
+            "token y las rutas exactas permitidas, declaradas como «GET /ruta» en "
+            "lectura y «POST /ruta» en escritura."
+        ),
+    ),
+    Capability(
         "mcp", "Añadir herramientas de terceros mediante servidores MCP.",
         tools=("list_mcp_servers",),
         how="Registra el servidor desde el botón ⚡ CONECTORES del HUD.",

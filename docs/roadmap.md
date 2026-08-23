@@ -75,7 +75,12 @@ desde el coche". Cada fase deja algo usable.
 - [x] Método ante lo no programado: averiguar antes de rendirse, decir qué falta
       exactamente, y guardar lo resuelto como habilidad o memoria.
 - [ ] Que proponga y registre servidores MCP por su cuenta cuando la capacidad
-      exista ahí fuera.
+      exista ahí fuera. (Para APIs HTTP planas ya no hace falta: lo cubre el
+      conector genérico; esto queda para servidores MCP de verdad.)
+- [x] Conector HTTP genérico: cualquier API de la red se registra desde el HUD
+      (tipo `http`) declarando la URL base, la cabecera de autenticación y las
+      rutas exactas permitidas, separando lectura de escritura. Ya no hace falta
+      escribir un módulo nuevo en Python por cada servicio.
 - [x] Pedir lo que le falta (`request_from_user`): el HUD lo presenta como una
       tarjeta accionable, con el dónde separado del qué. Un secreto nunca se pide
       por el chat: acabaría en el historial y viajaría al modelo cada turno.

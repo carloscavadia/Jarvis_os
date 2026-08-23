@@ -1391,7 +1391,7 @@
         </div>
         <div class="connector-form">
           <label>NOMBRE<input id="connector-name" placeholder="mi_n8n" maxlength="32" /><small>Identificador interno, sin espacios.</small></label>
-          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="telegram">Telegram</option><option value="mcp">MCP / Model Context Protocol</option></select><small>Define cómo se prueba y ejecuta.</small></label>
+          <label>TIPO<select id="connector-type"><option value="n8n">n8n / puente de servicios</option><option value="home_assistant">Home Assistant</option><option value="telegram">Telegram</option><option value="http">HTTP genérico (cualquier API de tu red)</option><option value="mcp">MCP / Model Context Protocol</option></select><small>Define cómo se prueba y ejecuta.</small></label>
           <label class="wide">URL DEL ENDPOINT<input id="connector-url" placeholder="https://n8n.example.com/webhook/jarvis" /><small id="connector-url-help">Webhook único que recibe las acciones de JARVIS.</small></label>
           <label class="wide">CLAVE / TOKEN<input id="connector-token" type="password" placeholder="Obligatorio al crear · vacío conserva la clave al editar" autocomplete="new-password" /><small>Se cifra en el servidor y nunca vuelve al navegador.</small></label>
           <label class="wide">SERVICIOS DISPONIBLES<input id="connector-services" placeholder="gmail, outlook, whatsapp" /><small>Lista descriptiva separada por comas.</small></label>
@@ -3788,6 +3788,10 @@
       document.getElementById("connector-help").textContent = "Home Assistant conecta dispositivos, escenas y automatizaciones de tu casa.";
       document.getElementById("connector-url-help").textContent = "URL base de Home Assistant, normalmente http://IP:8123.";
       if (tokenInput) tokenInput.placeholder = "Long-Lived Access Token de Home Assistant";
+    } else if (type === "http") {
+      document.getElementById("connector-help").textContent = "Cualquier API de tu red. Declara las rutas exactas como «GET /ruta» en lectura y «POST /ruta» en escritura: JARVIS solo podrá usar esas, y las de escritura pedirán tu aprobación.";
+      document.getElementById("connector-url-help").textContent = "URL base del servicio, sin la ruta (ej: https://192.168.68.201:8006).";
+      if (tokenInput) tokenInput.placeholder = "Token o clave de API del servicio";
     } else if (type === "mcp") {
       document.getElementById("connector-help").textContent = "Model Context Protocol (MCP): ejecuta herramientas externas via npx/subproceso o endpoint SSE.";
       document.getElementById("connector-url-help").textContent = "Comando CLI (ej: npx -y @modelcontextprotocol/server-github) o URL SSE (http://...).";
@@ -3809,6 +3813,13 @@
       document.getElementById("connector-services").value = "telegram";
       document.getElementById("connector-read").value = "telegram.me, telegram.updates";
       document.getElementById("connector-write").value = "telegram.send";
+    } else if (type === "http") {
+      // Proxmox de ejemplo: es el caso que hizo falta este conector.
+      document.getElementById("connector-name").value = "proxmox";
+      document.getElementById("connector-url").placeholder = "https://192.168.68.201:8006";
+      document.getElementById("connector-services").value = "proxmox";
+      document.getElementById("connector-read").value = "GET /api2/json/nodes, GET /api2/json/cluster/resources";
+      document.getElementById("connector-write").value = "";
     } else if (type === "home_assistant") {
       document.getElementById("connector-name").value = "casa";
       document.getElementById("connector-url").placeholder = "http://homeassistant.local:8123";
