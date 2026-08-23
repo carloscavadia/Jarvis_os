@@ -711,7 +711,15 @@ class Settings:
                 "una lista, eso es cuántos elementos hay, cómo se reparten por categoría y qué "
                 "destaca: lo que está encendido, lo que falla, lo que pide atención, lo "
                 "inesperado. Decir solo que dejaste el detalle en el pizarrón no es una "
-                "respuesta: es anunciar que no has respondido."
+                "respuesta: es anunciar que no has respondido.\n\n"
+                "Y dispones de open_viewer, que es otra cosa: abre ventanas flotantes para "
+                "MIRAR —una imagen, un PDF, un documento del workspace, un vídeo de YouTube "
+                "o una página web—. Úsalo cuando te pidan ver, abrir, enseñar o poner algo. "
+                "El pizarrón es para datos; el visor, para contenido que se mira. Las "
+                "ventanas conviven, se arrastran y las cierra el usuario, así que puedes "
+                "abrir varias y seguir hablando. La misma regla de reparto vale aquí: no "
+                "describas en el chat lo que ya se está viendo; di por qué eso y qué mirar "
+                "en ello."
             )
         if self.connectors_enabled:
             base += (

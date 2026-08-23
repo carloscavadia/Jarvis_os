@@ -62,6 +62,9 @@ jobs:
       - name: Test HUD visual language
         run: node clients/web-hud/tests/visuals.test.js
 
+      - name: Test HUD floating windows
+        run: node clients/web-hud/tests/windows.test.js
+
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 15

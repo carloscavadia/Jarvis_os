@@ -218,6 +218,71 @@
     .requests-dock { width: min(300px, 62vw); top: 70px; right: 12px; }
   }
 
+  /* ── Ventanas flotantes ──────────────────────────────────────────────────
+     Cada visor (imagen, PDF, documento, vídeo, navegador) vive en una de
+     estas. Se arrastran por la barra de título y se redimensionan por la
+     esquina. `position: fixed` y no `absolute`: el HUD desplaza su fondo, y
+     con `absolute` la ventana se iría con él mientras se arrastra.
+     `contain: layout paint` evita que el contenido de un iframe fuerce
+     recálculos de toda la página en cada píxel del arrastre. */
+  .jwin {
+    position: fixed; z-index: 60; display: flex; flex-direction: column;
+    min-width: 260px; min-height: 170px;
+    border: 1px solid var(--hairline-2); border-radius: 9px;
+    background: rgba(6, 13, 21, .96);
+    box-shadow: 0 18px 52px rgba(0,0,0,.62), 0 0 0 1px rgba(53,230,255,.06);
+    contain: layout paint; overflow: hidden;
+    animation: jwin-in .2s ease;
+  }
+  @keyframes jwin-in { from { opacity: 0; transform: scale(.985) translateY(6px); } to { opacity: 1; transform: none; } }
+  body.lowspec .jwin, .jwin.dragging { animation: none; }
+  /* Mientras se arrastra, el puntero no debe entrar en el iframe: en cuanto lo
+     hace, el iframe se traga los mousemove y la ventana se queda clavada. */
+  .jwin.dragging .jwin-body, .jwin.resizing .jwin-body { pointer-events: none; user-select: none; }
+  .jwin.focused { border-color: var(--core); }
+  .jwin-head {
+    display: flex; align-items: center; gap: 9px; flex: 0 0 auto;
+    padding: 8px 9px 8px 12px; cursor: grab;
+    border-bottom: 1px solid var(--hairline);
+    background: linear-gradient(180deg, rgba(53,230,255,.10), rgba(53,230,255,.02));
+    font: 9.5px var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); user-select: none; touch-action: none;
+  }
+  .jwin.dragging .jwin-head { cursor: grabbing; }
+  .jwin.focused .jwin-head { color: var(--core); }
+  .jwin-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--core-bright); }
+  .jwin-kind { color: var(--muted); }
+  .jwin-btn {
+    border: 1px solid var(--hairline); border-radius: 4px; cursor: pointer;
+    background: rgba(10,26,40,.8); color: var(--core);
+    font: 9px var(--mono); line-height: 1; padding: 4px 7px;
+  }
+  .jwin-btn:hover { border-color: var(--core); color: #fff; background: rgba(53,230,255,.16); }
+  .jwin-body { flex: 1 1 auto; overflow: auto; background: rgba(0,3,8,.55); }
+  .jwin-body img, .jwin-body video { display: block; max-width: 100%; margin: 0 auto; }
+  .jwin-body iframe { display: block; width: 100%; height: 100%; border: 0; background: #000; }
+  .jwin-body pre {
+    margin: 0; padding: 13px; font: 11px/1.6 var(--mono);
+    color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .jwin-note {
+    padding: 10px 13px; font: 10.5px/1.6 var(--mono); color: var(--muted);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .jwin-note a { color: var(--core); }
+  .jwin-grip {
+    position: absolute; right: 0; bottom: 0; width: 18px; height: 18px;
+    cursor: nwse-resize; touch-action: none;
+    background: linear-gradient(135deg, transparent 48%, var(--hairline-2) 48%, var(--hairline-2) 60%, transparent 60%,
+                                transparent 72%, var(--hairline-2) 72%, var(--hairline-2) 84%, transparent 84%);
+  }
+  .jwin.maximized .jwin-grip { display: none; }
+  @media (max-width: 760px) {
+    /* En móvil arrastrar y redimensionar sobra: la ventana ocupa la pantalla. */
+    .jwin { inset: 8px !important; width: auto !important; height: auto !important; }
+    .jwin-grip { display: none; }
+  }
+
   /* ── Vista de lista analizada ── */
   .ds-note {
     margin: 0 0 9px; padding: 6px 9px; border-radius: 5px;
@@ -2189,6 +2254,347 @@
     paintBoard(contentEl, format, boardContent, null);
     if (follow) requestAnimationFrame(() => contentEl.scrollTo({ top: contentEl.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" }));
   }
+  // ── Ventanas flotantes ────────────────────────────────────────────────────
+  //
+  // Todo lo que JARVIS abre para mirar —una foto, un PDF, un documento, un
+  // vídeo, el navegador— sale aquí en vez de sustituir el pizarrón. Son cosas
+  // que se consultan mientras se sigue hablando, así que tienen que poder
+  // convivir, moverse y quedarse donde el usuario las deje.
+  const openWindows = new Map();
+  let windowZ = 60;
+  let windowsOpened = 0;
+
+  //: Ninguna ventana puede acabar fuera de la pantalla. Sin esto, un arrastre
+  //: rápido hasta el borde la deja inalcanzable: no hay barra de título que
+  //: agarrar para traerla de vuelta, y solo se recupera recargando el HUD.
+  //: Se deja siempre visible un trozo de la cabecera por los dos lados.
+  function clampWindowBox(box, viewport) {
+    const margin = 56;
+    const width = Math.max(260, Math.min(box.width, viewport.width));
+    const height = Math.max(170, Math.min(box.height, viewport.height));
+    const left = Math.min(Math.max(box.left, margin - width), viewport.width - margin);
+    const top = Math.min(Math.max(box.top, 0), viewport.height - 38);
+    return { left, top, width, height };
+  }
+
+  //: Cada ventana nueva aparece un poco más abajo y a la derecha que la
+  //: anterior, para que no se tapen. La cascada se reinicia al llegar al borde.
+  //:
+  //: El punto de partida NO depende del tamaño de la ventana. Cuando se
+  //: calculaba centrando cada una por su ancho, dos ventanas seguidas de
+  //: tamaños distintos —una foto y un PDF— se compensaban entre sí y caían casi
+  //: en el mismo sitio: la segunda tapaba a la primera y parecía que solo se
+  //: había abierto una.
+  function nextWindowPosition(index, viewport, size) {
+    const step = 34;
+    const rounds = 6;
+    const offset = (index % rounds) * step;
+    const left = Math.round(viewport.width * 0.5 - 330) + offset;
+    const top = Math.round(viewport.height * 0.13) + offset;
+    return clampWindowBox({ left, top, width: size.width, height: size.height }, viewport);
+  }
+
+  function focusWindow(id) {
+    const win = openWindows.get(id);
+    if (!win) return;
+    windowZ += 1;
+    win.frame.style.zIndex = String(windowZ);
+    for (const other of openWindows.values()) other.frame.classList.toggle("focused", other === win);
+  }
+
+  function closeWindow(id) {
+    const win = openWindows.get(id);
+    if (!win) return;
+    // El iframe se vacía antes de quitarlo: si no, un vídeo de YouTube sigue
+    // sonando un instante después de cerrar y no hay dónde pararlo.
+    for (const frame of win.body.querySelectorAll("iframe")) frame.src = "about:blank";
+    for (const media of win.body.querySelectorAll("video, audio")) { try { media.pause(); } catch { /* ya descartado */ } }
+    win.frame.remove();
+    openWindows.delete(id);
+  }
+
+  function closeTopWindow() {
+    let top = null;
+    for (const win of openWindows.values()) {
+      if (!top || Number(win.frame.style.zIndex || 0) >= Number(top.frame.style.zIndex || 0)) top = win;
+    }
+    if (top) closeWindow(top.id);
+    return Boolean(top);
+  }
+
+  //: Arrastre y redimensión con eventos de puntero: valen igual para ratón,
+  //: dedo y lápiz, y `setPointerCapture` mantiene el seguimiento aunque el
+  //: puntero salga de la ventana a media pasada.
+  function attachWindowDrag(win, handle, mode) {
+    let origin = null;
+    handle.addEventListener("pointerdown", event => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (win.frame.classList.contains("maximized") && mode === "resize") return;
+      focusWindow(win.id);
+      const rect = win.frame.getBoundingClientRect();
+      origin = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      win.frame.classList.add(mode === "drag" ? "dragging" : "resizing");
+      try { handle.setPointerCapture(event.pointerId); } catch { /* sin captura, sigue funcionando */ }
+      event.preventDefault();
+    });
+    handle.addEventListener("pointermove", event => {
+      if (!origin) return;
+      const viewport = { width: window.innerWidth, height: window.innerHeight };
+      const dx = event.clientX - origin.x;
+      const dy = event.clientY - origin.y;
+      const box = mode === "drag"
+        ? { left: origin.left + dx, top: origin.top + dy, width: origin.width, height: origin.height }
+        : { left: origin.left, top: origin.top, width: origin.width + dx, height: origin.height + dy };
+      const clamped = clampWindowBox(box, viewport);
+      if (mode === "drag") win.frame.classList.remove("maximized");
+      win.frame.style.left = `${clamped.left}px`;
+      win.frame.style.top = `${clamped.top}px`;
+      win.frame.style.width = `${clamped.width}px`;
+      win.frame.style.height = `${clamped.height}px`;
+    });
+    const end = event => {
+      if (!origin) return;
+      origin = null;
+      win.frame.classList.remove("dragging", "resizing");
+      try { handle.releasePointerCapture(event.pointerId); } catch { /* nada que soltar */ }
+    };
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+
+  // Abre —o reutiliza— una ventana. Devuelve el cuerpo vacío para que quien
+  // llama pinte dentro lo que quiera.
+  //
+  // Reutilizar por `id` es lo que evita que pedir tres veces la misma foto
+  // llene la pantalla de copias, y es lo que permite al navegador refrescar su
+  // captura en la ventana que ya está abierta en vez de abrir una por paso.
+  function openWindow({ id = "", title = "VENTANA", kind = "", width = 640, height = 460 } = {}) {
+    const key = String(id || `win-${windowsOpened}`);
+    const existing = openWindows.get(key);
+    if (existing) {
+      existing.setTitle(title, kind);
+      existing.body.replaceChildren();
+      focusWindow(key);
+      return existing;
+    }
+
+    const frame = document.createElement("section");
+    frame.className = "jwin";
+    frame.setAttribute("role", "dialog");
+    frame.setAttribute("aria-label", String(title));
+
+    const head = document.createElement("header");
+    head.className = "jwin-head";
+    const titleEl = document.createElement("span");
+    titleEl.className = "jwin-title";
+    const kindEl = document.createElement("span");
+    kindEl.className = "jwin-kind";
+    const maximize = document.createElement("button");
+    maximize.type = "button"; maximize.className = "jwin-btn"; maximize.textContent = "⛶";
+    maximize.setAttribute("aria-label", "Maximizar o restaurar");
+    const close = document.createElement("button");
+    close.type = "button"; close.className = "jwin-btn"; close.textContent = "×";
+    close.setAttribute("aria-label", "Cerrar la ventana");
+    head.append(titleEl, kindEl, maximize, close);
+
+    const body = document.createElement("div");
+    body.className = "jwin-body";
+    const grip = document.createElement("div");
+    grip.className = "jwin-grip";
+    grip.setAttribute("aria-hidden", "true");
+    frame.append(head, body, grip);
+
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const box = nextWindowPosition(windowsOpened, viewport, { width, height });
+    frame.style.left = `${box.left}px`;
+    frame.style.top = `${box.top}px`;
+    frame.style.width = `${box.width}px`;
+    frame.style.height = `${box.height}px`;
+    windowsOpened += 1;
+
+    const win = {
+      id: key, frame, body,
+      setTitle(nextTitle, nextKind) {
+        titleEl.textContent = String(nextTitle || "VENTANA");
+        kindEl.textContent = String(nextKind || "").toUpperCase();
+        frame.setAttribute("aria-label", String(nextTitle || "VENTANA"));
+      },
+    };
+    win.setTitle(title, kind);
+
+    close.onclick = () => closeWindow(key);
+    maximize.onclick = () => {
+      frame.classList.toggle("maximized");
+      if (frame.classList.contains("maximized")) {
+        frame.style.left = "24px"; frame.style.top = "24px";
+        frame.style.width = `${Math.max(260, window.innerWidth - 48)}px`;
+        frame.style.height = `${Math.max(170, window.innerHeight - 48)}px`;
+      } else {
+        const restored = nextWindowPosition(windowsOpened, { width: window.innerWidth, height: window.innerHeight }, { width, height });
+        frame.style.left = `${restored.left}px`; frame.style.top = `${restored.top}px`;
+        frame.style.width = `${restored.width}px`; frame.style.height = `${restored.height}px`;
+      }
+      focusWindow(key);
+    };
+    frame.addEventListener("pointerdown", () => focusWindow(key), true);
+    attachWindowDrag(win, head, "drag");
+    attachWindowDrag(win, grip, "resize");
+
+    document.body.appendChild(frame);
+    openWindows.set(key, win);
+    focusWindow(key);
+    return win;
+  }
+
+  // ── Visores ───────────────────────────────────────────────────────────────
+  //: Cómo se rotula cada tipo de visor en la barra de la ventana.
+  const VIEWER_KINDS = {
+    image:    { label: "IMAGEN",    width: 720, height: 540 },
+    pdf:      { label: "PDF",       width: 780, height: 640 },
+    document: { label: "DOCUMENTO", width: 700, height: 520 },
+    video:    { label: "VÍDEO",     width: 720, height: 445 },
+    web:      { label: "WEB",       width: 700, height: 520 },
+  };
+
+  //: Solo se admite el identificador de 11 caracteres de YouTube, y se sirve
+  //: desde el dominio sin cookies. Lo importante es que la URL del iframe la
+  //: construimos nosotros a partir del identificador: si aceptáramos la URL tal
+  //: cual viniera, cualquier cadena que empezase por youtube.com podría
+  //: arrastrar detrás un destino distinto, y el iframe se lo comería.
+  function youtubeEmbedUrl(raw) {
+    const id = youtubeVideoId(raw);
+    return id ? `https://www.youtube-nocookie.com/embed/${id}?rel=0` : "";
+  }
+
+  function youtubeVideoId(raw) {
+    const value = String(raw || "").trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(value)) return value;
+    let parsed;
+    try { parsed = new URL(value); } catch { return ""; }
+    if (parsed.protocol !== "https:") return "";
+    const host = parsed.hostname.replace(/^www\./, "").toLowerCase();
+    let candidate = "";
+    if (host === "youtu.be") candidate = parsed.pathname.slice(1);
+    else if (host === "youtube.com" || host === "m.youtube.com" || host === "youtube-nocookie.com") {
+      candidate = parsed.searchParams.get("v") || "";
+      if (!candidate && parsed.pathname.startsWith("/embed/")) candidate = parsed.pathname.slice(7);
+      if (!candidate && parsed.pathname.startsWith("/shorts/")) candidate = parsed.pathname.slice(8);
+    }
+    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : "";
+  }
+
+  function viewerRawUrl(path) {
+    return `${gatewayHttpBase()}/workspace/file/raw?path=${encodeURIComponent(path)}&token=${encodeURIComponent(hubKey())}`;
+  }
+
+  function viewerNote(body, text) {
+    const note = document.createElement("div");
+    note.className = "jwin-note";
+    note.textContent = text;
+    body.appendChild(note);
+    return note;
+  }
+
+  // Abre lo que JARVIS quiere enseñar. La ventana se identifica por lo que
+  // muestra, así que pedir dos veces la misma foto refresca la ventana que ya
+  // está abierta en lugar de apilar copias.
+  async function showViewer(view) {
+    if (!view || !view.kind) return null;
+    const kind = VIEWER_KINDS[view.kind] ? view.kind : "document";
+    const style = VIEWER_KINDS[kind];
+    const id = `viewer:${kind}:${view.path || view.url || view.title || ""}`;
+    const win = openWindow({ id, title: view.title || style.label, kind: style.label, width: style.width, height: style.height });
+    if (view.caption) viewerNote(win.body, view.caption);
+
+    if (kind === "image") {
+      const img = document.createElement("img");
+      img.src = viewerRawUrl(view.path || "");
+      img.alt = view.title || "Imagen";
+      img.onerror = () => { img.remove(); viewerNote(win.body, "No se pudo cargar la imagen."); };
+      win.body.appendChild(img);
+      return win;
+    }
+
+    if (kind === "pdf") {
+      // El PDF se sirve con `sandbox` en su CSP, así que el visor del navegador
+      // lo abre en un origen opaco: puede leerse, pero no tocar el HUD.
+      const frame = document.createElement("iframe");
+      // `view=FitH` ajusta el PDF al ancho de la ventana. Sin eso el visor del
+      // navegador lo abre al 100% y en una ventana de 780px se ve media página.
+      frame.src = `${viewerRawUrl(view.path || "")}#view=FitH`;
+      frame.title = view.title || "PDF";
+      win.body.appendChild(frame);
+      return win;
+    }
+
+    if (kind === "video") {
+      const embed = youtubeEmbedUrl(view.embed || view.url || "");
+      if (!embed) { viewerNote(win.body, "No reconozco ese vídeo de YouTube."); return win; }
+      const frame = document.createElement("iframe");
+      frame.src = embed;
+      frame.title = view.title || "Vídeo";
+      frame.allow = "accelerometer; encrypted-media; picture-in-picture; fullscreen";
+      frame.referrerPolicy = "no-referrer";
+      win.body.appendChild(frame);
+      return win;
+    }
+
+    if (kind === "web") {
+      // No se mete la página en un iframe a propósito: la mayoría de sitios lo
+      // rechazan con X-Frame-Options y lo único que se vería es un rectángulo
+      // en blanco, sin explicación. Se muestra el texto legible que el gateway
+      // ya extrae, y el enlace para abrirla de verdad.
+      if (view.url) {
+        const link = document.createElement("a");
+        link.href = view.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        link.textContent = view.url;
+        const holder = viewerNote(win.body, "");
+        holder.append("Abrir en una pestaña: ", link);
+      }
+      const pre = document.createElement("pre");
+      pre.textContent = view.text || "Leyendo la página…";
+      win.body.appendChild(pre);
+      if (!view.text && view.url) {
+        try {
+          const data = await connectorRequest("/web/navigate", {
+            method: "POST", headers: connectorApiHeaders(true),
+            body: JSON.stringify({ url: view.url }),
+          });
+          pre.textContent = data && data.success && data.data
+            ? (data.data.preview_text || "Sin texto legible.")
+            : `No se pudo leer la página: ${(data && data.error) || "error desconocido"}`;
+        } catch (error) {
+          pre.textContent = `No se pudo leer la página: ${error && error.message ? error.message : error}`;
+        }
+      }
+      return win;
+    }
+
+    const pre = document.createElement("pre");
+    pre.textContent = "Cargando…";
+    win.body.appendChild(pre);
+    if (view.text) { pre.textContent = view.text; return win; }
+    try {
+      const data = await connectorRequest(`/workspace/file/content?path=${encodeURIComponent(view.path || "")}`, { headers: connectorApiHeaders() });
+      const content = data.content || "";
+      if (data.is_binary) { pre.textContent = "Archivo binario: no se puede mostrar como texto."; return win; }
+      const format = presentationFormat(content, (view.path || "").split(".").pop() || "");
+      if (["markdown", "table"].includes(format)) {
+        pre.remove();
+        const holder = document.createElement("div");
+        holder.className = "action-presentation markdown";
+        holder.style.padding = "13px";
+        renderStructuredText(holder, content);
+        win.body.appendChild(holder);
+      } else {
+        pre.textContent = content;
+      }
+    } catch (error) {
+      pre.textContent = `No se pudo leer el documento: ${error && error.message ? error.message : error}`;
+    }
+    return win;
+  }
+
   //: Cómo se presenta cada tipo de petición. El icono y el título hacen que se
   //: distinga de un vistazo si hace falta un secreto, un permiso o una decisión.
   const REQUEST_PRESENTATION = {
@@ -2293,6 +2699,8 @@
     actionTrace.classList.add("active");
     // El orbe cuenta lo que pasa sin que haya que leer el panel.
     if (event.request) showCapabilityRequest(event.request);
+    if (event.viewer) showViewer(event.viewer);
+    if (event.browser) showBrowserView(event.browser);
     if (event.is_error) firePulse("denied");
     else if (PULSE_KINDS[event.phase]) firePulse(event.phase);
     // Mientras haya trabajo, el ambiente se activa; al acabar, se calma.
@@ -3397,6 +3805,17 @@
       historyDrawer.classList.remove("open");
       historyToggle.textContent = "VER HISTORIAL ↑";
     }
+  });
+
+  // Escape cierra la ventana de encima, no todas: si hay una foto sobre el
+  // navegador, lo que se quiere quitar es la foto. Solo actúa cuando el foco no
+  // está en un campo de texto, para no interrumpir a quien está escribiendo.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || openWindows.size === 0) return;
+    const activo = document.activeElement;
+    const tecleando = activo && ["INPUT", "TEXTAREA", "SELECT"].includes(activo.tagName);
+    if (tecleando) return;
+    if (closeTopWindow()) e.preventDefault();
   });
 
   // ── WebSocket al gateway ──

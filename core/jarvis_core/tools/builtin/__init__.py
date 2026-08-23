@@ -126,6 +126,15 @@ def build_default_registry(
         )
     if settings.hud_workspace_enabled:
         registry.register(ShowInWorkspaceTool())
+        # El visor vive con el pizarrón: los dos son la parte visual del HUD, y
+        # sin HUD ninguno tiene dónde abrirse.
+        from jarvis_core.tools.builtin.viewer import register_viewer_tool
+
+        register_viewer_tool(
+            registry,
+            root=settings.workspace_root,
+            max_file_bytes=settings.workspace_max_file_bytes,
+        )
     if (
         settings.connectors_enabled
         and settings.n8n_webhook_url

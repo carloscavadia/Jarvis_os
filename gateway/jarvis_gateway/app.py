@@ -43,6 +43,7 @@ from jarvis_core.tools.base import ToolResult
 from jarvis_core.tools.builtin.connectors import validate_connector_url
 from jarvis_core.tools.clipping import clip_structured
 from jarvis_core.tools.builtin.web_tools import WebClient, validate_public_https_url
+from jarvis_core.tools.builtin.viewer import VIEWER_KINDS, youtube_video_id
 from jarvis_core.voice import LocalVoiceError, WakeWordDetector
 from pydantic import BaseModel, Field
 
@@ -282,6 +283,54 @@ def _goal_progress(name: str, result: ToolResult | None) -> dict[str, object] | 
     except (json.JSONDecodeError, TypeError):
         return None
     return progress if isinstance(progress, dict) and "goal_id" in progress else None
+
+
+def _viewer_presentation(
+    name: str, arguments: dict[str, object]
+) -> dict[str, object] | None:
+    """Traduce una llamada a `open_viewer` en la orden que abre la ventana.
+
+    Sale de los argumentos y no del resultado, igual que el pizarrón: lo que la
+    herramienta devuelve es una frase de confirmación, y el archivo en sí nunca
+    pasa por la conversación. El HUD lo pide luego por su cuenta a los endpoints
+    del workspace, que ya comprueban la llave y la raíz.
+    """
+    if name != "open_viewer":
+        return None
+    kind = arguments.get("kind")
+    if not isinstance(kind, str) or kind not in VIEWER_KINDS:
+        return None
+    vista: dict[str, object] = {"kind": kind, "title": str(arguments.get("title") or "")}
+    caption = arguments.get("caption")
+    if isinstance(caption, str) and caption.strip():
+        vista["caption"] = caption.strip()[:300]
+
+    if kind == "video":
+        video_id = youtube_video_id(str(arguments.get("url") or ""))
+        if not video_id:
+            return None
+        # Baja el identificador, no la URL: la dirección del iframe la compone
+        # el HUD. Una URL de fuera que llegue entera al iframe es justo lo que
+        # no queremos poder confundir con una de YouTube.
+        vista["embed"] = video_id
+        return vista
+
+    if kind == "web":
+        raw = str(arguments.get("url") or "")
+        try:
+            vista["url"] = validate_public_https_url(raw)
+        except ValueError:
+            return None
+        return vista
+
+    path_value = arguments.get("path")
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    # La ruta se manda tal cual la pidió el modelo; quien decide si es legítima
+    # es `WorkspaceGuard` cuando el HUD pida el archivo. Resolverla aquí solo
+    # duplicaría la comprobación en un sitio donde es fácil que se desincronice.
+    vista["path"] = path_value.strip()
+    return vista
 
 
 def _music_command(name: str, result: ToolResult | None) -> dict[str, object] | None:
@@ -1571,6 +1620,11 @@ async def realtime_voice_endpoint(websocket: WebSocket, session_id: str) -> None
             payload = dict(payload)
             arguments = payload.get("arguments")
             if isinstance(arguments, dict):
+                # El visor se calcula con los argumentos originales: la versión
+                # pública oculta valores y ahí ya no está la ruta que abrir.
+                vista = _viewer_presentation(str(payload.get("tool", "")), arguments)
+                if vista is not None:
+                    payload["viewer"] = vista
                 payload["arguments"] = _public_approval_arguments(arguments)
             # El resultado crudo nunca sale al cliente; solo se usa aquí para
             # traducirlo en órdenes del reproductor.
@@ -1886,6 +1940,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 peticion = _capability_request(name, arguments)
                 if peticion is not None:
                     payload["request"] = peticion
+                vista = _viewer_presentation(name, arguments)
+                if vista is not None:
+                    payload["viewer"] = vista
                 if result is not None:
                     if presentation is None:
                         output, clipped = _public_tool_output(result.content)

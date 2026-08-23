@@ -105,6 +105,17 @@ CAPABILITIES: tuple[Capability, ...] = (
         ),
     ),
     Capability(
+        "visor", "Enseñar algo para mirarlo: una imagen, un PDF, un documento, un vídeo o una web.",
+        tools=("open_viewer", "show_in_workspace"),
+        enabled_by="JARVIS_HUD_WORKSPACE_ENABLED",
+        how=(
+            "El visor abre ventanas flotantes en el HUD, que se arrastran y conviven. "
+            "No es el pizarrón: el pizarrón es para datos —listas, tablas, código— y "
+            "el visor para lo que se mira. Las imágenes, PDFs y documentos salen del "
+            "workspace; los vídeos, de YouTube; las webs, de una URL pública."
+        ),
+    ),
+    Capability(
         "mcp", "Añadir herramientas de terceros mediante servidores MCP.",
         tools=("list_mcp_servers",),
         how="Registra el servidor desde el botón ⚡ CONECTORES del HUD.",

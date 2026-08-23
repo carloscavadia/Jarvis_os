@@ -7,8 +7,8 @@ con la llave del gateway como única puerta.
 
 `/workspace/file/raw` es el único que autentica por `?token=`: el navegador no
 puede poner cabeceras en `<img src>` ni al abrir una vista previa. Por eso sale
-con `nosniff`, CSP de aislamiento y, salvo imágenes, como descarga: un HTML del
-workspace servido en el origen del HUD podría leer su almacenamiento.
+con `nosniff`, CSP de aislamiento y, salvo imágenes y PDF, como descarga: un
+HTML del workspace servido en el origen del HUD podría leer su almacenamiento.
 
 Los servicios se leen del módulo `runtime` y no se importan por nombre: un
 `from ... import settings` congela la referencia en el import y sustituirla
@@ -39,6 +39,13 @@ router = APIRouter(tags=["workspace"])
 #: alguien lo deje en la carpeta montada— para que abrirlo entregue la llave.
 INLINE_TYPES = frozenset({
     "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/avif",
+    # El PDF entra aquí porque el visor lo abre dentro de una ventana del HUD, y
+    # como descarga eso no funcionaría: el navegador se lo llevaría a la carpeta
+    # de descargas en vez de mostrarlo. Puede ir en línea sin abrir la puerta que
+    # cierra la lista porque la CSP de más abajo lo sirve con `sandbox`, o sea en
+    # un origen opaco: el visor de PDF del navegador lo pinta, pero lo que haya
+    # dentro no comparte origen con el HUD y no alcanza su `localStorage`.
+    "application/pdf",
 })
 
 
