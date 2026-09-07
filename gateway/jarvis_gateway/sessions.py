@@ -164,5 +164,6 @@ class SessionManager:
         self.tasks.close()
         self.goals.close()
         self.proactive_events.close()
+        self.audit.close()
         if self.connector_store is not None:
             self.connector_store.close()

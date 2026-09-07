@@ -464,6 +464,9 @@ def test_gateway_websocket_approval(monkeypatch):
             "approval_id": approval["approval_id"],
             "approved": True,
             "reason": "user",
+            # Una aprobación puntual no concede nada para el resto de la
+            # conversación; eso solo ocurre con `scope: "session"`.
+            "granted": None,
         }
         assert websocket.receive_json() == {
             "type": "tool_event",
