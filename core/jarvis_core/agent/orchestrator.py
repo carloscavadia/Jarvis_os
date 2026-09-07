@@ -14,16 +14,19 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from jarvis_core.agent.emotion import EmotionState
 from jarvis_core.config import Settings
-from jarvis_core.memory.store import MemoryStore
 from jarvis_core.llm.base import LLMProvider, TextDeltaFn
+from jarvis_core.memory.store import MemoryStore
+from jarvis_core.policy.audit import AuditLog
+from jarvis_core.policy.rules import Decision, PolicyEngine, Verdict
 from jarvis_core.tools.base import ToolRegistry, ToolResult
 from jarvis_core.tools.clipping import clip_structured
 
@@ -63,6 +66,9 @@ class Orchestrator:
         confirm: ConfirmFn | None = None,
         emotion: EmotionState | None = None,
         memory: MemoryStore | None = None,
+        policy: PolicyEngine | None = None,
+        audit: AuditLog | None = None,
+        session_id: str = "default",
     ) -> None:
         self._llm = llm
         self._registry = registry
@@ -70,6 +76,9 @@ class Orchestrator:
         self._confirm = confirm
         self._emotion = emotion
         self._memory = memory
+        self._policy = policy
+        self._audit = audit
+        self._session_id = session_id
         self._memory_facts = settings.memory_facts_in_prompt
         self._system = settings.system_prompt()
         self._persona_overlay = settings.persona_extra.strip()
@@ -203,7 +212,7 @@ class Orchestrator:
                     ),
                     timeout=self._settings.llm_timeout_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning(
                     "El proveedor no respondió en %.0f s; se cierra el turno.",
                     self._settings.llm_timeout_seconds,
@@ -273,7 +282,17 @@ class Orchestrator:
 
                     if on_tool_event is not None:
                         await on_tool_event("running", call.name, call.input, None)
+                    started = time.monotonic()
                     result = await self._registry.execute(call.name, call.input)
+                    elapsed_ms = int((time.monotonic() - started) * 1000)
+                    self._audit_record(
+                        call.name,
+                        call.input,
+                        decision="executed",
+                        reason="",
+                        outcome="error" if result.is_error else "ok",
+                        duration_ms=elapsed_ms,
+                    )
                 finally:
                     active_confirm.reset(token)
                 if on_tool_event is not None:
@@ -325,15 +344,75 @@ class Orchestrator:
             trimmed.pop(0)
         self._history = trimmed
 
+    def _audit_record(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        *,
+        decision: str,
+        reason: str,
+        outcome: str = "",
+        duration_ms: int = 0,
+    ) -> None:
+        """Escribe en la auditoría sin que un fallo suyo tumbe el turno.
+
+        Una bitácora rota es un problema serio, pero volcar la conversación del
+        usuario por un disco lleno lo es más: se registra el fallo y se sigue.
+        """
+        if self._audit is None:
+            return
+        try:
+            self._audit.record(
+                tool=tool,
+                decision=decision,
+                arguments=arguments,
+                session=self._session_id,
+                reason=reason,
+                outcome=outcome,
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            logger.warning("No pude escribir en la auditoría", exc_info=True)
+
     async def _maybe_confirm(
         self,
         name: str,
         arguments: dict[str, Any],
         confirm: ConfirmFn | None = None,
     ) -> bool:
+        """Decide si la llamada puede ejecutarse, y lo deja escrito.
+
+        Con motor de políticas la decisión es de tres estados; sin él se conserva el
+        comportamiento anterior (el booleano `requires_confirmation`), de modo que una
+        instalación que no configure políticas no cambia de conducta.
+        """
         tool = self._registry.get(name)
-        if tool is None or not tool.requires_confirmation:
+        baseline = (
+            Decision.ASK
+            if tool is not None and tool.requires_confirmation
+            else Decision.ALLOW
+        )
+        subject = tool.policy_subject(arguments) if tool is not None else dict(arguments)
+
+        if self._policy is not None:
+            verdict = self._policy.evaluate(
+                name, subject, baseline=baseline, session=self._session_id
+            )
+        else:
+            verdict = Verdict(baseline, "Sin motor de políticas; se usa la línea base.")
+
+        if verdict.denied:
+            logger.warning("Herramienta %s denegada por política: %s", name, verdict.reason)
+            self._audit_record(
+                name, arguments, decision="deny", reason=verdict.reason, outcome="blocked"
+            )
+            return False
+
+        if verdict.allowed:
+            self._audit_record(name, arguments, decision="allow", reason=verdict.reason)
             return True
+
+        # ASK: hace falta un humano.
         confirmation_policy = confirm or self._confirm
         if confirmation_policy is None:
             # Seguridad fail-closed: una herramienta sensible nunca se ejecuta si el
@@ -342,5 +421,21 @@ class Orchestrator:
                 "Herramienta sensible %s denegada: no hay política de confirmación",
                 name,
             )
+            self._audit_record(
+                name,
+                arguments,
+                decision="deny",
+                reason="Sin política de confirmación en este canal.",
+                outcome="blocked",
+            )
             return False
-        return await confirmation_policy(name, arguments)
+
+        approved = await confirmation_policy(name, arguments)
+        self._audit_record(
+            name,
+            arguments,
+            decision="ask",
+            reason=verdict.reason,
+            outcome="approved" if approved else "rejected",
+        )
+        return approved

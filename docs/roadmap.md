@@ -35,6 +35,12 @@ desde el coche". Cada fase deja algo usable.
 - [x] Detección de palabra de activación ("Hey JARVIS") 100% local con openWakeWord.
 
 ## Fase 3 — Capacidades (herramientas)
+- [x] Motor de políticas (allow/ask/deny por herramienta y argumentos, denegaciones
+      críticas no configurables, concesiones de sesión) + auditoría append-only.
+- [ ] `jarvis-node`: agente compañero en cada máquina (Windows/macOS/Linux) que conecta
+      hacia afuera por MQTT y expone operaciones tipadas en vez de cadenas de shell.
+- [ ] Control gráfico por visión (captura → modelo → coordenadas), solo para lo que no
+      tiene API.
 - [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.
 - [x] Instalación limitada de paquetes con aprobación humana interactiva.
 - [x] Domótica: Home Assistant (entidades, estado y servicios) como módulo de

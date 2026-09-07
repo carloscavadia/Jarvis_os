@@ -283,6 +283,13 @@ class Settings:
     proactive_events_db_path: str = "data/jarvis_proactive_events.db"
     mcp_db_path: str = "data/jarvis_mcp.db"
     skills_db_path: str = "data/jarvis_skills.db"
+    #: Bitácora append-only de decisiones y ejecuciones de herramientas. Vive en su
+    #: propia base y no en `jarvis.db`: la auditoría no debe compartir destino con
+    #: datos que las herramientas sí pueden tocar.
+    audit_db_path: str = "data/jarvis_audit.db"
+    #: El motor de políticas sustituye al booleano `requires_confirmation` por
+    #: decisiones de tres estados. Apagado deja el comportamiento anterior intacto.
+    enable_policy_engine: bool = True
     #: Las habilidades de tipo `python` ejecutan código arbitrario en el proceso
     #: del gateway. Desactivado por defecto: sin esto, `learn_skill` daría al
     #: modelo una vía de ejecución que el resto del sistema le niega a propósito
@@ -555,6 +562,8 @@ class Settings:
                 "JARVIS_HUD_PATH", "clients/web-hud/index.html"
             ),
             workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
+            audit_db_path=os.environ.get("JARVIS_AUDIT_DB", "data/jarvis_audit.db"),
+            enable_policy_engine=_get_bool("JARVIS_ENABLE_POLICY", True),
             workspace_max_file_bytes=max(
                 1024,
                 int(os.environ.get("JARVIS_WORKSPACE_MAX_FILE_BYTES", "262144")),

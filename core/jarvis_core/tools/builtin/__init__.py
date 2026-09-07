@@ -17,6 +17,7 @@ from jarvis_core.mcp.manager import MCPManager
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.skills.manager import SkillManager
+from jarvis_core.policy.rules import PolicyEngine
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
 from jarvis_core.tools.builtin.connectors import (
@@ -80,6 +81,7 @@ def build_default_registry(
     skill_manager: SkillManager | None = None,
     calendar: CalendarStore | None = None,
     llm: object | None = None,
+    policy: PolicyEngine | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -87,7 +89,17 @@ def build_default_registry(
     registry.register(RecallTool(memory))
     shell_enabled = settings.enable_shell if allow_shell is None else allow_shell
     if shell_enabled:
-        registry.register(ShellTool(allowlist=settings.shell_allowlist))
+        shell = ShellTool(
+            allowlist=settings.shell_allowlist,
+            governed_by_policy=policy is not None,
+        )
+        registry.register(shell)
+        if policy is not None:
+            # La lista blanca se convierte en reglas ALLOW: lo de siempre corre sin
+            # preguntar y lo que no está en ella pasa a confirmación, en vez de morir
+            # con un rechazo que el modelo no puede resolver.
+            for rule in shell.default_rules():
+                policy.add_rule(rule)
     if tasks is not None:
         zone = resolve_zone(settings.timezone)
         registry.register(ScheduleTaskTool(tasks, zone, settings.default_reminder_hour))

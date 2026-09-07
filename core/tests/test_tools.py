@@ -98,10 +98,19 @@ async def test_shell_allowlist_blocks_unknown_command():
     assert "lista blanca" in result.content
 
 
-async def test_shell_rejects_pipes():
+async def test_shell_no_interpreta_tuberias():
+    """La garantía no es rechazar el caracter `|`, es que no exista un intérprete.
+
+    Antes se comprobaba `is_error` porque un filtro de caracteres lo rechazaba de
+    entrada. Ese filtro se retiró: no aportaba nada sobre `create_subprocess_exec`
+    —que nunca lanza una shell— y en cambio tumbaba argumentos legítimos como una
+    URL con `&`. Lo que hay que verificar es que la tubería llega como texto literal
+    a `echo` en vez de encadenar procesos.
+    """
     tool = ShellTool(allowlist=["echo", "cat"])
     result = await tool.run(command="echo hola | cat")
-    assert result.is_error
+    assert not result.is_error
+    assert result.content == "hola | cat"
 
 
 async def test_shell_runs_allowed_command():

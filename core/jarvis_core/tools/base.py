@@ -45,6 +45,16 @@ class Tool(ABC):
             "input_schema": self.input_schema,
         }
 
+    def policy_subject(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Lo que el motor de políticas evalúa para esta llamada.
+
+        Por defecto son los argumentos tal cual. Una herramienta puede añadir campos
+        derivados para que las reglas sean legibles: `run_shell` expone `executable`
+        aparte del comando completo, y así una regla dice `executable: git` en vez de
+        intentar acertar con un glob sobre la línea entera.
+        """
+        return dict(arguments)
+
 
 class FunctionTool(Tool):
     """Envuelve una función asíncrona como herramienta (azúcar sintáctico)."""

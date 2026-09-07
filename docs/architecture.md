@@ -86,7 +86,10 @@ recibe acceso al sistema de archivos completo del host ni al socket de Docker.
 
 ### 2.3 Multiagente (delegación)
 
-El orquestador puede exponer una herramienta `delegate(agent, task)` que lanza un
+> **Estado: planeado, no implementado.** No existe todavía ninguna herramienta
+> `delegate` en el código; lo que sigue describe el diseño previsto.
+
+El orquestador expondrá una herramienta `delegate(agent, task)` que lance un
 **subagente** con su propio prompt y su propio subconjunto de herramientas (p.ej. un agente
 "casa" con acceso a domótica, un agente "investigación" con acceso a búsqueda web). El
 subagente devuelve un informe; el orquestador lo integra. Esto mantiene el contexto del
@@ -186,8 +189,20 @@ Flujo típico de un dispositivo:
 
 ## 5. Seguridad (desde el día 1)
 
-- **Herramientas peligrosas con gating.** `run_shell` usa lista blanca de comandos y, en
-  producción, puede requerir confirmación. Nunca ejecutar comandos arbitrarios sin control.
+- **Motor de políticas** (`core/jarvis_core/policy/rules.py`). Cada llamada a herramienta
+  se resuelve en `ALLOW` (ejecuta y audita), `ASK` (pide confirmación) o `DENY` (no se
+  ejecuta ni preguntando), según la herramienta **y sus argumentos**. Las denegaciones se
+  evalúan antes que cualquier permiso y `CRITICAL_DENY_RULES` no es configurable: formatear,
+  `dd`, apagar el anfitrión, tocar la auditoría o los `.env` no se pueden habilitar.
+  Las **concesiones de sesión** ("permítelo mientras dure esta conversación") existen para
+  que la confirmación no genere tanta fricción que el usuario acabe desactivándola.
+- **Auditoría append-only** (`core/jarvis_core/policy/audit.py`). Toda decisión y toda
+  ejecución quedan en `jarvis_audit.db` con los argumentos redactados y su sha256. La clase
+  no expone `update` ni `delete`.
+- **Herramientas peligrosas con gating.** `run_shell` deriva su lista blanca a reglas
+  `ALLOW`; lo que no está en ella requiere aprobación en vez de fallar. La contención de
+  fondo es `create_subprocess_exec`: nunca hay intérprete, así que tuberías y
+  encadenamientos no se interpretan.
 - **Secretos fuera del código.** Todo por variables de entorno / `.env` (nunca commiteado).
 - **MQTT con TLS y credenciales.** Los dispositivos se autentican; el broker no es anónimo
   en producción.
