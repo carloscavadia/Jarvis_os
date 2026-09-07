@@ -1,5 +1,7 @@
 """Tests del motor de políticas y del registro de auditoría."""
 
+import asyncio
+
 import pytest
 
 from jarvis_core.agent.orchestrator import Orchestrator
@@ -417,3 +419,50 @@ async def test_tras_conceder_la_segunda_llamada_ya_no_pregunta():
     agent._llm = _FakeLLM("run_shell", {"command": "echo dos"})
     await agent.send("segundo")
     assert preguntas == 1
+
+
+# --- la memoria no puede bloquear el bucle de eventos ---------------------
+
+
+async def test_la_memoria_lenta_no_congela_el_bucle_de_eventos():
+    """`recall_semantic` con embeddings remotos es una petición HTTP síncrona.
+
+    Llamarla desde la corrutina bloqueaba el bucle entero: no solo retrasaba ese
+    turno, congelaba el streaming, los WebSockets y el puente MQTT de todos los
+    clientes mientras durase. Aquí se comprueba que otra tarea sigue avanzando
+    mientras la memoria tarda.
+    """
+    import time as _time
+
+    class MemoriaLenta:
+        """Tarda 300 ms de forma bloqueante, como una llamada de red síncrona."""
+
+        def recall(self, query="", limit=10):
+            _time.sleep(0.3)
+            return []
+
+        def recall_semantic(self, query="", limit=10, min_similarity=0.0):
+            _time.sleep(0.3)
+            return []
+
+    tool = _SpyTool()
+    agent = _orchestrator(
+        tool, _FakeLLM("spy", {}), policy=PolicyEngine([Rule(tool="spy", decision=Decision.ALLOW)])
+    )
+    agent._memory = MemoriaLenta()
+
+    latidos = 0
+
+    async def corazon():
+        nonlocal latidos
+        for _ in range(40):
+            await asyncio.sleep(0.01)
+            latidos += 1
+
+    tarea = asyncio.create_task(corazon())
+    await agent.send("hola")
+    tarea.cancel()
+
+    # Con la memoria dentro del bucle, `latidos` se quedaba en 0 o 1: nada más
+    # podía correr. Fuera del bucle, el latido sigue su ritmo.
+    assert latidos > 5, f"el bucle estuvo bloqueado: solo {latidos} latidos"

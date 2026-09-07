@@ -6542,9 +6542,24 @@
     } catch { stopConversationFollowUp(); }
   }
 
+  //: Cuándo NO se puede abrir el micrófono de activación.
+  //:
+  //: Estaba duplicada entre `scheduleWakeListening` y `startWakeListening`, y las
+  //: dos copias habían divergido: la segunda no miraba `speechQueueRunning`.
+  //: Entre dos fragmentos de voz, `voiceActive` vuelve a `false` mientras la cola
+  //: sigue hablando; en esa rendija el micrófono se abría en mitad de la frase,
+  //: JARVIS se oía a sí mismo por el altavoz, disparaba la activación y la
+  //: conversación nueva cancelaba la voz en curso. Una sola guarda para las dos.
+  function wakeBlocked() {
+    return !wakeAvailable || !canRecord
+      || !ws || ws.readyState !== WebSocket.OPEN
+      || busy || voiceActive || speechQueueRunning || followUpListening
+      || recorder?.state === "recording";
+  }
+
   function scheduleWakeListening(delay = 450) {
     clearTimeout(wakeRestartTimer);
-    if (!wakeAvailable || !canRecord || !ws || ws.readyState !== WebSocket.OPEN || busy || voiceActive || speechQueueRunning || followUpListening || recorder?.state === "recording") return;
+    if (wakeBlocked()) return;
     wakeRestartTimer = setTimeout(startWakeListening, delay);
   }
 
@@ -6676,7 +6691,7 @@
   }
 
   async function startWakeListening() {
-    if (!wakeAvailable || !canRecord || busy || voiceActive || wakeListening) return;
+    if (wakeBlocked() || wakeListening) return;
     if (!wakeSocket) {
       if (!wakeStarting) {
         wakeStarting = buildWakePipeline()
@@ -6691,8 +6706,10 @@
           .finally(() => { wakeStarting = null; });
       }
       try { await wakeStarting; } catch { return; }
-      // Mientras se abría el micrófono pudo llegar una respuesta o un envío.
-      if (busy || voiceActive || followUpListening) return;
+      // Abrir el micrófono tarda, y en ese tiempo puede haber llegado una
+      // respuesta: se vuelve a comprobar con la misma guarda, que ahora incluye
+      // la cola de voz.
+      if (wakeBlocked()) return;
     }
     await wakeAudioContext?.resume().catch(() => {});
     // Descarta lo oído durante la respuesta anterior para no activar con eco.

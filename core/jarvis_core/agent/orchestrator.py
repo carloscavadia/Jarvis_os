@@ -111,7 +111,7 @@ class Orchestrator:
     def persona(self) -> str:
         return self._persona_overlay
 
-    def _remembered_facts(self, user_message: str) -> list[str]:
+    async def _remembered_facts(self, user_message: str) -> list[str]:
         """Hechos de la memoria que merece la pena tener delante este turno.
 
         Hasta ahora la memoria solo existía como herramienta: JARVIS recordaba
@@ -121,6 +121,19 @@ class Orchestrator:
         La selección es por coincidencia de texto y por recencia, no por
         significado: para eso hacen falta embeddings, que es un paso aparte.
         """
+        if self._memory is None:
+            return []
+        # `recall_semantic` puede pedir un embedding, y con el modo remoto eso es
+        # una petición HTTP con el cliente **síncrono** de OpenAI. Llamarla desde
+        # la corrutina bloqueaba el bucle de eventos entero: no solo retrasaba
+        # este turno, congelaba el streaming, los WebSockets y el puente MQTT de
+        # todos los clientes mientras durase. Y en el primer turno tras activar
+        # la memoria semántica son hasta 200 peticiones en serie por el relleno
+        # de vectores pendientes.
+        return await asyncio.to_thread(self._remembered_facts_sync, user_message)
+
+    def _remembered_facts_sync(self, user_message: str) -> list[str]:
+        """La parte que toca disco y red. Se ejecuta fuera del bucle."""
         if self._memory is None:
             return []
         vistos: dict[str, str] = {}
@@ -143,14 +156,14 @@ class Orchestrator:
         lineas = [f"- {clave}: {valor}" for clave, valor in vistos.items()]
         return lineas[: self._memory_facts]
 
-    def _build_overlay(self, user_message: str) -> str:
+    async def _build_overlay(self, user_message: str) -> str:
         """Lo que cambia entre turnos, separado de lo que no."""
         bloques: list[str] = []
         ahora = datetime.now(self._timezone)
         bloques.append(f"Fecha y hora actuales: {ahora.strftime('%A %d de %B de %Y, %H:%M')}.")
         if self._persona_overlay:
             bloques.append(f"Reglas de la casa vigentes:\n{self._persona_overlay}")
-        hechos = self._remembered_facts(user_message)
+        hechos = await self._remembered_facts(user_message)
         if hechos:
             bloques.append(
                 "Lo que ya sabes de tu jefe (memoria a largo plazo; úsalo sin "
@@ -191,7 +204,7 @@ class Orchestrator:
         self._history.append({"role": "user", "content": user_message})
         tools = self._registry.definitions()
         tools_used: list[str] = []
-        overlay = self._build_overlay(user_message)
+        overlay = await self._build_overlay(user_message)
 
         for _ in range(self._settings.max_tool_iterations):
             try:
