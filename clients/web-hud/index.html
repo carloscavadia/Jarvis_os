@@ -3165,23 +3165,49 @@
     };
   }
 
-  // Esfera central de partículas: ajustada dinámicamente según el hardware
-  const CORE_N = isLowSpec ? 220 : 920;
+  // ── Masa central de partículas ──
+  //
+  // Antes: 920 puntos en una esfera del 12% del radio, girando como un bloque
+  // rígido y pintados en orden de creación. Eso se lee como un puñado de puntos,
+  // no como volumen: sin orden de profundidad las partículas del fondo tapan a
+  // las del frente, y sin deformación interna el conjunto parece un sólido.
+  //
+  // Ahora la masa es grande y se comporta como materia: se ordena por
+  // profundidad cada fotograma, cada partícula deriva sobre un campo de
+  // turbulencia propio, y el color y el tamaño dependen de lo cerca que esté.
+  const CORE_N = isLowSpec ? 420 : 2600;
   const CORE = new Array(CORE_N);
   for (let i = 0; i < CORE_N; i++) {
     const z = Math.random() * 2 - 1;
     const phi = Math.random() * Math.PI * 2;
-    const radius = Math.cbrt(Math.random());
+    // `pow(r, 0.62)` en vez de la raíz cúbica: acumula más masa hacia la
+    // superficie, que es lo que da silueta. Con densidad uniforme el centro se
+    // satura de blanco y el borde se deshilacha.
+    const radius = Math.pow(Math.random(), 0.78);
     const planar = Math.sqrt(1 - z * z);
     CORE[i] = {
       x: Math.cos(phi) * planar * radius,
       y: Math.sin(phi) * planar * radius,
       z: z * radius,
+      r0: radius,
       seed: Math.random() * Math.PI * 2,
-      size: 0.45 + Math.random() * 1.05,
-      bri: 0.28 + Math.random() * 0.62,
+      // Dos frecuencias distintas por partícula: si todas ondulan al mismo
+      // ritmo, la masa entera late a la vez y delata la fórmula.
+      f1: 0.6 + Math.random() * 1.5,
+      f2: 0.9 + Math.random() * 2.2,
+      // Distribución muy sesgada a lo pequeño: la mayoría son polvo y unas pocas
+      // destacan. Con tamaños uniformes la masa se lee como burbujas, no como
+      // materia — el detalle fino es lo que la hace parecer densa de verdad.
+      size: 0.22 + Math.pow(Math.random(), 3.2) * 2.4,
+      bri: 0.22 + Math.random() * 0.7,
     };
   }
+  //: Índices ordenados por profundidad. Se reutiliza el mismo buffer cada
+  //: fotograma: 2600 objetos nuevos a 60 fps es basura para el recolector.
+  const CORE_ORDER = new Int32Array(CORE_N);
+  for (let i = 0; i < CORE_N; i++) CORE_ORDER[i] = i;
+  const PX = new Float32Array(CORE_N), PY = new Float32Array(CORE_N);
+  const PZ = new Float32Array(CORE_N), PR = new Float32Array(CORE_N);
 
   // sprite de partícula: halo AJUSTADO (caída rápida) para dar brillo sin difuminar.
   const SP = 22;
@@ -3215,8 +3241,10 @@
   // Núcleo profesional: esfera granular + campo de energía tenue.
   function drawCore(cx, cy, R, rgbCol, pulse) {
     ctx.globalCompositeOperation = "lighter";
-    const sphereR = R * (0.125 + amp * 0.018);
-    const haloR = sphereR * 2.7;
+    // 0.125 → 0.30: la masa ocupa el sitio que antes era halo vacío. El halo se
+    // reduce en proporción para que el conjunto no crezca hacia los paneles.
+    const sphereR = R * (0.30 + amp * 0.030);
+    const haloR = sphereR * 1.75;
 
     const field = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
     field.addColorStop(0,   `rgba(${rgbCol},${0.11 + amp * 0.08})`);
@@ -3235,31 +3263,79 @@
       ctx.beginPath(); ctx.arc(cx, cy, wave, 0, TAU); ctx.stroke();
     }
 
-    // Rotación 3D de la nube central.
+    // Rotación 3D de la nube central, más la turbulencia que la mantiene viva.
     const ry = t * 0.34;
     const rx = t * 0.17;
     const cry = Math.cos(ry), sry = Math.sin(ry);
     const crx = Math.cos(rx), srx = Math.sin(rx);
+    // La voz agita la masa además de expandirla: solo escalar hace que el orbe
+    // "respire", pero no que reaccione.
+    const churn = (reduceMotion ? 0.15 : 1) * (0.052 + amp * 0.085);
+    const boot = easeOut(bootT);
+    //: Grano relativo al tamaño de la esfera, con suelo para que en pantallas
+    //: pequeñas las partículas no bajen de lo visible.
+    const grain = Math.max(0.85, sphereR / 62);
 
     for (let i = 0; i < CORE_N; i++) {
       const p = CORE[i];
-      const x1 = p.x * cry - p.z * sry;
-      const z1 = p.x * sry + p.z * cry;
-      const y1 = p.y * crx - z1 * srx;
-      const z2 = p.y * srx + z1 * crx;
-      const depth = 0.60 + (z2 + 1) * 0.20;
-      const shimmer = 0.72 + 0.28 * Math.sin(t * 2.1 + p.seed);
-      const px = cx + x1 * sphereR;
-      const py = cy + y1 * sphereR;
-      const pr = p.size * (0.72 + depth * 0.42) * (1 + amp * 0.22);
+      // Campo de turbulencia: suma de senos desfasados por eje. No es ruido de
+      // Perlin, pero es continuo, barato y a esta escala no se distingue — y
+      // convierte una rotación de sólido rígido en materia que se revuelve.
+      const ph = t * 0.55;
+      const dx = Math.sin(p.y * 2.7 + ph * p.f1 + p.seed) * churn;
+      const dy = Math.sin(p.z * 2.3 - ph * p.f2 + p.seed * 1.7) * churn;
+      const dz = Math.sin(p.x * 3.1 + ph * p.f1 * 0.8 - p.seed) * churn;
 
-      ctx.globalAlpha = p.bri * depth * shimmer * easeOut(bootT);
-      ctx.fillStyle = coreHex;
-      ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.fill();
+      const bx = p.x + dx, by = p.y + dy, bz = p.z + dz;
+      const x1 = bx * cry - bz * sry;
+      const z1 = bx * sry + bz * cry;
+      const y1 = by * crx - z1 * srx;
+      const z2 = by * srx + z1 * crx;
 
-      if (p.bri > 0.72) {
-        ctx.globalAlpha *= 0.16;
-        ctx.beginPath(); ctx.arc(px, py, pr * 3.2, 0, TAU); ctx.fill();
+      PX[i] = cx + x1 * sphereR;
+      PY[i] = cy + y1 * sphereR;
+      PZ[i] = z2;
+      PR[i] = Math.hypot(x1, y1);
+    }
+
+    // Orden de pintado por profundidad: del fondo al frente. Sin esto, una
+    // partícula lejana pintada tarde tapa a una cercana y el conjunto se aplana
+    // — es la diferencia entre una nube con volumen y una calcomanía.
+    CORE_ORDER.sort((a, b) => PZ[a] - PZ[b]);
+
+    for (let k = 0; k < CORE_N; k++) {
+      const i = CORE_ORDER[k];
+      const p = CORE[i];
+      const z2 = PZ[i];
+      // Profundidad normalizada: 0 al fondo, 1 al frente.
+      const d = (z2 + 1) * 0.5;
+      const shimmer = 0.74 + 0.26 * Math.sin(t * 2.1 + p.seed);
+
+      // Fresnel: las partículas del borde de la silueta brillan más. Es lo que
+      // hace que una nube de puntos se lea como un cuerpo y no como un relleno.
+      const rim = Math.pow(Math.min(1, PR[i]), 3.4);
+
+      // El tamaño escala con la esfera. Cuando era absoluto en píxeles, agrandar
+      // la masa la volvía un puñado de puntos sueltos: misma cantidad de tinta
+      // repartida en el triple de área.
+      const pr = p.size * (0.42 + d * 0.95) * (1 + amp * 0.26) * grain;
+      // Las de atrás se apagan bastante: la niebla es lo que da la sensación de
+      // que hay profundidad de verdad y no dos planos.
+      // `d*d` hundía el fondo casi a cero y la masa quedaba hueca por dentro.
+      // Con una caída más suave el volumen se llena y sigue habiendo profundidad.
+      const fog = 0.30 + d * 0.82;
+
+      ctx.globalAlpha = Math.min(1, p.bri * fog * shimmer * (1 + rim * 0.85)) * boot;
+      // El núcleo casi blanco solo para lo que está delante; el fondo conserva
+      // el tinte del estado, así el color del orbe sigue leyéndose.
+      ctx.fillStyle = d > 0.55 ? coreHex : `rgb(${rgbCol})`;
+      ctx.beginPath(); ctx.arc(PX[i], PY[i], pr, 0, TAU); ctx.fill();
+
+      // Halo solo en las brillantes del frente y del borde: repartirlo por toda
+      // la masa satura el bloom y se pierde el detalle que acabamos de ganar.
+      if ((p.size > 1.5 && d > 0.55) || rim > 0.62) {
+        ctx.globalAlpha *= 0.13 + rim * 0.1;
+        ctx.beginPath(); ctx.arc(PX[i], PY[i], pr * 3.4, 0, TAU); ctx.fill();
       }
     }
   }
