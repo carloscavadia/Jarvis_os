@@ -37,6 +37,8 @@ desde el coche". Cada fase deja algo usable.
 ## Fase 3 — Capacidades (herramientas)
 - [x] Motor de políticas (allow/ask/deny por herramienta y argumentos, denegaciones
       críticas no configurables, concesiones de sesión) + auditoría append-only.
+- [x] Concesiones de sesión cableadas en el HUD ("aprobar en esta conversación") y
+      endpoint `GET /audit` para consultar la bitácora.
 - [ ] `jarvis-node`: agente compañero en cada máquina (Windows/macOS/Linux) que conecta
       hacia afuera por MQTT y expone operaciones tipadas en vez de cadenas de shell.
 - [ ] Control gráfico por visión (captura → modelo → coordenadas), solo para lo que no

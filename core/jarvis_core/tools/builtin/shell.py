@@ -32,6 +32,7 @@ def split_command(command: str) -> list[str]:
 class ShellTool(Tool):
     name = "run_shell"
     requires_confirmation = True
+    policy_scope_key = "executable"
 
     def __init__(
         self,

@@ -31,6 +31,12 @@ class Tool(ABC):
     input_schema: dict[str, Any]
     #: Si es True, requiere confirmación antes de ejecutarse (acciones sensibles).
     requires_confirmation: bool = False
+    #: Campo de `policy_subject` que identifica la *clase* de operación, para que una
+    #: concesión de sesión sea util sin ser un cheque en blanco. `run_shell` usa
+    #: `executable`, de modo que aprobar `git status` concede `git`, no la línea exacta
+    #: (que no volvería a repetirse) ni la herramienta entera (que sería demasiado).
+    #: Sin valor, la concesión cubre la herramienta completa.
+    policy_scope_key: str | None = None
 
     @abstractmethod
     async def run(self, **kwargs: Any) -> ToolResult:

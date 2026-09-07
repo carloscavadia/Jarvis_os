@@ -306,3 +306,114 @@ async def test_un_fallo_de_auditoria_no_tumba_el_turno(tmp_path):
     reply = await agent.send("haz algo")
     assert reply.text == "listo"
     assert tool.ran
+
+
+# --- concesiones de sesión desde una aprobación --------------------------
+
+
+async def test_una_concesion_cubre_el_ejecutable_no_la_linea_exacta():
+    """Conceder `git status` debe valer para `git log`, o la concesión es inútil."""
+    tool = ShellTool(allowlist=["ls"], governed_by_policy=True)
+    policy = PolicyEngine()
+    agent = _orchestrator(tool, _FakeLLM("run_shell", {}), policy=policy)
+
+    etiqueta = agent.grant_for_session("run_shell", {"command": "git status --short"})
+    assert etiqueta == "run_shell (executable=git)"
+
+    verdict = policy.evaluate(
+        "run_shell",
+        tool.policy_subject({"command": "git log --oneline"}),
+        baseline=Decision.ASK,
+        session="s1",
+    )
+    assert verdict.allowed
+
+
+async def test_una_concesion_no_se_extiende_a_otro_ejecutable():
+    tool = ShellTool(allowlist=["ls"], governed_by_policy=True)
+    policy = PolicyEngine()
+    agent = _orchestrator(tool, _FakeLLM("run_shell", {}), policy=policy)
+    agent.grant_for_session("run_shell", {"command": "git status"})
+
+    verdict = policy.evaluate(
+        "run_shell",
+        tool.policy_subject({"command": "curl https://example.com"}),
+        baseline=Decision.ASK,
+        session="s1",
+    )
+    assert not verdict.allowed
+
+
+async def test_una_concesion_nunca_levanta_una_denegacion_critica():
+    """El botón del HUD no puede abrir `dd` por mucho que el usuario lo pulse."""
+    tool = ShellTool(allowlist=["ls"], governed_by_policy=True)
+    policy = PolicyEngine()
+    agent = _orchestrator(tool, _FakeLLM("run_shell", {}), policy=policy)
+    agent.grant_for_session("run_shell", {"command": "dd if=/dev/zero of=/dev/sda"})
+
+    verdict = policy.evaluate(
+        "run_shell",
+        tool.policy_subject({"command": "dd if=/dev/zero of=/dev/sda"}),
+        baseline=Decision.ASK,
+        session="s1",
+    )
+    assert verdict.denied
+
+
+async def test_sin_ejecutable_no_se_concede_nada():
+    """Un comando mal formado degradaría la concesión a `run_shell` entero."""
+    tool = ShellTool(allowlist=["ls"], governed_by_policy=True)
+    policy = PolicyEngine()
+    agent = _orchestrator(tool, _FakeLLM("run_shell", {}), policy=policy)
+    assert agent.grant_for_session("run_shell", {"command": "'sin cerrar"}) is None
+    assert policy.grants_for("s1") == []
+
+
+async def test_una_herramienta_sin_scope_key_se_concede_entera():
+    tool = _SpyTool()
+    policy = PolicyEngine()
+    agent = _orchestrator(tool, _FakeLLM("spy", {}), policy=policy)
+    assert agent.grant_for_session("spy", {"x": 1}) == "spy"
+    assert policy.evaluate("spy", {"x": 2}, baseline=Decision.ASK, session="s1").allowed
+
+
+async def test_la_concesion_queda_en_la_auditoria(tmp_path):
+    tool = ShellTool(allowlist=["ls"], governed_by_policy=True)
+    audit = AuditLog(str(tmp_path / "audit.db"))
+    agent = _orchestrator(
+        tool, _FakeLLM("run_shell", {}), policy=PolicyEngine(), audit=audit
+    )
+    agent.grant_for_session("run_shell", {"command": "git status"})
+    entrada = audit.tail()[0]
+    assert entrada.decision == "grant"
+    assert "executable=git" in entrada.reason
+    audit.close()
+
+
+async def test_sin_motor_no_se_concede_nada():
+    tool = _SpyTool()
+    agent = _orchestrator(tool, _FakeLLM("spy", {}), policy=None)
+    assert agent.grant_for_session("spy", {}) is None
+
+
+async def test_tras_conceder_la_segunda_llamada_ya_no_pregunta():
+    """El recorrido completo: primero pregunta, se concede, y deja de preguntar."""
+    tool = ShellTool(allowlist=[], governed_by_policy=True)
+    policy = PolicyEngine()
+    preguntas = 0
+
+    async def confirm(name, args):
+        nonlocal preguntas
+        preguntas += 1
+        return True
+
+    agent = _orchestrator(
+        tool, _FakeLLM("run_shell", {"command": "echo uno"}), policy=policy, confirm=confirm
+    )
+    await agent.send("primero")
+    assert preguntas == 1
+
+    agent.grant_for_session("run_shell", {"command": "echo uno"})
+    agent._llm = _FakeLLM("run_shell", {"command": "echo dos"})
+    await agent.send("segundo")
+    assert preguntas == 1

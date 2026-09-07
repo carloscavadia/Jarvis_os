@@ -26,7 +26,7 @@ from jarvis_core.config import Settings
 from jarvis_core.llm.base import LLMProvider, TextDeltaFn
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.policy.audit import AuditLog
-from jarvis_core.policy.rules import Decision, PolicyEngine, Verdict
+from jarvis_core.policy.rules import Decision, PolicyEngine, Rule, Verdict
 from jarvis_core.tools.base import ToolRegistry, ToolResult
 from jarvis_core.tools.clipping import clip_structured
 
@@ -343,6 +343,51 @@ class Orchestrator:
         while trimmed and trimmed[0].get("role") != "user":
             trimmed.pop(0)
         self._history = trimmed
+
+    def grant_for_session(self, tool_name: str, arguments: dict[str, Any]) -> str | None:
+        """Concede una herramienta para el resto de esta conversación.
+
+        Es lo que respalda el "permitir en esta conversación" del HUD. El alcance sale
+        de `Tool.policy_scope_key`: aprobar `git status` concede `git`, no esa línea
+        exacta —que no se repetiría nunca y haría la concesión inútil— ni `run_shell`
+        entero, que sería un cheque en blanco.
+
+        Devuelve una descripción legible de lo concedido, o `None` si no había motor.
+        El texto vuelve al cliente: una concesión que el usuario no ve es una que no
+        puede revocar.
+        """
+        if self._policy is None:
+            return None
+        tool = self._registry.get(tool_name)
+        subject = tool.policy_subject(arguments) if tool is not None else dict(arguments)
+        scope_key = tool.policy_scope_key if tool is not None else None
+        match: dict[str, str] = {}
+        etiqueta = tool_name
+        if scope_key:
+            value = subject.get(scope_key)
+            # Un scope_key sin valor (comando mal formado) degrada a la herramienta
+            # entera, que es más de lo que el usuario aprobó. Mejor no conceder nada.
+            if not value:
+                return None
+            match[scope_key] = str(value)
+            etiqueta = f"{tool_name} ({scope_key}={value})"
+        self._policy.grant(
+            self._session_id,
+            Rule(
+                tool=tool_name,
+                decision=Decision.ALLOW,
+                match=match,
+                reason="Concedido por el usuario para esta conversación.",
+            ),
+        )
+        self._audit_record(
+            tool_name,
+            arguments,
+            decision="grant",
+            reason=f"Concesión de sesión: {etiqueta}",
+            outcome="granted",
+        )
+        return etiqueta
 
     def _audit_record(
         self,

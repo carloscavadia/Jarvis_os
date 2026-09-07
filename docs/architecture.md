@@ -195,7 +195,13 @@ Flujo típico de un dispositivo:
   evalúan antes que cualquier permiso y `CRITICAL_DENY_RULES` no es configurable: formatear,
   `dd`, apagar el anfitrión, tocar la auditoría o los `.env` no se pueden habilitar.
   Las **concesiones de sesión** ("permítelo mientras dure esta conversación") existen para
-  que la confirmación no genere tanta fricción que el usuario acabe desactivándola.
+  que la confirmación no genere tanta fricción que el usuario acabe desactivándola. El HUD
+  las ofrece como tercer botón del diálogo de aprobación; el alcance sale de
+  `Tool.policy_scope_key`, así que aprobar `git status` concede `git` —no esa línea exacta,
+  que no se repetiría, ni `run_shell` entero, que sería un cheque en blanco—. Viven en
+  memoria y no se persisten: un permiso dado en una conversación no sobrevive a un reinicio.
+- **`GET /audit`** (clave del gateway) devuelve las últimas decisiones y ejecuciones. Dar
+  capacidades sin una forma de mirar atrás no es auditable, solo es confianza.
 - **Auditoría append-only** (`core/jarvis_core/policy/audit.py`). Toda decisión y toda
   ejecución quedan en `jarvis_audit.db` con los argumentos redactados y su sha256. La clase
   no expone `update` ni `delete`.

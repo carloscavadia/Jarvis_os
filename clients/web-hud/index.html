@@ -1587,6 +1587,7 @@
     <div id="action-list"></div>
     <div class="approval-actions" id="approval-actions" hidden>
       <button class="approve" id="approval-approve" type="button">APROBAR</button>
+      <button class="approve" id="approval-approve-session" type="button">APROBAR EN ESTA CONVERSACIÓN</button>
       <button class="deny" id="approval-deny" type="button">DENEGAR</button>
     </div>
   </section>
@@ -1664,6 +1665,7 @@
   const approvalActions = document.getElementById("approval-actions");
   const approvalApprove = document.getElementById("approval-approve");
   const approvalDeny = document.getElementById("approval-deny");
+  const approvalApproveSession = document.getElementById("approval-approve-session");
   const rState = document.getElementById("r-state");
   const rEmotion = document.getElementById("r-emotion");
   const rLink = document.getElementById("r-link");
@@ -3072,7 +3074,7 @@
         arguments: { connector: pending.connector, action: pending.action, payload: pending.payload },
       });
       approvalActions.hidden = false;
-      approvalApprove.disabled = false; approvalDeny.disabled = false;
+      approvalApprove.disabled = false; approvalDeny.disabled = false; approvalApproveSession.disabled = false;
       setEmotion("alert");
     } catch {}
   }
@@ -3893,7 +3895,7 @@
     if (!next) { messageInput.focus(); scheduleWakeListening(); }
     armBusyWatchdog();
   }
-  async function sendApprovalDecision(approved) {
+  async function sendApprovalDecision(approved, scope = "once") {
     if (pendingProactive) {
       approvalApprove.disabled = true; approvalDeny.disabled = true;
       const event = pendingProactive;
@@ -3921,16 +3923,19 @@
     const channel = pendingApproval.channel === "voice" ? voiceSocket : ws;
     if (!channel || channel.readyState !== WebSocket.OPEN) return;
     approvalApprove.disabled = true; approvalDeny.disabled = true;
+    approvalApproveSession.disabled = true;
     if (currentToolCard?._status) currentToolCard._status.textContent = "ENVIANDO DECISIÓN";
-    addLine("TÚ", approved ? "APROBAR" : "DENEGAR", "user");
+    addLine("TÚ", approved ? (scope === "session" ? "APROBAR EN ESTA CONVERSACIÓN" : "APROBAR") : "DENEGAR", "user");
     channel.send(JSON.stringify({
       type: "approval",
       approval_id: pendingApproval.approval_id,
       approved,
+      scope,
     }));
     if (pendingApproval.channel !== "voice") setBusy(true);
   }
   approvalApprove.addEventListener("click", () => sendApprovalDecision(true));
+  approvalApproveSession.addEventListener("click", () => sendApprovalDecision(true, "session"));
   approvalDeny.addEventListener("click", () => sendApprovalDecision(false));
   function startStreamReply() {
     if (activeReply) finishStreamReply();
@@ -4224,7 +4229,7 @@
             arguments: { connector: m.connector, action: m.action, payload: m.payload },
           });
           approvalActions.hidden = false;
-          approvalApprove.disabled = false; approvalDeny.disabled = false;
+          approvalApprove.disabled = false; approvalDeny.disabled = false; approvalApproveSession.disabled = false;
           setBusy(false); setState("idle"); setEmotion("alert");
           messageInput.placeholder = "Esperando tu decisión…";
         }
@@ -4233,7 +4238,7 @@
         pendingApproval = m;
         showToolEvent({ phase: "awaiting", tool: m.tool, arguments: m.arguments });
         approvalActions.hidden = false;
-        approvalApprove.disabled = false; approvalDeny.disabled = false;
+        approvalApprove.disabled = false; approvalDeny.disabled = false; approvalApproveSession.disabled = false;
         setBusy(false);
         setState("idle"); setEmotion("alert");
         messageInput.placeholder = "Esperando tu decisión…";
@@ -4242,7 +4247,7 @@
       else if (m.type === "approval_invalid") {
         setBusy(false);
         approvalActions.hidden = false;
-        approvalApprove.disabled = false; approvalDeny.disabled = false;
+        approvalApprove.disabled = false; approvalDeny.disabled = false; approvalApproveSession.disabled = false;
         messageInput.placeholder = "Esperando tu decisión…";
         addLine("SISTEMA", m.message || "Confirmación inválida.", "system");
       }
@@ -4253,7 +4258,9 @@
           if (!m.approved) showToolEvent({ phase: "denied", tool: pendingApproval.tool, arguments: pendingApproval.arguments });
           pendingApproval = null;
         }
-        addLine("SISTEMA", m.approved ? "Permiso concedido." : "Permiso denegado.", "system");
+        addLine("SISTEMA", m.approved
+          ? (m.granted ? `Permiso concedido para esta conversación: ${m.granted}.` : "Permiso concedido.")
+          : "Permiso denegado.", "system");
         // Volver a bloquear solo si es la aprobación que este canal esperaba.
         // Una resolución tardía —o la de una aprobación que se decidió por el
         // canal de voz— llegaba después de la respuesta y volvía a bloquear el
@@ -6633,7 +6640,7 @@
       pendingApproval = { ...message, channel: "voice" };
       showToolEvent({ phase: "awaiting", tool: message.tool, arguments: message.arguments });
       approvalActions.hidden = false;
-      approvalApprove.disabled = false; approvalDeny.disabled = false;
+      approvalApprove.disabled = false; approvalDeny.disabled = false; approvalApproveSession.disabled = false;
       setEmotion("alert");
       addLine("SISTEMA", "PERMISO REQUERIDO · " + message.summary, "system");
     }

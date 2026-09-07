@@ -39,7 +39,7 @@ TOKEN_IN_QUERY = {
 CONNECTOR_KEY = {"/connectors/chat", "/connectors/events"}
 
 EXPECTED_ROUTES = {
-    "/agents/swarm", "/browser/act", "/browser/screenshot", "/chat",
+    "/agents/swarm", "/audit", "/browser/act", "/browser/screenshot", "/chat",
     "/connector-modules", "/connector-modules/test", "/connector-modules/{name}",
     "/connectors/chat", "/connectors/events",
     "/goals/current", "/goals/{goal_id}/control",

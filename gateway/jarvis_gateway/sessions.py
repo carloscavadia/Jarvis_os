@@ -20,6 +20,8 @@ from jarvis_core.mcp import MCPManager, MCPStore
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.calendar.store import CalendarStore
 from jarvis_core.memory.embeddings import build_embedder
+from jarvis_core.policy.audit import AuditLog
+from jarvis_core.policy.rules import PolicyEngine
 from jarvis_core.skills import SkillManager, SkillStore
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
@@ -39,6 +41,13 @@ class SessionManager:
         self.proactive_events = ProactiveEventStore(settings.proactive_events_db_path)
         self.mcp_store = MCPStore(settings.mcp_db_path)
         self.mcp_manager = MCPManager(self.mcp_store)
+        # El motor y la bitácora son de JARVIS, no de una conversación: las reglas
+        # valen para todas y la auditoría debe ser una sola. El aislamiento entre
+        # sesiones lo da `session_id` en las concesiones, no bases separadas.
+        self.policy = (
+            PolicyEngine() if getattr(settings, "enable_policy_engine", True) else None
+        )
+        self.audit = AuditLog(settings.audit_db_path)
         self.skill_store = SkillStore(settings.skills_db_path)
         self.skill_manager = SkillManager(
             self.skill_store, allow_python=getattr(settings, "skills_python_enabled", True)
@@ -77,9 +86,17 @@ class SessionManager:
                     skill_manager=self.skill_manager,
                     calendar=self.calendar,
                     llm=llm,
+                    policy=self.policy,
                 )
                 orch = Orchestrator(
-                    llm, registry, self._settings, emotion=emotion, memory=self.memory
+                    llm,
+                    registry,
+                    self._settings,
+                    emotion=emotion,
+                    memory=self.memory,
+                    policy=self.policy,
+                    audit=self.audit,
+                    session_id=session_id,
                 )
                 orch.set_persona(self._persona_overlay)
                 self._sessions[session_id] = orch

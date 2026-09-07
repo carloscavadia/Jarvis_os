@@ -952,6 +952,34 @@ class PersonaRequest(BaseModel):
     overlay: str = Field(default="", max_length=4000)
 
 
+@app.get("/audit", dependencies=[Depends(require_api_key)])
+async def read_audit(limit: int = 50, tool: str | None = None) -> dict[str, object]:
+    """Últimas decisiones y ejecuciones de herramientas.
+
+    Es la contrapartida de dar capacidades al agente: sin una forma de mirar atrás,
+    "JARVIS puede ejecutar cosas" no es auditable, solo es confianza. Los argumentos
+    llegan ya redactados desde `AuditLog`; aquí no se vuelve a exponer nada.
+    """
+    entradas = sessions.audit.tail(limit=limit, tool=tool)
+    return {
+        "entries": [
+            {
+                "id": e.id,
+                "at": e.created_at,
+                "session": e.session,
+                "tool": e.tool,
+                "decision": e.decision,
+                "reason": e.reason,
+                "arguments": e.args_preview,
+                "digest": e.args_digest,
+                "outcome": e.outcome,
+                "duration_ms": e.duration_ms,
+            }
+            for e in entradas
+        ]
+    }
+
+
 @app.get("/persona", dependencies=[Depends(require_api_key)])
 async def read_persona() -> dict[str, object]:
     return {"overlay": sessions.persona, "name": settings.persona_name}
@@ -2077,6 +2105,10 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 return False
 
             approved: bool | None = None
+            # "session" concede la operación para el resto de la conversación; el
+            # HUD lo ofrece como tercer botón para que la respuesta a un ASK no sea
+            # siempre "sí, una vez" y el usuario acabe desactivando la confirmación.
+            scope = "once"
             try:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
@@ -2088,10 +2120,14 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 and isinstance(payload.get("approved"), bool)
             ):
                 approved = payload["approved"]
+                if payload.get("scope") == "session":
+                    scope = "session"
             else:
                 normalized = raw.strip().lower()
                 if normalized == f"aprobar {approval_id}".lower():
                     approved = True
+                elif normalized == f"aprobar-sesion {approval_id}".lower():
+                    approved, scope = True, "session"
                 elif normalized == f"denegar {approval_id}".lower():
                     approved = False
 
@@ -2105,12 +2141,21 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str) -> None:
                 )
                 continue
 
+            granted: str | None = None
+            if approved and scope == "session":
+                # Una denegación crítica sigue mandando: el motor evalúa los vetos
+                # antes que las concesiones, así que esto nunca abre `dd` ni
+                # `shutdown` por mucho que el usuario pulse el botón.
+                granted = orchestrator.grant_for_session(name, arguments)
             await websocket.send_json(
                 {
                     "type": "approval_resolved",
                     "approval_id": approval_id,
                     "approved": approved,
                     "reason": "user",
+                    # El cliente muestra qué quedó concedido: una concesión que el
+                    # usuario no ve es una que no puede revocar.
+                    "granted": granted,
                 }
             )
             return approved

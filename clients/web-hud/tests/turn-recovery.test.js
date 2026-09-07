@@ -66,6 +66,7 @@ function montar({ vozRota = false } = {}) {
     "let voiceSocket=null, currentToolCard=null, ws={readyState:1,send(){}};",
     "const messageInput={disabled:false,placeholder:'',value:'',focus(){}};",
     "const approvalActions={hidden:true}, approvalApprove={}, approvalDeny={};",
+    "const approvalApproveSession={};",
     "const rLatency={textContent:''};",
     "function addLine(quien, texto){ H.registro.push([quien, texto]);"
     + " return {line:{classList:{remove(){}}}, text:{appendChild(){}, textContent:''}}; }",
