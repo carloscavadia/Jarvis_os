@@ -1767,8 +1767,14 @@
     generic:   { speed: 8,  fade: 0.020, width: 2.0, alpha: 0.50, hue: null,        rings: 1 },
   };
 
+  //: Sacudida del cuerpo. Sube de golpe cuando pasa algo —una herramienta que
+  //: arranca, termina o es denegada— y baja sola. Es lo que hace que la
+  //: superficie acuse el golpe en vez de ignorar lo que JARVIS está haciendo.
+  let shock = 0;
+
   function firePulse(kind = "generic") {
     const spec = PULSE_KINDS[kind] || PULSE_KINDS.generic;
+    shock = Math.min(1.4, shock + 0.85);
     for (let i = 0; i < spec.rings; i++) {
       pulses.push({ r: i * -14, life: 1, spec });
     }
@@ -3294,12 +3300,26 @@
     const crx = Math.cos(rx), srx = Math.sin(rx);
     const breath = 1 + Math.sin(T * 0.42) * 0.05 + Math.sin(T * 0.271) * 0.03;
 
-    // Cuánto se retuerce la superficie, por estado.
-    const warp =
-      stateName === "thinking"  ? 0.72 :
-      stateName === "speaking"  ? 0.52 + amp * 0.34 :
-      stateName === "listening" ? 0.38 : 0.56;
-    const vel = stateName === "thinking" ? 1.9 : stateName === "speaking" ? 1.3 : 0.62;
+    // ── Lo que el cuerpo acusa ──
+    //
+    // Antes la forma solo miraba el nombre del estado, así que ejecutar cinco
+    // herramientas se veía igual que estar parado pensando. Estas tres señales
+    // ya existían y nadie las usaba:
+    //
+    //   systemLoad  trabajo en curso (sube al lanzar una herramienta, baja al
+    //               terminarla). Tensa la superficie y la acelera.
+    //   shock       el golpe de un evento concreto. Recorre el cuerpo como una
+    //               onda de choque y se apaga.
+    //   amp         la voz real, medida del audio.
+    const carga = systemLoad;
+    const golpe = Math.min(1, shock);
+
+    // `curTurb` y `curChaos` ya vienen interpolados entre estados, así que
+    // usarlos en vez de constantes por nombre hace que la transición de forma
+    // acompañe a la del resto del HUD en vez de ir por libre.
+    const warp = (0.30 + curTurb * 0.20 + carga * 0.22 + amp * 0.26 + golpe * 0.30)
+      * (stateName === "listening" ? 0.78 : 1);
+    const vel = 0.45 + curChaos * 0.42 + carga * 0.85 + golpe * 1.1;
 
     // El punto es pequeño y uniforme: lo que dibuja es la malla, no el brillo de
     // cada partícula. Un halo por punto ahogaría el patrón.
@@ -3317,6 +3337,18 @@
       const w2 = Math.sin(uy * 3.1 - T * 0.52 * vel) * Math.cos(uz * 2.7 + T * 0.37 * vel);
       const w3 = Math.sin(uz * 5.3 + T * 0.44 * vel) * Math.cos(ux * 4.7 - T * 0.29 * vel);
       let rad = 1 + warp * (w1 * 0.62 + w2 * 0.30 + w3 * 0.16);
+
+      // Onda de choque: un frente que viaja de un polo al otro cuando pasa algo.
+      // Se nota como un latigazo que recorre la superficie, no como un cambio de
+      // tamaño — un cuerpo que solo se hincha no dice *qué* le ha pasado.
+      if (golpe > 0.01) {
+        const frente = 1 - golpe * 2;                 // de +1 a -1
+        const dist = Math.abs(uy - frente);
+        if (dist < 0.42) {
+          const perfil = Math.cos((dist / 0.42) * 1.5708);
+          rad += perfil * perfil * golpe * 0.30;
+        }
+      }
 
       if (stateName === "listening") {
         // Se aplana en un disco: un cuerpo que se abre de cara se lee como algo
@@ -3340,7 +3372,11 @@
 
       // Los puntos del fondo se ven a través del cuerpo, tenues. Es lo que hace
       // que la cáscara se lea como hueca en vez de como una silueta rellena.
-      let a = (0.16 + Math.pow(d, 1.6) * 1.15) * boot;
+      // Centelleo por punto. Sin él la superficie es un objeto quieto que gira;
+      // con él parece que está hecha de algo. El ritmo depende de la posición,
+      // así que no parpadea todo a la vez.
+      const brillo = 0.86 + 0.14 * Math.sin(T * 2.4 + UU[n] * 21 + uy * 9);
+      let a = (0.16 + Math.pow(d, 1.6) * 1.15) * brillo * (1 + golpe * 0.5) * boot;
       if (a < 0.02) continue;
       if (a > 1) a = 1;
 
@@ -3771,6 +3807,18 @@
     // Red Neuronal de Memoria en Canvas
     // drawMemoryNeuralGraph(cx, cy, R, rgbCol, t);
     drawCore(cx, cy, R, rgbCol, pulse);
+    // Los pulsos ya no dibujan aros, pero siguen existiendo: son la señal de
+    // que algo se está ejecutando y ahora la usa el cuerpo. Sin este bucle, el
+    // array crecía sin fin —comentar el bloque de dibujo se llevó por delante el
+    // decaimiento— y además `shock` no volvía nunca a cero.
+    shock = Math.max(0, shock - 0.022 * speedFactor);
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const pu = pulses[i];
+      pu.r += pu.spec.speed * speedFactor;
+      pu.life -= pu.spec.fade * speedFactor;
+      if (pu.life <= 0) pulses.splice(i, 1);
+    }
+
     // Enjambre, ondas concéntricas y núcleos del anillo: la otra mitad del
     // ambiente. Comentado, no borrado.
     
