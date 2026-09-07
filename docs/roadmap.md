@@ -39,8 +39,12 @@ desde el coche". Cada fase deja algo usable.
       críticas no configurables, concesiones de sesión) + auditoría append-only.
 - [x] Concesiones de sesión cableadas en el HUD ("aprobar en esta conversación") y
       endpoint `GET /audit` para consultar la bitácora.
-- [ ] `jarvis-node`: agente compañero en cada máquina (Windows/macOS/Linux) que conecta
+- [x] `jarvis-node`: agente compañero en cada máquina (Windows/macOS/Linux) que conecta
       hacia afuera por MQTT y expone operaciones tipadas en vez de cadenas de shell.
+      Manifiesto publicado por el nodo, confinamiento de rutas, prohibiciones absolutas
+      y modo de solo lectura por defecto.
+- [ ] Lado del gateway: descubrir nodos por su manifiesto y exponer `node_run` /
+      `node_read` como herramientas del agente, sobre el motor de políticas.
 - [ ] Control gráfico por visión (captura → modelo → coordenadas), solo para lo que no
       tiene API.
 - [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.

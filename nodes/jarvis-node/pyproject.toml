@@ -1,0 +1,29 @@
+[project]
+name = "jarvis-node"
+version = "0.1.0"
+description = "Agente compañero de JARVIS_OS: ejecuta operaciones tipadas en una máquina concreta."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+# El transporte. Sin esto el nodo se puede probar entero, pero no hablar con nadie.
+mqtt = ["paho-mqtt>=2.0"]
+# `list_processes` y `kill_process`.
+processes = ["psutil>=5.9"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.6"]
+
+[project.scripts]
+jarvis-node = "jarvis_node.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jarvis_node*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
