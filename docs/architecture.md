@@ -174,6 +174,40 @@ El topic `jarvis/broadcast` es la vía por la que un recordatorio o alerta (disp
 scheduler) llega a la vez a todos los puntos de voz tipo Alexa repartidos por la casa. Los
 clientes WebSocket conectados también reciben estos avisos.
 
+## 3.1 Nodos: máquinas con manos
+
+Un **nodo** (`nodes/jarvis-node/`) es una máquina —tu PC, un portátil, un servidor—
+donde JARVIS puede ejecutar operaciones. Arquitectónicamente es *otro dispositivo*:
+mismo transporte MQTT, su propio espacio de topics.
+
+```
+jarvis/node/{node_id}/manifest   → qué ofrece este nodo (retenido)
+jarvis/node/{node_id}/request    ← el gateway pide
+jarvis/node/{node_id}/response   → el nodo contesta
+jarvis/node/{node_id}/status     → online/offline (testamento MQTT)
+```
+
+Cuatro propiedades sostienen el diseño:
+
+- **Solo conexiones salientes.** El nodo se conecta al broker; no abre puertos. Una
+  máquina que no escucha no tiene puerta que forzar.
+- **La política vive en el nodo.** El manifiesto lo publica la máquina y el gateway lo
+  *aprende*. Comprometer el cerebro no amplía privilegios — algo que importa porque
+  JARVIS ya lee correo y navega web, así que texto de terceros entra en su contexto.
+- **Operaciones tipadas.** `run_command` recibe `argv` como lista y se ejecuta sin
+  intérprete: un `|` llega como argumento literal.
+- **Solo lectura de fábrica.** Escribir o ejecutar exige activarlo a mano en la máquina.
+
+En el cerebro, `NodeRegistry` (`core/jarvis_core/nodes/`) mantiene el catálogo y
+correlaciona peticiones con respuestas por `id`. Las herramientas `list_nodes` y
+`node_operation` lo exponen al agente; `node_operation` requiere confirmación y el
+alcance de una concesión de sesión es `nodo:operación`, de modo que aprobar "leer en
+pc-carlos" no abre "escribir en pc-carlos" ni "leer en el servidor".
+
+El protocolo está **duplicado** a propósito entre `core/jarvis_core/nodes/protocol.py`
+y el del nodo: son dos programas que se despliegan por separado y atarlos a
+actualizarse a la vez sería peor. El contrato es el JSON, no el módulo.
+
 ## 4. Las extremidades: firmware ESP32
 
 La LilyGo **T-A7670G R2** combina un ESP32 con un módem **4G LTE Cat-1 (SIMCom A7670G)**.

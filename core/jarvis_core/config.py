@@ -287,6 +287,10 @@ class Settings:
     #: propia base y no en `jarvis.db`: la auditoría no debe compartir destino con
     #: datos que las herramientas sí pueden tocar.
     audit_db_path: str = "data/jarvis_audit.db"
+    #: Cuánto se espera la respuesta de una máquina antes de rendirse. Generoso
+    #: respecto al resto del sistema: al otro lado hay un PC que puede estar
+    #: suspendido, en otra red o simplemente ocupado.
+    node_timeout_seconds: float = 30.0
     #: El motor de políticas sustituye al booleano `requires_confirmation` por
     #: decisiones de tres estados. Apagado deja el comportamiento anterior intacto.
     enable_policy_engine: bool = True
@@ -563,6 +567,7 @@ class Settings:
             ),
             workspace_root=os.environ.get("JARVIS_WORKSPACE_ROOT", "data/workspace"),
             audit_db_path=os.environ.get("JARVIS_AUDIT_DB", "data/jarvis_audit.db"),
+            node_timeout_seconds=float(os.environ.get("JARVIS_NODE_TIMEOUT", "30")),
             enable_policy_engine=_get_bool("JARVIS_ENABLE_POLICY", True),
             workspace_max_file_bytes=max(
                 1024,

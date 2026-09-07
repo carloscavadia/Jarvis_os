@@ -17,6 +17,7 @@ from jarvis_core.mcp.manager import MCPManager
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.music.navidrome import build_navidrome_client
 from jarvis_core.skills.manager import SkillManager
+from jarvis_core.nodes.registry import NodeRegistry
 from jarvis_core.policy.rules import PolicyEngine
 from jarvis_core.tasks.store import TaskStore
 from jarvis_core.tools.base import ToolRegistry
@@ -32,6 +33,7 @@ from jarvis_core.tools.builtin.filesystem import (
 from jarvis_core.tools.builtin.goal_tools import register_goal_tools
 from jarvis_core.tools.builtin.memory_tools import RecallTool, RememberTool
 from jarvis_core.tools.builtin.music import register_music_tools
+from jarvis_core.tools.builtin.node_tools import register_node_tools
 from jarvis_core.tools.builtin.packages import InstallPackageTool
 from jarvis_core.tools.builtin.presentation import ShowInWorkspaceTool
 from jarvis_core.tools.builtin.python_runner import RunPythonFileTool
@@ -82,6 +84,7 @@ def build_default_registry(
     calendar: CalendarStore | None = None,
     llm: object | None = None,
     policy: PolicyEngine | None = None,
+    nodes: NodeRegistry | None = None,
 ) -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
@@ -242,6 +245,12 @@ def build_default_registry(
 
     register_proxmox_tools(registry, settings)
     register_music_tools(registry, build_navidrome_client(settings))
+    if nodes is not None:
+        # Las máquinas son capacidades como cualquier otra: si no hay registro de
+        # nodos, JARVIS simplemente no sabe que existen. Va antes de la
+        # introspección a propósito: esa describe lo registrado.
+        register_node_tools(registry, nodes)
+
     # La introspección va la última: describe lo que hay registrado, así que
     # tiene que ver el registro completo.
     from jarvis_core.tools.builtin.introspection import register_introspection_tool

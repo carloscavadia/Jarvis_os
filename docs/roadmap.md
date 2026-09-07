@@ -43,8 +43,9 @@ desde el coche". Cada fase deja algo usable.
       hacia afuera por MQTT y expone operaciones tipadas en vez de cadenas de shell.
       Manifiesto publicado por el nodo, confinamiento de rutas, prohibiciones absolutas
       y modo de solo lectura por defecto.
-- [ ] Lado del gateway: descubrir nodos por su manifiesto y exponer `node_run` /
-      `node_read` como herramientas del agente, sobre el motor de políticas.
+- [x] Lado del gateway: los nodos se descubren solos por su manifiesto (MQTT) y el
+      agente los usa con `list_nodes` y `node_operation`, sobre el motor de políticas
+      (el alcance de una concesión es `nodo:operación`).
 - [ ] Control gráfico por visión (captura → modelo → coordenadas), solo para lo que no
       tiene API.
 - [x] Workspace seguro: crear, listar, leer y actualizar archivos/carpetas.

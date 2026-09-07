@@ -20,6 +20,7 @@ from jarvis_core.mcp import MCPManager, MCPStore
 from jarvis_core.memory.store import MemoryStore
 from jarvis_core.calendar.store import CalendarStore
 from jarvis_core.memory.embeddings import build_embedder
+from jarvis_core.nodes.registry import NodeRegistry
 from jarvis_core.policy.audit import AuditLog
 from jarvis_core.policy.rules import PolicyEngine
 from jarvis_core.skills import SkillManager, SkillStore
@@ -48,6 +49,10 @@ class SessionManager:
             PolicyEngine() if getattr(settings, "enable_policy_engine", True) else None
         )
         self.audit = AuditLog(settings.audit_db_path)
+        # Los nodos se descubren solos por su manifiesto; el registro nace vacío y
+        # el puente MQTT lo va poblando. Vive aquí porque las máquinas son de JARVIS,
+        # no de una conversación.
+        self.nodes = NodeRegistry(timeout=settings.node_timeout_seconds)
         self.skill_store = SkillStore(settings.skills_db_path)
         self.skill_manager = SkillManager(
             self.skill_store, allow_python=getattr(settings, "skills_python_enabled", True)
@@ -87,6 +92,7 @@ class SessionManager:
                     calendar=self.calendar,
                     llm=llm,
                     policy=self.policy,
+                    nodes=self.nodes,
                 )
                 orch = Orchestrator(
                     llm,

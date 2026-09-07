@@ -26,6 +26,9 @@ from jarvis_gateway.sessions import SessionManager
 logger = logging.getLogger("jarvis.mqtt")
 
 TOPIC_IN = "jarvis/device/+/in"
+#: Los nodos (máquinas con `jarvis-node`) anuncian y contestan por su propio espacio.
+#: Un PC es otro dispositivo: mismo transporte, distinto vocabulario.
+TOPIC_NODE = "jarvis/node/+/#"
 _DEVICE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -89,9 +92,39 @@ class MqttBridge:
             logger.warning("Conexión MQTT rechazada: %s", reason_code)
             return
         client.subscribe(TOPIC_IN)
-        logger.info("Suscrito a %s", TOPIC_IN)
+        client.subscribe(TOPIC_NODE, qos=1)
+        # El registro no puede publicar hasta que hay cliente; se le da ahora, no al
+        # construirlo, porque antes de conectar no habría a dónde enviar.
+        self._sessions.nodes.set_publish(self._publish_node)
+        logger.info("Suscrito a %s y %s", TOPIC_IN, TOPIC_NODE)
+
+    def _publish_node(self, topic: str, payload: str) -> None:
+        if self._client is not None:
+            self._client.publish(topic, payload, qos=1)
+
+    def _handle_node_message(self, msg) -> bool:
+        """Despacha un mensaje del espacio de nodos. Devuelve si era suyo."""
+        parts = msg.topic.split("/")
+        if len(parts) < 4 or parts[0] != "jarvis" or parts[1] != "node":
+            return False
+        node_id, kind = parts[2], parts[3]
+        if not _DEVICE_ID_RE.fullmatch(node_id):
+            logger.warning("Identificador de nodo inválido en '%s'", msg.topic)
+            return True
+        nodes = self._sessions.nodes
+        if kind == "manifest":
+            nodes.on_manifest(node_id, msg.payload)
+        elif kind == "status":
+            nodes.on_status(node_id, msg.payload)
+        elif kind == "response":
+            nodes.on_response(msg.payload)
+        # `request` lo publicamos nosotros; verlo de vuelta es solo el eco de la
+        # suscripción con comodín, no algo que atender.
+        return True
 
     def _on_message(self, client, userdata, msg) -> None:
+        if self._handle_node_message(msg):
+            return
         # topic = jarvis/device/{device_id}/in
         parts = msg.topic.split("/")
         if len(parts) < 4:
