@@ -86,10 +86,9 @@ recibe acceso al sistema de archivos completo del host ni al socket de Docker.
 
 ### 2.3 Multiagente (delegación)
 
-> **Estado: planeado, no implementado.** No existe todavía ninguna herramienta
-> `delegate` en el código; lo que sigue describe el diseño previsto.
-
-El orquestador expondrá una herramienta `delegate(agent, task)` que lance un
+El orquestador expone una herramienta `delegate(agent, task)`
+(`core/jarvis_core/tools/builtin/delegation.py`, con los perfiles en
+`core/jarvis_core/agent/subagents.py`) que lanza un
 **subagente** con su propio prompt y su propio subconjunto de herramientas (p.ej. un agente
 "casa" con acceso a domótica, un agente "investigación" con acceso a búsqueda web). El
 subagente devuelve un informe; el orquestador lo integra. Esto mantiene el contexto del
