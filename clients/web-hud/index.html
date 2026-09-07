@@ -3175,35 +3175,37 @@
   // Ahora la masa es grande y se comporta como materia: se ordena por
   // profundidad cada fotograma, cada partícula deriva sobre un campo de
   // turbulencia propio, y el color y el tamaño dependen de lo cerca que esté.
-  const CORE_N = isLowSpec ? 1400 : 7600;
-  const CORE = new Array(CORE_N);
-  for (let i = 0; i < CORE_N; i++) {
-    const z = Math.random() * 2 - 1;
-    const phi = Math.random() * Math.PI * 2;
-    const planar = Math.sqrt(1 - z * z);
-    // Identidad estable de la partícula. No es su posición: es lo que la
-    // identifica cuando el cuerpo cambia de forma, para que cada una sepa qué
-    // sitio le toca en la figura nueva. Sin esto la transición sería un
-    // reparto aleatorio y se vería como un parpadeo, no como una metamorfosis.
-    CORE[i] = {
-      ux: Math.cos(phi) * planar, uy: Math.sin(phi) * planar, uz: z,
-      r0: 0.20 + Math.pow(Math.random(), 0.45) * 0.92,
-      k: i / CORE_N,                       // posición ordenada dentro del cuerpo
-      a0: Math.random() * Math.PI * 2,
-      seed: Math.random() * Math.PI * 2,
-      f1: 0.5 + Math.random() * 1.4,
-      f2: 0.8 + Math.random() * 2.0,
-      fr: 0.25 + Math.random() * 0.8,
-      size: 0.20 + Math.pow(Math.random(), 3.4) * 2.6,
-      bri: 0.14 + Math.pow(Math.random(), 1.5) * 0.72,
-    };
-  }
-  //: Posición viva. La forma objetivo se recalcula cada fotograma, pero lo que
-  //: se dibuja persigue a ese objetivo con retraso: es el retraso lo que
-  //: convierte un cambio de estado en una metamorfosis y no en un corte.
-  const CX = new Float32Array(CORE_N), CY = new Float32Array(CORE_N), CZ = new Float32Array(CORE_N);
-  for (let i = 0; i < CORE_N; i++) {
-    CX[i] = CORE[i].ux * CORE[i].r0; CY[i] = CORE[i].uy * CORE[i].r0; CZ[i] = CORE[i].uz * CORE[i].r0;
+  // ── La superficie ──
+  //
+  // Los puntos van en RETÍCULA, no al azar. Es la diferencia que define el
+  // aspecto: con posiciones aleatorias sale una nube de polvo; ordenados en
+  // filas y columnas, al deformar la superficie las filas se estiran y se
+  // pliegan, y aparecen esas líneas de puntos que recorren el cuerpo. El orden
+  // es lo que dibuja, no las partículas.
+  //
+  // Y es una CÁSCARA, no un volumen: los puntos viven en la superficie, así que
+  // se ve a través del cuerpo y la silueta se lee por el plegado.
+  const NU = isLowSpec ? 76 : 140;             // meridianos
+  const NV = isLowSpec ? 42 : 78;              // paralelos
+  const CORE_N = NU * NV;
+  const UX = new Float32Array(CORE_N), UY = new Float32Array(CORE_N), UZ = new Float32Array(CORE_N);
+  const UU = new Float32Array(CORE_N);         // 0..1 a lo largo del meridiano
+  {
+    let n = 0;
+    for (let a = 0; a < NU; a++) {
+      const phi = (a / NU) * Math.PI * 2;
+      const cp = Math.cos(phi), sp = Math.sin(phi);
+      for (let b = 0; b < NV; b++) {
+        // `acos` reparte los paralelos por área y no por ángulo: sin eso los
+        // puntos se apelotonan en los polos y la malla se ve sucia arriba y
+        // abajo mientras el ecuador queda desnudo.
+        const th = Math.acos(1 - 2 * ((b + 0.5) / NV));
+        const st = Math.sin(th);
+        UX[n] = cp * st; UY[n] = Math.cos(th); UZ[n] = sp * st;
+        UU[n] = a / NU;
+        n++;
+      }
+    }
   }
 
   // sprite de partícula: halo AJUSTADO (caída rápida) para dar brillo sin difuminar.
@@ -3234,113 +3236,99 @@
   const TILT = 0.88;                          // inclinación del anillo (da profundidad 3D)
   const easeOut = (x) => 1 - Math.pow(1 - x, 3);
   let t = 0, rot = 0, bootT = 0;
+  //: Degradado del fondo, cacheado entre fotogramas.
+  let bgGrad = null, bgGradW = 0, bgGradH = 0;
+  //: Paleta del cuerpo. Componer una cadena `rgba(...)` por punto son 15 000
+  //: cadenas por fotograma, y eso era lo que dominaba el coste: bajaba de 40 a
+  //: 27 fps. Aquí se precalculan y solo se rehacen cuando cambia la emoción.
+  const GRAD_N = 24, ALPHA_N = 20;
+  let PALETTE = null, paletteKey = "";
+  function buildPalette(r0c, g0c, b0c) {
+    const key = `${r0c},${g0c},${b0c}`;
+    if (paletteKey === key) return;
+    PALETTE = new Array(GRAD_N);
+    for (let gi = 0; gi < GRAD_N; gi++) {
+      const g = gi / (GRAD_N - 1);
+      // El extremo cálido sube el rojo y hunde el verde: sigue siendo el tono de
+      // la emoción, pero el cuerpo deja de ser monocromo.
+      const cr = Math.min(255, r0c + (255 - r0c) * g * 0.92) | 0;
+      const cg = Math.max(0, g0c * (1 - g * 0.72)) | 0;
+      const cb = Math.min(255, b0c + (255 - b0c) * g * 0.45) | 0;
+      const fila = new Array(ALPHA_N);
+      for (let ai = 0; ai < ALPHA_N; ai++) {
+        fila[ai] = `rgba(${cr},${cg},${cb},${((ai + 1) / ALPHA_N).toFixed(3)})`;
+      }
+      PALETTE[gi] = fila;
+    }
+    paletteKey = key;
+  }
 
   // Núcleo profesional: esfera granular + campo de energía tenue.
   function drawCore(cx, cy, R, rgbCol, pulse) {
     ctx.globalCompositeOperation = "lighter";
-    // 0.125 → 0.30: la masa ocupa el sitio que antes era halo vacío. El halo se
-    // reduce en proporción para que el conjunto no crezca hacia los paneles.
-    const sphereR = R * (0.52 + amp * 0.040);
-    const haloR = sphereR * 1.35;
-
-    const field = ctx.createRadialGradient(cx, cy, 0, cx, cy, haloR);
-    field.addColorStop(0,   `rgba(${rgbCol},${0.11 + amp * 0.08})`);
-    field.addColorStop(0.34,`rgba(${rgbCol},0.045)`);
-    field.addColorStop(1,   "rgba(0,0,0,0)");
-    ctx.globalAlpha = easeOut(bootT);
-    ctx.fillStyle = field;
-    ctx.beginPath(); ctx.arc(cx, cy, haloR, 0, TAU); ctx.fill();
-
-    // Ondas concéntricas muy discretas: interfaz, no "átomo".
-    ctx.strokeStyle = `rgb(${rgbCol})`;
-    ctx.lineWidth = 0.7;
-    for (let k = 0; k < 3; k++) {
-      const wave = sphereR * (1.45 + k * 0.50 + pulse * 0.06);
-      ctx.globalAlpha = (0.075 - k * 0.016) * easeOut(bootT);
-      ctx.beginPath(); ctx.arc(cx, cy, wave, 0, TAU); ctx.stroke();
-    }
+    //: Canales del color de estado. El degradado del cuerpo se construye
+    //: rotándolos entre sí, así que sigue siendo el color de la emoción y no una
+    //: paleta ajena pegada encima.
+    buildPalette(col.r | 0, col.g | 0, col.b | 0);
+    const sphereR = R * (0.62 + amp * 0.040);
+    // El campo de energía y las tres ondas concéntricas que había aquí se
+    // retiran: eran los aros alrededor del cuerpo. Su bucle además dejaba
+    // `globalAlpha` en ~0,04, y como el cuerpo nuevo pinta con el alfa dentro
+    // del `fillStyle`, ese resto multiplicaba cada punto y lo hundía —el brillo
+    // máximo medido en el lienzo era 77 sobre 255—.
+    ctx.globalAlpha = 1;
 
     // ── El cuerpo ──
     //
-    // La masa no tiene una forma: adopta la que corresponde a lo que JARVIS está
-    // haciendo. Cada estado define dónde debería estar cada partícula, y lo que
-    // se dibuja **persigue** ese objetivo con retraso. El retraso es el efecto:
-    // sin él un cambio de estado sería un corte, y con él es una metamorfosis.
+    // La superficie se desplaza a lo largo de su propia normal con tres octavas
+    // de ruido. La amplitud es alta a propósito: con poca, esto sería una esfera
+    // con bultos; con mucha, la superficie se pliega sobre sí misma y aparecen
+    // los labios y las cavidades que hacen que se lea como una forma y no como
+    // un planeta.
     //
-    //   reposo    nube amorfa que se amasa despacio
-    //   escucha   se abre en anillo, como algo que recibe
-    //   pensando  colapsa en un vórtice que gira sobre sí mismo
-    //   hablando  capas concéntricas saliendo hacia fuera
+    // La FORMA base cambia según lo que JARVIS hace; el ruido va siempre encima.
     const T = t * (reduceMotion ? 0.25 : 1);
     const boot = easeOut(bootT);
-    const grain = Math.max(0.8, sphereR / 105);
-    const churn = (reduceMotion ? 0.12 : 1) * (0.026 + amp * 0.07);
-    const breath = 1 + Math.sin(T * 0.42) * 0.06 + Math.sin(T * 0.271) * 0.035;
-    const ry = T * 0.13, rx = T * 0.07;
+    const ry = T * 0.16, rx = T * 0.09;
     const cry = Math.cos(ry), sry = Math.sin(ry);
     const crx = Math.cos(rx), srx = Math.sin(rx);
+    const breath = 1 + Math.sin(T * 0.42) * 0.05 + Math.sin(T * 0.271) * 0.03;
 
-    // Velocidad de la metamorfosis. Pensar es un colapso rápido; volver a reposo
-    // es un relajarse. Igualarlas haría que todos los cambios se sintieran igual.
-    const morph = reduceMotion ? 0.25
-      : stateName === "thinking" ? 0.085
-      : stateName === "speaking" ? 0.070
-      : 0.042;
+    // Cuánto se retuerce la superficie, por estado.
+    const warp =
+      stateName === "thinking"  ? 0.72 :
+      stateName === "speaking"  ? 0.52 + amp * 0.34 :
+      stateName === "listening" ? 0.38 : 0.56;
+    const vel = stateName === "thinking" ? 1.9 : stateName === "speaking" ? 1.3 : 0.62;
 
-    let prevA = -1;
+    // El punto es pequeño y uniforme: lo que dibuja es la malla, no el brillo de
+    // cada partícula. Un halo por punto ahogaría el patrón.
+    const dot = Math.max(1.0, sphereR / 92);
+
+    ctx.globalCompositeOperation = "lighter";
+    let prevFill = "";
     for (let n = 0; n < CORE_N; n++) {
-      const p = CORE[n];
-      let tx, ty, tz;
+      const ux = UX[n], uy = UY[n], uz = UZ[n];
+
+      // Tres octavas: la primera da la forma grande, las otras el detalle del
+      // pliegue. Frecuencias no múltiplas entre sí para que el patrón no se
+      // repita de forma reconocible.
+      const w1 = Math.sin(ux * 1.7 + T * 0.61 * vel) * Math.cos(uy * 1.9 - T * 0.43 * vel);
+      const w2 = Math.sin(uy * 3.1 - T * 0.52 * vel) * Math.cos(uz * 2.7 + T * 0.37 * vel);
+      const w3 = Math.sin(uz * 5.3 + T * 0.44 * vel) * Math.cos(ux * 4.7 - T * 0.29 * vel);
+      let rad = 1 + warp * (w1 * 0.62 + w2 * 0.30 + w3 * 0.16);
 
       if (stateName === "listening") {
-        // Anillo abierto: se aplana y se aleja del centro. Un cuerpo que deja
-        // sitio en medio se lee como algo esperando a que le llegue algo.
-        const a = p.a0 + T * 0.35;
-        const rr = 0.72 + p.r0 * 0.42;
-        tx = Math.cos(a) * rr;
-        ty = p.uy * 0.26 + Math.sin(a * 3 + T) * 0.05;
-        tz = Math.sin(a) * rr;
-      } else if (stateName === "thinking") {
-        // Vórtice: columna que gira sobre su eje, apretada en el centro. La
-        // altura viene del índice, no del azar, para que las partículas formen
-        // hebras continuas en vez de una nube revuelta.
-        const h = p.k * 2 - 1;
-        const rr = (1 - Math.pow(Math.abs(h), 1.5)) * 0.82 * (0.55 + p.r0 * 0.6);
-        const a = h * 5.5 + T * 1.9 + p.seed * 0.25;
-        tx = Math.cos(a) * rr;
-        ty = h * 1.05;
-        tz = Math.sin(a) * rr;
+        // Se aplana en un disco: un cuerpo que se abre de cara se lee como algo
+        // que recibe.
+        rad *= 1 - Math.abs(uy) * 0.42;
       } else if (stateName === "speaking") {
-        // Capas concéntricas saliendo. La fase depende del radio original, así
-        // que las partículas salen por tandas y se ve un frente de onda.
-        const fase = (p.r0 * 2.2 - T * 1.15 + p.seed * 0.1) % 1;
-        const rr = 0.30 + (fase < 0 ? fase + 1 : fase) * 0.92 * (1 + amp * 0.35);
-        tx = p.ux * rr; ty = p.uy * rr; tz = p.uz * rr;
-      } else {
-        // Reposo: nube amorfa. Cuatro lóbulos de baja frecuencia batiendo a
-        // ritmos incompatibles amasan el contorno; con uno solo el ojo predice
-        // el ciclo enseguida y deja de parecer vivo.
-        const lob =
-          Math.sin(p.ux * 2.1 + T * 0.61) +
-          Math.sin(p.uy * 1.7 - T * 0.44) +
-          Math.sin(p.uz * 2.6 + T * 0.33) +
-          Math.sin((p.ux - p.uz) * 0.9 + T * 0.19) * 1.4;
-        const swell = 0.80 + 0.30 * Math.sin(T * p.fr + p.seed);
-        const rad = p.r0 * breath * swell * (0.70 + lob * 0.22);
-        tx = p.ux * rad; ty = p.uy * rad; tz = p.uz * rad;
+        // Frentes de onda que recorren la superficie de dentro afuera.
+        rad *= 1 + Math.sin(uy * 5.0 - T * 3.2) * (0.05 + amp * 0.10);
       }
+      rad *= breath;
 
-      // Persecución del objetivo: aquí es donde una figura se derrite en otra.
-      CX[n] += (tx - CX[n]) * morph;
-      CY[n] += (ty - CY[n]) * morph;
-      CZ[n] += (tz - CZ[n]) * morph;
-
-      // Grano fino encima de la figura, para que ninguna forma se vea limpia.
-      const ph = T * 0.5;
-      const bx = CX[n] + Math.sin(CY[n] * 3.3 + ph * p.f1 + p.seed) * churn;
-      const by = CY[n] + Math.sin(CZ[n] * 2.9 - ph * p.f2 + p.seed * 1.7) * churn;
-      const bz = CZ[n] + Math.sin(CX[n] * 3.7 + ph * p.f1 * 0.8 - p.seed) * churn;
-
+      const bx = ux * rad, by = uy * rad, bz = uz * rad;
       const x1 = bx * cry - bz * sry;
       const z1 = bx * sry + bz * cry;
       const y1 = by * crx - z1 * srx;
@@ -3350,30 +3338,26 @@
       const py = cy + y1 * sphereR;
       const d = (z2 + 1) * 0.5;
 
-      const shimmer = 0.72 + 0.28 * Math.sin(T * 1.9 + p.seed);
-      let a = p.bri * (0.26 + d * 0.86) * shimmer * boot;
-      if (a < 0.012) continue;
+      // Los puntos del fondo se ven a través del cuerpo, tenues. Es lo que hace
+      // que la cáscara se lea como hueca en vez de como una silueta rellena.
+      let a = (0.16 + Math.pow(d, 1.6) * 1.15) * boot;
+      if (a < 0.02) continue;
       if (a > 1) a = 1;
 
-      // Alfa cuantizada a 32 pasos: escribir `globalAlpha` 7600 veces por
-      // fotograma domina el coste, y el salto entre pasos no se ve.
-      const q = (a * 32) | 0;
-      if (q !== prevA) { ctx.globalAlpha = q / 32; prevA = q; }
-      ctx.fillStyle = d > 0.56 ? coreHex : `rgb(${rgbCol})`;
+      // Degradado a lo largo del cuerpo, no un color plano. El tono del estado
+      // manda; el segundo tono sale de rotar sus canales, así que sigue siendo
+      // el color de la emoción y no una paleta ajena pegada encima.
+      // Índices en la paleta: el degradado recorre el cuerpo y la profundidad
+      // decide la opacidad. Dos enteros, ninguna cadena.
+      let gi = ((UU[n] * 0.55 + (1 - d) * 0.45) * GRAD_N) | 0;
+      if (gi < 0) gi = 0; else if (gi >= GRAD_N) gi = GRAD_N - 1;
+      let ai = (a * ALPHA_N) | 0;
+      if (ai < 0) ai = 0; else if (ai >= ALPHA_N) ai = ALPHA_N - 1;
+      const fill = PALETTE[gi][ai];
+      if (fill !== prevFill) { ctx.fillStyle = fill; prevFill = fill; }
 
-      const pr = p.size * (0.40 + d * 0.92) * (1 + amp * 0.24) * grain;
-      // `fillRect` para el polvo: por debajo de 1,4 px un cuadrado y un círculo
-      // son el mismo píxel, y `arc` cuesta varias veces más.
-      if (pr < 1.4) {
-        const w = pr * 2;
-        ctx.fillRect(px - pr, py - pr, w, w);
-      } else {
-        ctx.beginPath(); ctx.arc(px, py, pr, 0, TAU); ctx.fill();
-        if (d > 0.6) {
-          ctx.globalAlpha = (q / 32) * 0.14; prevA = -1;
-          ctx.beginPath(); ctx.arc(px, py, pr * 3.6, 0, TAU); ctx.fill();
-        }
-      }
+      const s2 = dot * (0.55 + d * 0.85);
+      ctx.fillRect(px - s2, py - s2, s2 * 2, s2 * 2);
     }
   }
 
@@ -3741,91 +3725,123 @@
     const pulse = 0.5 + 0.5 * Math.sin(t * 1.6);
     const activity = Math.min(1, (curTurb - 0.75) / 1.2);
 
-    drawEnvironment(cx, cy, R, rgbCol, activity, pulse);
+    // ── Escena mínima ──
+    //
+    // El borrado lo hacía `drawEnvironment` con un relleno semitransparente, que
+    // además dejaba estela. Al retirarlo hay que limpiar explícitamente o los
+    // fotogramas se acumulan. Opaco y liso: el fondo de la referencia es negro,
+    // y una estela sobre una malla ordenada la emborrona justo donde está la
+    // gracia.
+    //
+    // El cuerpo va solo, sobre negro. Las capas de ambiente —campo de
+    // profundidad, enjambre, anillos de instrumentos, retícula, flujos de datos
+    // y el grafo de memoria— competían con él por la atención y llenaban el
+    // encuadre de líneas. Quedan comentadas, no borradas: recuperar una es
+    // descomentar una línea.
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    // Fondo: un degradado radial muy contenido, centrado donde está el cuerpo.
+    // Plano y liso el encuadre se siente muerto; con demasiada luz el cuerpo
+    // pierde el negro contra el que recorta. La diferencia entre el centro y las
+    // esquinas es de unos pocos niveles: se nota sin verse.
+    if (!bgGrad || bgGradW !== W || bgGradH !== H) {
+      // Se cachea: construir un gradiente por fotograma es de las operaciones
+      // más caras de canvas 2D, y este no cambia salvo al redimensionar.
+      bgGrad = ctx.createRadialGradient(W / 2, H * 0.46, 0, W / 2, H * 0.46, Math.max(W, H) * 0.72);
+      bgGrad.addColorStop(0, "#0b0a1a");
+      bgGrad.addColorStop(0.55, "#070613");
+      bgGrad.addColorStop(1, "#03030a");
+      bgGradW = W; bgGradH = H;
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+    // drawEnvironment(cx, cy, R, rgbCol, activity, pulse);
     // El campo va detrás de todo: es el sitio donde el orbe está, no un adorno.
-    drawField(cx, cy, rgbCol);
-    paintSprite(col.r, col.g, col.b);
-    drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
-
+    // drawField(cx, cy, rgbCol);
+    paintSprite(col.r, col.g, col.b);   // el sprite lo siguen usando los pulsos
+    // drawCore(cx, cy, R, rgbCol, pulse);          // núcleo detrás del enjambre
+    
     // La maquinaria va detrás del enjambre: lo enmarca, no lo tapa.
-    drawInstruments(cx, cy, R, rgbCol, activity);
-    drawReticle(cx, cy, R, rgbCol, activity);
-    drawDataStreams(cx, cy, R, rgbCol, activity, speedFactor);
-
-    if (readVoiceSpectrum()) drawVoiceSpectrum(cx, cy, baseR, rgbCol);
-
+    // drawInstruments(cx, cy, R, rgbCol, activity);
+    // drawReticle(cx, cy, R, rgbCol, activity);
+    // drawDataStreams(cx, cy, R, rgbCol, activity, speedFactor);
+    
+    // if (readVoiceSpectrum()) drawVoiceSpectrum(cx, cy, baseR, rgbCol);
+    
     // Red Neuronal de Memoria en Canvas
-    drawMemoryNeuralGraph(cx, cy, R, rgbCol, t);
-
+    // drawMemoryNeuralGraph(cx, cy, R, rgbCol, t);
+    drawCore(cx, cy, R, rgbCol, pulse);
+    // Enjambre, ondas concéntricas y núcleos del anillo: la otra mitad del
+    // ambiente. Comentado, no borrado.
+    
     // ── enjambre: posiciones (con profundidad + arranque) + halos ──
-    ctx.globalCompositeOperation = "lighter";
-    for (let i = 0; i < N; i++) {
-      const p = P[i];
-      const a = p.a + rot * p.spd;
-      const n = noise(a * (0.9 + curChaos * 0.15) + p.seed, t * (0.8 + curChaos * 0.35));
-      const disp = n * curTurb * R * 0.16 + p.band * R + amp * Math.sin(a * 8 + t * 6) * R * 0.05;
-      let rr = baseR + disp;
-      if (boot < 1) rr = lerp(p.scatter * R, rr, boot);   // arranque: converge al anillo
-      const cosa = Math.cos(a), sina = Math.sin(a);
-      const x = cx + cosa * rr;
-      const y = cy + sina * rr * TILT;                     // inclinación → profundidad
-      const depth = 0.55 + 0.45 * (sina * 0.5 + 0.5);      // fondo más tenue/pequeño
-      const flick = 0.65 + 0.35 * Math.sin(t * 3 * p.spd + p.seed);
-      const s = p.sz * (1 + amp * 0.35) * (0.7 + depth * 0.5);
-      p._x = x; p._y = y; p._f = flick * depth * boot; p._s = s;
-
-      const glowPx = s * 2.55;
-      ctx.globalAlpha = p.bri * flick * depth * boot * 0.42;
-      ctx.drawImage(sprite, x - glowPx / 2, y - glowPx / 2, glowPx, glowPx);
-    }
-
+    // ctx.globalCompositeOperation = "lighter";
+    // for (let i = 0; i < N; i++) {
+    // const p = P[i];
+    // const a = p.a + rot * p.spd;
+    // const n = noise(a * (0.9 + curChaos * 0.15) + p.seed, t * (0.8 + curChaos * 0.35));
+    // const disp = n * curTurb * R * 0.16 + p.band * R + amp * Math.sin(a * 8 + t * 6) * R * 0.05;
+    // let rr = baseR + disp;
+    // if (boot < 1) rr = lerp(p.scatter * R, rr, boot);   // arranque: converge al anillo
+    // const cosa = Math.cos(a), sina = Math.sin(a);
+    // const x = cx + cosa * rr;
+    // const y = cy + sina * rr * TILT;                     // inclinación → profundidad
+    // const depth = 0.55 + 0.45 * (sina * 0.5 + 0.5);      // fondo más tenue/pequeño
+    // const flick = 0.65 + 0.35 * Math.sin(t * 3 * p.spd + p.seed);
+    // const s = p.sz * (1 + amp * 0.35) * (0.7 + depth * 0.5);
+    // p._x = x; p._y = y; p._f = flick * depth * boot; p._s = s;
+    
+    // const glowPx = s * 2.55;
+    // ctx.globalAlpha = p.bri * flick * depth * boot * 0.42;
+    // ctx.drawImage(sprite, x - glowPx / 2, y - glowPx / 2, glowPx, glowPx);
+    // }
+    
     // ── filamentos continuos: ondas orgánicas, nunca conexiones tipo constelación ──
-    ctx.strokeStyle = `rgb(${rgbCol})`;
-    ctx.lineWidth = 0.65;
-    for (let lane = 0; lane < 4; lane++) {
-      ctx.globalAlpha = (0.075 - lane * 0.011) * boot;
-      ctx.beginPath();
-      for (let j = 0; j <= 220; j++) {
-        const a = (j / 220) * TAU;
-        const wave = noise(a * (1.4 + lane * 0.17) + lane, t * 0.72);
-        const rr = baseR + wave * R * (0.075 + lane * 0.009)
-          + Math.sin(a * (4 + lane) - t * (0.8 + lane * 0.1)) * R * 0.018;
-        const x = cx + Math.cos(a) * rr;
-        const y = cy + Math.sin(a) * rr * TILT;
-        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.closePath(); ctx.stroke();
-    }
-
+    // ctx.strokeStyle = `rgb(${rgbCol})`;
+    // ctx.lineWidth = 0.65;
+    // for (let lane = 0; lane < 4; lane++) {
+    // ctx.globalAlpha = (0.075 - lane * 0.011) * boot;
+    // ctx.beginPath();
+    // for (let j = 0; j <= 220; j++) {
+    // const a = (j / 220) * TAU;
+    // const wave = noise(a * (1.4 + lane * 0.17) + lane, t * 0.72);
+    // const rr = baseR + wave * R * (0.075 + lane * 0.009)
+    // + Math.sin(a * (4 + lane) - t * (0.8 + lane * 0.1)) * R * 0.018;
+    // const x = cx + Math.cos(a) * rr;
+    // const y = cy + Math.sin(a) * rr * TILT;
+    // if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    // }
+    // ctx.closePath(); ctx.stroke();
+    // }
+    
     // ── núcleos sólidos nítidos ──
-    ctx.fillStyle = coreHex;
-    for (let i = 0; i < N; i++) {
-      const p = P[i];
-      ctx.globalAlpha = Math.min(0.86, p.bri * p._f * 0.92);
-      ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.42, p._s * 0.42), 0, TAU); ctx.fill();
-    }
-
+    // ctx.fillStyle = coreHex;
+    // for (let i = 0; i < N; i++) {
+    // const p = P[i];
+    // ctx.globalAlpha = Math.min(0.86, p.bri * p._f * 0.92);
+    // ctx.beginPath(); ctx.arc(p._x, p._y, Math.max(0.42, p._s * 0.42), 0, TAU); ctx.fill();
+    // }
+    
     // ── haz de proyección holográfico para el explorador ──
-    if (explorerPanel && explorerPanel.classList.contains("active")) {
-      drawHologramProjection(cx, cy, explorerPanel.getBoundingClientRect(), rgbCol, t);
-    }
-
+    // if (explorerPanel && explorerPanel.classList.contains("active")) {
+    // drawHologramProjection(cx, cy, explorerPanel.getBoundingClientRect(), rgbCol, t);
+    // }
+    
     // ── flares de ejecución (elipses inclinadas) ──
-    for (let i = pulses.length - 1; i >= 0; i--) {
-      const pu = pulses[i];
-      const spec = pu.spec || PULSE_KINDS.generic;
-      pu.r += spec.speed * speedFactor;
-      pu.life -= spec.fade * speedFactor;
-      if (pu.life <= 0) { pulses.splice(i, 1); continue; }
-      const rr = baseR + pu.r;
-      if (rr <= 4) { pulses.splice(i, 1); continue; }  // los que van hacia dentro mueren al llegar
-      ctx.strokeStyle = spec.hue ? `rgb(${spec.hue})` : `rgb(${rgbCol})`;
-      ctx.globalAlpha = pu.life * spec.alpha;
-      ctx.lineWidth = spec.width;
-      ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * TILT, 0, 0, TAU); ctx.stroke();
-    }
-    ctx.strokeStyle = `rgb(${rgbCol})`;
-
+    // for (let i = pulses.length - 1; i >= 0; i--) {
+    // const pu = pulses[i];
+    // const spec = pu.spec || PULSE_KINDS.generic;
+    // pu.r += spec.speed * speedFactor;
+    // pu.life -= spec.fade * speedFactor;
+    // if (pu.life <= 0) { pulses.splice(i, 1); continue; }
+    // const rr = baseR + pu.r;
+    // if (rr <= 4) { pulses.splice(i, 1); continue; }  // los que van hacia dentro mueren al llegar
+    // ctx.strokeStyle = spec.hue ? `rgb(${spec.hue})` : `rgb(${rgbCol})`;
+    // ctx.globalAlpha = pu.life * spec.alpha;
+    // ctx.lineWidth = spec.width;
+    // ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * TILT, 0, 0, TAU); ctx.stroke();
+    // }
+    // ctx.strokeStyle = `rgb(${rgbCol})`;
     // ── bloom: copia difusa a baja resolución, sumada encima ──
     if (glow.width !== ((W / 4) | 0) || glow.height !== ((H / 4) | 0)) sizeGlow();
     gctx.clearRect(0, 0, glow.width, glow.height);
