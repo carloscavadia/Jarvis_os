@@ -29,6 +29,8 @@ class OpenAICompatibleProvider(LLMProvider):
         base_url: str,
         max_tokens: int = 4096,
         enable_thinking: bool = False,
+        timeout: float = 60.0,
+        max_retries: int = 1,
     ) -> None:
         from openai import AsyncOpenAI
 
@@ -36,7 +38,10 @@ class OpenAICompatibleProvider(LLMProvider):
             raise ValueError("Falta el nombre del modelo (JARVIS_OPENAI_MODEL).")
         # Algunos endpoints locales (Ollama) no exigen api_key; se usa un placeholder.
         self._client = AsyncOpenAI(
-            api_key=api_key or "not-needed", base_url=base_url or None
+            api_key=api_key or "not-needed",
+            base_url=base_url or None,
+            timeout=timeout,
+            max_retries=max_retries,
         )
         self.model = model
         self.max_tokens = max_tokens

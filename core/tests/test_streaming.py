@@ -5,6 +5,28 @@ from types import SimpleNamespace
 from jarvis_core.llm.openai_compatible import OpenAICompatibleProvider
 
 
+def test_compatible_provider_passes_transport_limits(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("openai.AsyncOpenAI", FakeClient)
+    OpenAICompatibleProvider(
+        api_key="secret",
+        model="auto",
+        base_url="http://192.0.2.10:3001/v1",
+        timeout=25.0,
+        max_retries=0,
+    )
+
+    assert captured["api_key"] == "secret"
+    assert captured["base_url"] == "http://192.0.2.10:3001/v1"
+    assert captured["timeout"] == 25.0
+    assert captured["max_retries"] == 0
+
+
 class FakeStream:
     def __init__(self, chunks):
         self._chunks = chunks

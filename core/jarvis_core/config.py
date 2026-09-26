@@ -62,6 +62,8 @@ class Settings:
     openai_base_url: str = ""  # p.ej. https://integrate.api.nvidia.com/v1
     openai_model: str = ""  # p.ej. meta/llama-3.1-70b-instruct
     openai_enable_thinking: bool = False
+    openai_request_timeout_seconds: float = 60.0
+    openai_max_retries: int = 1
 
     # OpenAI nativo (Responses API). Voz, wake word, STT y TTS siguen locales.
     openai_responses_api_key: str = ""
@@ -179,6 +181,21 @@ class Settings:
             openai_base_url=os.environ.get("JARVIS_OPENAI_BASE_URL", ""),
             openai_model=os.environ.get("JARVIS_OPENAI_MODEL", ""),
             openai_enable_thinking=_get_bool("JARVIS_OPENAI_ENABLE_THINKING", False),
+            openai_request_timeout_seconds=max(
+                5.0,
+                min(
+                    300.0,
+                    float(
+                        os.environ.get(
+                            "JARVIS_OPENAI_REQUEST_TIMEOUT_SECONDS", "60"
+                        )
+                    ),
+                ),
+            ),
+            openai_max_retries=max(
+                0,
+                min(5, int(os.environ.get("JARVIS_OPENAI_MAX_RETRIES", "1"))),
+            ),
             openai_responses_api_key=os.environ.get("OPENAI_API_KEY", ""),
             openai_responses_model=os.environ.get(
                 "JARVIS_OPENAI_RESPONSES_MODEL", "gpt-5.4-nano"

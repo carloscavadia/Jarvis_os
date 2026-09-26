@@ -67,7 +67,13 @@ JARVIS_LLM_PROVIDER=openai
 JARVIS_OPENAI_BASE_URL=https://endpoint.example/v1
 JARVIS_OPENAI_API_KEY=tu-clave
 JARVIS_OPENAI_MODEL=nombre-del-modelo
+JARVIS_OPENAI_REQUEST_TIMEOUT_SECONDS=60
+JARVIS_OPENAI_MAX_RETRIES=1
 ```
+
+Si el gateway elige internamente el modelo, `JARVIS_OPENAI_MODEL=auto` es válido. La URL
+debe terminar en `/v1`. Desde Docker, usa la IP LAN del gateway y no `127.0.0.1`, salvo
+que el servidor del modelo se ejecute dentro del mismo contenedor.
 
 ### Ollama en otro equipo
 
